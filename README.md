@@ -31,6 +31,8 @@ From the Plasma session, `make check` runs the parser, storage, navigation, sear
 
 For an existing checkout, close the running application, run `git pull --ff-only`, then `make`. Run `./crumbwriter --version` to identify the build and `./crumbwriter` to launch it. Repeat the original `make install` command to update an installed Plasma launcher.
 
+On Plasma Wayland, run `make install` once after updating to the Crumbs favicon, even if you normally start `./crumbwriter`. Plasma uses the installed desktop entry and icon to identify the window. The same per-account installation described above works here.
+
 ## Writing
 
 | Shortcut | Action |
@@ -46,11 +48,11 @@ For an existing checkout, close the running application, run `git pull --ff-only
 | Ctrl+Enter | Center the visual line containing the caret |
 | Alt+Enter | Put the current crumb’s header at the top of the writing area |
 | Ctrl+Home (Begin) / Ctrl+End | Beginning / end of the current crumb |
-| Ctrl+Page Down (Next) | Beginning of the file, including any work title |
-| Ctrl+Page Up (Prior) | End of the file, including any final newline |
+| Ctrl+Page Up (RePág, Prior) | Beginning of the file, including any work title |
+| Ctrl+Page Down (AvPág, Next) | End of the file, including any final newline |
 | Ctrl+F / Ctrl+G | Find forward / backward from the manuscript caret |
 | Ctrl+H | Open Find and Replace |
-| F3 / Shift+F3 | Next or previous match, including with the search panel closed |
+| F3 / Shift+F3 | Repeat in the opening direction / reverse it for one match, even with the panel closed |
 | Ctrl+F, then Ctrl+N | Jump to a crumb number |
 | F6 / F9 | Focus history or return to the editor / show or hide the sidebar |
 | F7, then arrows and Enter | Pick a genre and append its next numbered crumb |
@@ -76,7 +78,7 @@ Smart punctuation turns typed quotes, apostrophes, double hyphens, and three per
 
 ## Finding a passage
 
-**Ctrl+F** finds the next occurrence from the caret. **Ctrl+G** finds the previous one. With plain text, each keystroke selects the nearest match in that direction and keeps keyboard focus in the query. Extending the query starts again at the original caret. Enter continues in the chosen direction. F3 always goes forward and Shift+F3 always goes backward. Search is case-insensitive by default, wraps at the document ends, and remembers completed queries with their options.
+**Ctrl+F** finds the next occurrence from the caret. **Ctrl+G** finds the previous one. With plain text, each keystroke selects the nearest match in that direction and keeps keyboard focus in the query. Extending the query starts again at the original caret. Enter and F3 continue in the direction that opened the search. After Ctrl+G, F3 finds an earlier match and Shift+F3 finds a later one. After Ctrl+F, those directions are reversed. Search is case-insensitive by default, wraps at the document ends, and remembers completed queries with their options.
 
 | While Find or Replace is open | Action |
 | --- | --- |

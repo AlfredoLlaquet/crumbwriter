@@ -147,13 +147,15 @@ search_reference(Fixture *f, gconstpointer unused)
     const struct { const gchar *query, *action; } controls[] = {
         {"Ctrl+Y", "Delete the current crumb"}, {"Ctrl+Q", "copy the current crumb"},
         {"Ctrl+Begin", "start of the current crumb"}, {"Ctrl+End", "end of the current crumb"},
-        {"Control+Next", "start of the file, including the work title"},
-        {"Ctrl+PageUp", "physical end of the file"}, {"Ctrl+Prior", "physical end of the file"},
+        {"Control+Next", "physical end of the file"}, {"Ctrl+AvPg", "physical end of the file"},
+        {"Ctrl+PageUp", "start of the file, including the work title"},
+        {"Ctrl+Prior", "start of the file"}, {"Ctrl+RePág", "start of the file"},
         {"Home", "start of the current wrapped visual line"}, {"End", "end of the current wrapped visual line"},
         {"Ctrl+Enter", "Center the current visual line"}, {"Alt+Enter", "current crumb at the top"},
         {"Down", "virtual lines below the end of the file"},
         {"whole-word", "Ctrl+W"}, {"Ctrl+W", "Close the document window"},
-        {"Ctrl+G", "Find backward from the manuscript caret"}, {"F1", "Open Keyboard Shortcuts"}
+        {"Ctrl+G", "Find backward from the manuscript caret"}, {"F1", "Open Keyboard Shortcuts"},
+        {"F3", "Repeat in the opening direction"}, {"Shift+F3", "Repeat in the opposite direction"}
     };
     for (guint i = 0; i < G_N_ELEMENTS(controls); i++) {
         gtk_entry_set_text(GTK_ENTRY(filter), controls[i].query);

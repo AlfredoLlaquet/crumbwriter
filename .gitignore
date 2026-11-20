@@ -1,5 +1,6 @@
 *.o
 /crumbwriter
+/data/crumbwriter-resources.c
 /tests/test-crumb
 /tests/test-storage
 /tests/test-editor

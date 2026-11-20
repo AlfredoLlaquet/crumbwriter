@@ -380,8 +380,8 @@ static void cmd_close(CwWindow *w) { gtk_window_close(GTK_WINDOW(w->window)); }
 static void cmd_find(CwWindow *w) { cw_search_find(w->search, FALSE); }
 static void cmd_find_backward(CwWindow *w) { cw_search_find(w->search, TRUE); }
 static void cmd_replace(CwWindow *w) { cw_search_show(w->search, TRUE); }
-static void cmd_next(CwWindow *w) { cw_search_step(w->search, FALSE); }
-static void cmd_previous(CwWindow *w) { cw_search_step(w->search, TRUE); }
+static void cmd_next(CwWindow *w) { cw_search_repeat(w->search, FALSE); }
+static void cmd_previous(CwWindow *w) { cw_search_repeat(w->search, TRUE); }
 static void cmd_number(CwWindow *w) { cw_search_number(w->search); }
 static void cmd_settings(CwWindow *w) { cw_preferences_show(w->app, GTK_WINDOW(w->window)); }
 static void cmd_shortcuts(CwWindow *w) { cw_shortcuts_show(GTK_WINDOW(w->window)); }
@@ -694,7 +694,6 @@ build_window(CwApp *app)
     gtk_box_pack_start(GTK_BOX(root), make_notice(w), FALSE, FALSE, 0);
     GtkWidget *panes = gtk_paned_new(GTK_ORIENTATION_HORIZONTAL);
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
-    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), GTK_WIDGET(w->view));
     cw_reveal_configure(GTK_TEXT_VIEW(w->view));
     /* Keep all sidebar controls reachable in a shallow tile without imposing

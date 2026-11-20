@@ -846,10 +846,10 @@ editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
     case GDK_KEY_End: case GDK_KEY_KP_End:
         target = crumb_edge(editor, TRUE);
         break;
-    case GDK_KEY_Page_Down: case GDK_KEY_KP_Page_Down: /* Next */
+    case GDK_KEY_Page_Up: case GDK_KEY_KP_Page_Up: /* Prior */
         gtk_text_buffer_get_start_iter(editor->buffer, &target);
         break;
-    case GDK_KEY_Page_Up: case GDK_KEY_KP_Page_Up: /* Prior */
+    case GDK_KEY_Page_Down: case GDK_KEY_KP_Page_Down: /* Next */
         gtk_text_buffer_get_end_iter(editor->buffer, &target);
         break;
     default:

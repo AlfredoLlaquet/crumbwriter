@@ -4,6 +4,7 @@
 #define SCROLL_STATE "cw-document-scrolling"
 
 typedef enum { KEEP_VISIBLE, CENTER_LINE, TOP_LINE } Placement;
+typedef enum { DURING_LAYOUT, REQUESTED_LANDING, FINAL_LANDING } LandingPass;
 
 typedef struct {
     GtkTextView *view;
@@ -12,6 +13,9 @@ typedef struct {
     gboolean moved, adjusting;
     Placement placement;
     gint anchor_offset, original_top, original_bottom, line_height;
+    gint viewport_width, viewport_height, normal_bottom;
+    gint normal_left, normal_right;
+    gboolean compact;
     guint virtual_rows;
 } DocumentScroll;
 
@@ -51,16 +55,19 @@ cw_reveal_virtual_rect(GtkTextView *view, guint rows, GdkRectangle *rect)
 {
     GtkTextIter end;
     gtk_text_buffer_get_end_iter(gtk_text_view_get_buffer(view), &end);
-    gtk_text_view_get_iter_location(view, &end, rect);
-    if (rows == 0)
+    if (rows == 0) {
+        gtk_text_view_get_iter_location(view, &end, rect);
         return;
+    }
 
     DocumentScroll *scroll = g_object_get_data(G_OBJECT(view), SCROLL_STATE);
     gint y, height;
     gtk_text_view_get_line_yrange(view, &end, &y, &height);
     gint64 first = (gint64)y + height;
-    if (height == 0)
+    if (height == 0) {
+        gtk_text_view_get_iter_location(view, &end, rect);
         first = (gint64)rect->y + rect->height + gtk_text_view_get_pixels_below_lines(view);
+    }
     rect->height = blank_height(view, scroll);
     rect->width = 1;
     rect->x = gtk_text_view_get_left_margin(view);
@@ -76,13 +83,18 @@ update_bottom_space(DocumentScroll *scroll, gint page)
     if (page <= 1)
         return;
     GtkTextView *view = scroll->view;
-    gint64 padding = MAX(page, scroll->original_bottom);
+    /* Changing a GTK3 text margin invalidates every wrapped paragraph. Keep
+     * the initial page of blank space through height changes. Grow it only
+     * when an actual placement needs more. */
+    if (!scroll->normal_bottom)
+        scroll->normal_bottom = MAX(page, scroll->original_bottom);
+    gint64 padding = scroll->normal_bottom;
     if (scroll->virtual_rows) {
-        /* Grow in whole pages, doubling the reserve for sustained key repeat.
-         * GTK invalidates wrapping when a margin changes. */
-        GdkRectangle end;
-        cw_reveal_virtual_rect(view, 0, &end);
-        gint64 limit = MAX((gint64)page, (gint64)G_MAXINT - end.y - end.height -
+        GtkTextIter end;
+        gint y, height;
+        gtk_text_buffer_get_end_iter(gtk_text_view_get_buffer(view), &end);
+        gtk_text_view_get_line_yrange(view, &end, &y, &height);
+        gint64 limit = MAX((gint64)page, (gint64)G_MAXINT - y - height -
                             gtk_text_view_get_top_margin(view) - page);
         gint64 pitch = blank_pitch(view, scroll);
         gint64 rows = MIN((guint64)scroll->virtual_rows, (guint64)(limit / pitch));
@@ -95,6 +107,30 @@ update_bottom_space(DocumentScroll *scroll, gint page)
     }
     if (gtk_text_view_get_bottom_margin(view) != padding)
         gtk_text_view_set_bottom_margin(view, (gint)padding);
+}
+
+static void
+ensure_landing_space(DocumentScroll *scroll, gint64 destination, gint page)
+{
+    /* A real line needs at most one viewport of space below EOF. Most
+     * positions already have enough manuscript below them, even when the
+     * window has grown since opening. GTK stores these paragraph bounds. */
+    if (scroll->virtual_rows || scroll->normal_bottom >= page)
+        return;
+    GtkTextView *view = scroll->view;
+    GtkTextIter end;
+    gint y, height;
+    gtk_text_buffer_get_end_iter(gtk_text_view_get_buffer(view), &end);
+    gtk_text_view_get_line_yrange(view, &end, &y, &height);
+    gint64 needed = destination + page - ((gint64)y + height);
+    if (needed <= scroll->normal_bottom)
+        return;
+    gint64 reserve = MAX(needed, (gint64)scroll->normal_bottom + page / 2);
+    gint64 limit = (gint64)G_MAXINT - y - height - gtk_text_view_get_top_margin(view);
+    if (limit > scroll->normal_bottom) {
+        scroll->normal_bottom = (gint)MIN(reserve, limit);
+        gtk_text_view_set_bottom_margin(view, scroll->normal_bottom);
+    }
 }
 
 static void
@@ -135,7 +171,7 @@ viewport_scrolled(GtkAdjustment *doc, GtkTextView *view)
 }
 
 static void
-adjust_to_cursor(GtkTextView *view, gboolean measuring)
+adjust_to_cursor(GtkTextView *view, LandingPass pass)
 {
     DocumentScroll *scroll = g_object_get_data(G_OBJECT(view), SCROLL_STATE);
     if (!scroll || scroll->adjusting || !gtk_widget_get_mapped(GTK_WIDGET(view)))
@@ -149,7 +185,7 @@ adjust_to_cursor(GtkTextView *view, gboolean measuring)
         gtk_text_buffer_get_iter_at_offset(buffer, &cursor, scroll->anchor_offset);
     else
         gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
-    if (measuring) {
+    if (pass != FINAL_LANDING) {
         gint height;
         gtk_text_view_get_line_yrange(view, &cursor, NULL, &height);
         if (height == 0)
@@ -167,21 +203,25 @@ adjust_to_cursor(GtkTextView *view, gboolean measuring)
     gint64 destination = visible.y;
     if (scroll->placement == CENTER_LINE) {
         destination = (gint64)caret.y - (visible.height - caret.height) / 2;
-        if (-destination > gtk_text_view_get_top_margin(view)) {
+        if (pass != DURING_LAYOUT && -destination > gtk_text_view_get_top_margin(view)) {
             /* Only an explicit center near the beginning needs room above
              * the manuscript. A fresh window keeps its normal top margin. */
-            gtk_text_view_set_top_margin(view, (gint)-destination);
+            gtk_text_view_set_top_margin(view, (gint)MAX(-destination, visible.height));
             gtk_text_view_get_visible_rect(view, &visible);
         }
     } else if (scroll->placement == TOP_LINE) {
         destination = caret.y;
     } else {
-        gint margin = measuring ? visible.height / 2 : MIN(visible.height / 8, caret.height * 2);
+        gint margin = pass != FINAL_LANDING ? visible.height / 2 : MIN(visible.height / 8, caret.height * 2);
         if (caret.y < visible.y)
             destination = (gint64)caret.y - margin;
         else if ((gint64)caret.y + caret.height > (gint64)visible.y + visible.height)
             destination = (gint64)caret.y + caret.height - visible.height + margin;
     }
+    /* Adjustment notifications also run inside GTK's layout validator.
+     * Changing margins there invalidates the layout it is still validating. */
+    if (pass != DURING_LAYOUT && scroll->placement != KEEP_VISIBLE)
+        ensure_landing_space(scroll, destination, visible.height);
     GtkAdjustment *adjustment = gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(view));
     gdouble value = gtk_adjustment_get_value(adjustment) + destination - visible.y;
     gtk_adjustment_set_value(adjustment, value);
@@ -194,14 +234,14 @@ layout_changed(GtkAdjustment *adjustment, GtkTextView *view)
     (void)adjustment;
     DocumentScroll *scroll = g_object_get_data(G_OBJECT(view), SCROLL_STATE);
     if (scroll && (scroll->placement != KEEP_VISIBLE || g_object_get_data(G_OBJECT(view), REVEAL_IDLE)))
-        adjust_to_cursor(view, TRUE);
+        adjust_to_cursor(view, DURING_LAYOUT);
 }
 
 static gboolean
 finish_scroll(gpointer data)
 {
     g_object_steal_data(G_OBJECT(data), REVEAL_IDLE);
-    adjust_to_cursor(GTK_TEXT_VIEW(data), FALSE);
+    adjust_to_cursor(GTK_TEXT_VIEW(data), FINAL_LANDING);
     return G_SOURCE_REMOVE;
 }
 
@@ -221,9 +261,29 @@ viewport_resized(GtkWidget *widget, GtkAllocation *allocation, DocumentScroll *s
     (void)allocation;
     GdkRectangle visible;
     gtk_text_view_get_visible_rect(scroll->view, &visible);
+    /* Incremental wrapping queues size allocations as the document height
+     * changes, including many with exactly the same viewport. */
+    if (visible.width == scroll->viewport_width && visible.height == scroll->viewport_height)
+        return;
+    if (visible.width != scroll->viewport_width) {
+        /* A negative Pango layout width disables wrapping. An extremely
+         * narrow split can use the whole width for text; keep a glyph of
+         * hysteresis so moving the divider by a pixel doesn't churn margins. */
+        gint glyph = blank_height(scroll->view, scroll);
+        gint64 threshold = (gint64)scroll->normal_left + scroll->normal_right +
+                           (scroll->compact ? 2 : 1) * (gint64)glyph;
+        gboolean compact = visible.width <= threshold;
+        if (compact != scroll->compact) {
+            scroll->compact = compact;
+            gtk_text_view_set_left_margin(scroll->view, compact ? 0 : scroll->normal_left);
+            gtk_text_view_set_right_margin(scroll->view, compact ? 0 : scroll->normal_right);
+        }
+    }
+    scroll->viewport_width = visible.width;
+    scroll->viewport_height = visible.height;
     update_bottom_space(scroll, visible.height);
-    if (scroll->placement != KEEP_VISIBLE) {
-        adjust_to_cursor(scroll->view, TRUE);
+    if (scroll->placement != KEEP_VISIBLE || scroll->virtual_rows) {
+        adjust_to_cursor(scroll->view, REQUESTED_LANDING);
         queue_landing(scroll->view);
     }
 }
@@ -287,6 +347,9 @@ scroll_child(GtkScrolledWindow *scroll, GtkScrollType step, gboolean horizontal,
                                   gtk_scrolled_window_get_vscrollbar(scroll);
     if (!gtk_widget_get_child_visible(bar))
         return FALSE;
+    /* This GTK action has no handled accumulator. Its default handler would
+     * animate a second page or step after our immediate scrollbar move. */
+    g_signal_stop_emission_by_name(scroll, "scroll-child");
     g_signal_emit_by_name(bar, "move-slider", step);
     return TRUE;
 }
@@ -376,6 +439,10 @@ cw_reveal_configure(GtkTextView *view)
     if (!parent)
         return;
     GtkScrolledWindow *scroll = GTK_SCROLLED_WINDOW(parent);
+    /* The tile determines the wrapping width. GTK_POLICY_NEVER publishes the
+     * largest measured paragraph as the pane's minimum and makes a shrink
+     * wait for successive, sometimes one-pixel, whole-manuscript reflows. */
+    gtk_scrolled_window_set_policy(scroll, GTK_POLICY_EXTERNAL, GTK_POLICY_AUTOMATIC);
     gtk_scrolled_window_set_kinetic_scrolling(scroll, FALSE);
 
     /* A mapped GtkScrolledWindow animates its own adjustments. Give the text
@@ -398,6 +465,8 @@ cw_reveal_configure(GtkTextView *view)
     touch->view = view;
     touch->original_top = gtk_text_view_get_top_margin(view);
     touch->original_bottom = gtk_text_view_get_bottom_margin(view);
+    touch->normal_left = gtk_text_view_get_left_margin(view);
+    touch->normal_right = gtk_text_view_get_right_margin(view);
     touch->pan = gtk_gesture_pan_new(parent, GTK_ORIENTATION_VERTICAL);
     touch->hold = gtk_gesture_long_press_new(parent);
     gtk_gesture_group(touch->hold, touch->pan);
@@ -444,7 +513,7 @@ place_view(GtkTextView *view, Placement placement, const GtkTextIter *position, 
         gtk_text_view_scroll_mark_onscreen(view, mark);
         gtk_text_buffer_delete_mark(buffer, mark);
     }
-    adjust_to_cursor(view, TRUE);
+    adjust_to_cursor(view, REQUESTED_LANDING);
 }
 
 void

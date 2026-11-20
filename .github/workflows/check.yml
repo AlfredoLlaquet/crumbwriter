@@ -59,9 +59,19 @@ jobs:
           GSETTINGS_BACKEND: memory
           NO_AT_BRIDGE: '1'
         run: xvfb-run -a make check
-      - name: Type into the native Wayland editor
+      - name: Check the installed icon and type into the native Wayland editor
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- python3 tests/check-wayland.py ./crumbwriter
+        run: |
+          install_root="$RUNNER_TEMP/crumbwriter"
+          make install PREFIX="$install_root"
+          app_id=org.thecrumbs.CrumbWriter
+          grep -Fx "Icon=$app_id" "$install_root/share/applications/$app_id.desktop"
+          for size in 16 24 32 48 64 128 256; do
+            icon="${size}x${size}/apps/$app_id.png"
+            cmp "data/icons/$icon" "$install_root/share/icons/hicolor/$icon"
+          done
+          export PATH="$install_root/bin:$PATH" XDG_DATA_DIRS="$install_root/share:/usr/local/share:/usr/share"
+          xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- python3 tests/check-wayland.py "$install_root/bin/crumbwriter"
 
   plasma:
     name: Plasma 6 with Krohnkite

@@ -281,6 +281,29 @@ rapid_preview(Fixture *f, gconstpointer unused)
 }
 
 static void
+repeat_while_previewing(Fixture *f, gconstpointer unused)
+{
+    (void)unused;
+    g_autoptr(GString) manuscript = g_string_new(NULL);
+    for (guint i = 0; i < 6000; i++)
+        g_string_append(manuscript, "Written line.\n");
+    g_string_append(manuscript, "needle\nneedle\nneedle");
+    gtk_text_buffer_set_text(f->buffer, manuscript->str, -1);
+    place(f, 0, 0);
+    cw_search_find(f->search, TRUE);
+    key(f, GDK_KEY_w, GDK_MOD1_MASK);
+    query(f, "needle");
+    /* The backward preview has no hit. The queued opposite repeat does. */
+    g_assert_true(key(f, GDK_KEY_F3, GDK_SHIFT_MASK));
+    gint64 deadline = g_get_monotonic_time() + 5 * G_TIME_SPAN_SECOND;
+    while (!gtk_text_buffer_get_has_selection(f->buffer) && g_get_monotonic_time() < deadline) {
+        settle();
+        g_usleep(1000);
+    }
+    assert_match(f, "needle", 6000);
+}
+
+static void
 directions(Fixture *f, gconstpointer unused)
 {
     (void)unused;
@@ -299,7 +322,7 @@ directions(Fixture *f, gconstpointer unused)
     query(f, "needle");
     g_signal_emit_by_name(control(f, "cw-find"), "activate");
     assert_match(f, "needle", 5);
-    key(f, GDK_KEY_F3, 0); assert_match(f, "needle", 0);
+    key(f, GDK_KEY_F3, 0); assert_match(f, "needle", 4);
     key(f, GDK_KEY_F3, GDK_SHIFT_MASK); assert_match(f, "needle", 5);
 
     /* A subsequent opener takes the current manuscript caret as a fresh origin. */
@@ -327,6 +350,62 @@ directions(Fixture *f, gconstpointer unused)
     key(f, GDK_KEY_w, GDK_MOD1_MASK); assert_match(f, "need", 5);
     key(f, GDK_KEY_Escape, 0); assert_caret(f, 5, 5);
     g_assert_false(gtk_text_buffer_get_has_selection(f->buffer));
+}
+
+static void
+repeat_direction(Fixture *f, gconstpointer data)
+{
+    gboolean backwards = GPOINTER_TO_INT(data);
+    gint nearest = backwards ? 2 : 4;
+    gint next = backwards ? 1 : 5;
+    gtk_text_buffer_set_text(f->buffer, "needle\nneedle\nneedle\nanchor\nneedle\nneedle\nneedle", -1);
+    place(f, 3, 2);
+    cw_search_find(f->search, backwards);
+    query(f, "needle");
+    assert_match(f, "needle", nearest);
+    GtkWidget *entry = control(f, "cw-find");
+    g_assert_true(gtk_window_get_focus(GTK_WINDOW(f->window)) == entry);
+    g_assert_true(key(f, GDK_KEY_F3, 0)); assert_match(f, "needle", next);
+    g_assert_true(key(f, GDK_KEY_F3, GDK_SHIFT_MASK)); assert_match(f, "needle", nearest);
+    g_signal_emit_by_name(entry, "activate"); assert_match(f, "needle", next);
+    GdkEventKey shifted_enter = {.type = GDK_KEY_PRESS, .keyval = GDK_KEY_Return, .state = GDK_SHIFT_MASK};
+    gboolean handled = FALSE;
+    g_signal_emit_by_name(entry, "key-press-event", &shifted_enter, &handled);
+    g_assert_true(handled); assert_match(f, "needle", nearest);
+
+    /* The toolbar arrows always follow their physical direction. */
+    gtk_button_clicked(GTK_BUTTON(control(f, "cw-search-previous")));
+    assert_match(f, "needle", backwards ? 1 : 2);
+    gtk_button_clicked(GTK_BUTTON(control(f, "cw-search-next")));
+    assert_match(f, "needle", nearest);
+
+    gtk_widget_grab_focus(f->view);
+    g_assert_true(key(f, GDK_KEY_F3, 0)); assert_match(f, "needle", next);
+    g_assert_true(key(f, GDK_KEY_F3, GDK_SHIFT_MASK)); assert_match(f, "needle", nearest);
+    g_assert_true(gtk_window_get_focus(GTK_WINDOW(f->window)) == f->view);
+
+    g_assert_true(key(f, GDK_KEY_Escape, 0));
+    g_assert_false(gtk_widget_get_visible(f->panel));
+    g_assert_false(gtk_text_buffer_get_has_selection(f->buffer));
+    assert_caret(f, nearest, 0);
+    g_assert_true(key(f, GDK_KEY_F3, 0)); assert_match(f, "needle", next);
+    g_assert_true(key(f, GDK_KEY_Escape, 0));
+    g_assert_true(key(f, GDK_KEY_F3, GDK_SHIFT_MASK)); assert_match(f, "needle", nearest);
+    g_assert_false(gtk_widget_get_visible(f->panel));
+    g_assert_true(gtk_window_get_focus(GTK_WINDOW(f->window)) == f->view);
+
+    /* Typing establishes a new origin while preserving the chosen direction. */
+    place(f, 3, 1);
+    gtk_text_buffer_insert_at_cursor(f->buffer, "x", -1);
+    cw_search_repeat(f->search, FALSE); assert_match(f, "needle", nearest);
+
+    place(f, 3, 2);
+    cw_search_find(f->search, backwards);
+    g_assert_true(key(f, GDK_KEY_r, GDK_CONTROL_MASK));
+    query(f, "n[e]+dle");
+    g_signal_emit_by_name(entry, "activate"); assert_match(f, "needle", nearest);
+    g_assert_true(key(f, GDK_KEY_F3, 0)); assert_match(f, "needle", next);
+    g_assert_true(key(f, GDK_KEY_F3, GDK_SHIFT_MASK)); assert_match(f, "needle", nearest);
 }
 
 static void
@@ -363,7 +442,10 @@ main(int argc, char **argv)
     g_test_add("/search/controls/regex", Fixture, NULL, setup, regex_modes, teardown);
     g_test_add("/search/controls/popovers-and-tile", Fixture, NULL, setup, popovers_and_tile, teardown);
     g_test_add("/search/controls/rapid-preview", Fixture, NULL, setup, rapid_preview, teardown);
+    g_test_add("/search/controls/queued-repeat", Fixture, NULL, setup, repeat_while_previewing, teardown);
     g_test_add("/search/controls/cursor-directions", Fixture, NULL, setup, directions, teardown);
+    g_test_add("/search/controls/repeat-forward", Fixture, GINT_TO_POINTER(FALSE), setup, repeat_direction, teardown);
+    g_test_add("/search/controls/repeat-backward", Fixture, GINT_TO_POINTER(TRUE), setup, repeat_direction, teardown);
     g_test_add("/search/controls/number-duplicates", Fixture, NULL, setup, numeric_duplicates, teardown);
     return g_test_run();
 }

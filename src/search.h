@@ -13,6 +13,8 @@ gboolean cw_search_handle_key(CwSearch *search, GdkEventKey *event);
 void cw_search_find(CwSearch *search, gboolean backwards);
 void cw_search_show(CwSearch *search, gboolean replace);
 void cw_search_number(CwSearch *search);
+/* F3 follows the opening direction. Shift+F3 passes TRUE to reverse it once. */
+void cw_search_repeat(CwSearch *search, gboolean opposite);
 void cw_search_step(CwSearch *search, gboolean backwards);
 void cw_search_hide(CwSearch *search);
 void cw_search_reset(CwSearch *search);

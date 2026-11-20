@@ -169,7 +169,7 @@ def session(app, run):
             assert windows() == expected, 'reopening the same file created another window'
             unchanged()
 
-            key(alpha, 'ctrl+Next')
+            key(alpha, 'ctrl+Prior')
             key(alpha, 'ctrl+Down')
             key(alpha, 'ctrl+q')
             copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)

@@ -33,9 +33,10 @@ struct CwSearch {
     GtkListStore *history;
     gchar *saved_history;
     gint pending_direction;
+    gint result_end; /* Character offset of the last hit, cleared when the manuscript changes or the caret moves. */
     gint mode_id, last_text_mode;
     Preview *preview;
-    gboolean backwards, from_anchor, selecting, result_selected;
+    gboolean backwards, from_anchor, selecting;
     gboolean show_replace, confirm_all, updating, replacing, wrapped;
     gchar *notice;
 };
@@ -202,6 +203,9 @@ apply_options(CwSearch *s)
     gtk_image_set_from_icon_name(GTK_IMAGE(image), by_number ? "go-jump-symbolic" : "go-down-symbolic",
                                  GTK_ICON_SIZE_MENU);
     atk_object_set_name(gtk_widget_get_accessible(s->next), by_number ? "Go to crumb" : "Next match");
+    gtk_widget_set_tooltip_text(s->previous, s->backwards ? "Previous match (F3)" : "Previous match (Shift+F3)");
+    gtk_widget_set_tooltip_text(s->next, by_number ? "Go to crumb (Enter)" :
+                                s->backwards ? "Next match (Shift+F3)" : "Next match (F3)");
     gtk_widget_set_visible(s->match_case, !by_number);
     gtk_widget_set_visible(s->whole_word, !by_number);
     gtk_widget_show(s->wrap);
@@ -254,7 +258,7 @@ on_mark(GtkTextBuffer *buffer, GtkTextIter *location, GtkTextMark *mark, CwSearc
     if (mark == gtk_text_buffer_get_insert(buffer)) {
         if (!s->selecting) {
             cancel_preview(s);
-            s->result_selected = FALSE;
+            s->result_end = -1;
             s->from_anchor = TRUE;
             s->pending_direction = 0;
             if (gtk_widget_get_visible(s->panel))
@@ -268,7 +272,7 @@ static void
 on_edit(GtkTextBuffer *buffer, CwSearch *s)
 {
     cancel_preview(s);
-    s->result_selected = FALSE;
+    s->result_end = -1;
     s->from_anchor = TRUE;
     s->pending_direction = 0;
     if (gtk_widget_has_focus(GTK_WIDGET(s->view)) && gtk_widget_get_visible(s->panel)) {
@@ -509,7 +513,7 @@ present_match(CwSearch *s, gboolean backwards, gboolean found, gboolean wrapped,
     s->selecting = TRUE;
     gtk_text_buffer_select_range(s->buffer, start, end);
     s->selecting = FALSE;
-    s->result_selected = TRUE;
+    s->result_end = gtk_text_iter_get_offset(end);
     s->from_anchor = FALSE;
     cw_reveal_cursor(GTK_TEXT_VIEW(s->view));
     s->wrapped = wrapped;
@@ -523,13 +527,13 @@ show_preview(CwSearch *s, gboolean found, gboolean wrapped, const GtkTextIter *s
         present_match(s, s->backwards, TRUE, wrapped, start, end);
         return;
     }
-    if (s->result_selected || gtk_text_buffer_get_has_selection(s->buffer)) {
+    if (s->result_end >= 0 || gtk_text_buffer_get_has_selection(s->buffer)) {
         GtkTextIter original;
         gtk_text_buffer_get_iter_at_mark(s->buffer, &original, s->anchor);
         s->selecting = TRUE;
         gtk_text_buffer_place_cursor(s->buffer, &original);
         s->selecting = FALSE;
-        s->result_selected = FALSE;
+        s->result_end = -1;
         s->from_anchor = TRUE;
         cw_reveal_cursor(GTK_TEXT_VIEW(s->view));
     }
@@ -560,7 +564,7 @@ preview_finished(GObject *source, GAsyncResult *result, gpointer data)
         s->pending_direction = 0;
         if (!error) {
             show_preview(s, found, wrapped, &start, &end);
-            if (queued && found)
+            if (queued)
                 cw_search_step(s, queued < 0);
         }
     }
@@ -610,7 +614,7 @@ cw_search_step(CwSearch *s, gboolean backwards)
         return;
     }
     if (!*gtk_entry_get_text(GTK_ENTRY(s->find))) {
-        cw_search_find(s, backwards);
+        cw_search_find(s, s->backwards);
         return;
     }
     g_autoptr(GError) error = gtk_source_search_context_get_regex_error(s->context);
@@ -634,8 +638,10 @@ cw_search_step(CwSearch *s, gboolean backwards)
     GtkTextIter origin, start, end;
     if (s->from_anchor && gtk_widget_get_visible(s->panel))
         gtk_text_buffer_get_iter_at_mark(s->buffer, &origin, s->anchor);
-    else if (s->result_selected && gtk_text_buffer_get_selection_bounds(s->buffer, &start, &end))
-        origin = backwards ? start : end;
+    /* Escape can collapse a hit at its start. Forward repetition still
+     * resumes at its end until a real edit or caret movement intervenes. */
+    else if (!s->from_anchor && !backwards && s->result_end >= 0)
+        gtk_text_buffer_get_iter_at_offset(s->buffer, &origin, s->result_end);
     else
         gtk_text_buffer_get_iter_at_mark(s->buffer, &origin, gtk_text_buffer_get_insert(s->buffer));
     gboolean wrapped = FALSE;
@@ -643,6 +649,12 @@ cw_search_step(CwSearch *s, gboolean backwards)
         gtk_source_search_context_backward(s->context, &origin, &start, &end, &wrapped) :
         gtk_source_search_context_forward(s->context, &origin, &start, &end, &wrapped);
     present_match(s, backwards, found, wrapped, &start, &end);
+}
+
+void
+cw_search_repeat(CwSearch *s, gboolean opposite)
+{
+    cw_search_step(s, opposite ? !s->backwards : s->backwards);
 }
 
 static void
@@ -727,23 +739,30 @@ choose_mode(CwSearch *s, gint target)
 gboolean
 cw_search_handle_key(CwSearch *s, GdkEventKey *event)
 {
-    if (!gtk_widget_get_visible(s->panel))
-        return FALSE;
     GdkModifierType mods = event->state & gtk_accelerator_get_default_mod_mask();
     guint key = gdk_keyval_to_lower(event->keyval);
+    if (key == GDK_KEY_F3 && (mods == 0 || mods == GDK_SHIFT_MASK)) {
+        cw_search_repeat(s, mods == GDK_SHIFT_MASK);
+        return TRUE;
+    }
+    gboolean visible = gtk_widget_get_visible(s->panel);
     if (key == GDK_KEY_Escape && mods == 0) {
-        cw_search_hide(s);
-        if (gtk_text_buffer_get_has_selection(s->buffer)) {
+        gboolean selected = gtk_text_buffer_get_has_selection(s->buffer);
+        if (!visible && (s->result_end < 0 || !selected))
+            return FALSE;
+        if (visible)
+            cw_search_hide(s);
+        if (selected) {
             GtkTextIter cursor;
             gtk_text_buffer_get_iter_at_mark(s->buffer, &cursor, gtk_text_buffer_get_insert(s->buffer));
+            s->selecting = TRUE;
             gtk_text_buffer_place_cursor(s->buffer, &cursor);
+            s->selecting = FALSE;
         }
         return TRUE;
     }
-    if (key == GDK_KEY_F3 && (mods == 0 || mods == GDK_SHIFT_MASK)) {
-        cw_search_step(s, mods == GDK_SHIFT_MASK);
-        return TRUE;
-    }
+    if (!visible)
+        return FALSE;
     if (mods == GDK_CONTROL_MASK) {
         switch (key) {
         case GDK_KEY_p: choose_mode(s, TEXT_MODE); return TRUE;
@@ -780,7 +799,7 @@ on_key(GtkWidget *widget, GdkEventKey *event, CwSearch *s)
     if ((widget == s->find || widget == s->number) &&
         (event->state & gtk_accelerator_get_default_mod_mask()) == GDK_SHIFT_MASK &&
         (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter)) {
-        cw_search_step(s, !s->backwards);
+        cw_search_repeat(s, TRUE);
         return GDK_EVENT_STOP;
     }
     return GDK_EVENT_PROPAGATE;
@@ -898,7 +917,7 @@ void
 cw_search_reset(CwSearch *s)
 {
     cancel_preview(s);
-    s->result_selected = FALSE;
+    s->result_end = -1;
     s->backwards = FALSE;
     s->from_anchor = TRUE;
     s->pending_direction = 0;
@@ -954,10 +973,9 @@ toggle(GtkWidget *row, const gchar *label, const gchar *name, CwSearch *s)
 }
 
 static GtkWidget *
-navigation_button(GtkWidget *row, const gchar *icon, const gchar *name, const gchar *hint, CwSearch *s)
+navigation_button(GtkWidget *row, const gchar *icon, const gchar *name, CwSearch *s)
 {
     GtkWidget *widget = gtk_button_new_from_icon_name(icon, GTK_ICON_SIZE_MENU);
-    gtk_widget_set_tooltip_text(widget, hint);
     atk_object_set_name(gtk_widget_get_accessible(widget), name);
     g_signal_connect(widget, "clicked", G_CALLBACK(on_step), s);
     add(row, widget, FALSE);
@@ -1035,8 +1053,10 @@ make_query_row(CwSearch *s)
     gtk_stack_add_named(GTK_STACK(s->stack), s->number, "number");
     add(row, s->stack, TRUE);
     make_history(s, row);
-    s->previous = navigation_button(row, "go-up-symbolic", "Previous match", "Previous match (Shift+F3)", s);
-    s->next = navigation_button(row, "go-down-symbolic", "Next match", "Next match or jump to number (Enter)", s);
+    s->previous = navigation_button(row, "go-up-symbolic", "Previous match", s);
+    s->next = navigation_button(row, "go-down-symbolic", "Next match", s);
+    gtk_widget_set_name(s->previous, "cw-search-previous");
+    gtk_widget_set_name(s->next, "cw-search-next");
     GtkWidget *close = gtk_button_new_from_icon_name("window-close-symbolic", GTK_ICON_SIZE_MENU);
     gtk_button_set_relief(GTK_BUTTON(close), GTK_RELIEF_NONE);
     gtk_widget_set_tooltip_text(close, "Close search (Esc)");

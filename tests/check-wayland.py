@@ -69,23 +69,26 @@ def check(app, run):
         processes.append(editor)
         wait_for("the editor's first Wayland buffer", lambda: re.search(r"wl_surface[^\s(]*\.attach\(wl_buffer",
                                                                        client_log.read_text(errors="replace")))
+        wait_for("the Crumb Writer desktop ID", lambda: re.search(
+            r'xdg_toplevel[^\s(]*\.set_app_id\("org\.thecrumbs\.CrumbWriter"\)', client_log.read_text(errors="replace")))
+        print("Wayland window identifies itself with the Crumb Writer desktop file.", flush=True)
         keyboard("mousemove", "--window", window, "250", "240", "click", "1")
         wait_for("Wayland keyboard focus", lambda: re.search(r"\bwl_keyboard[^\s(]*\.enter\(",
                                                             client_log.read_text(errors="replace")))
 
-        keyboard("key", "--clearmodifiers", "ctrl+Prior")
+        keyboard("key", "--clearmodifiers", "ctrl+Next")
         keyboard("type", "--clearmodifiers", "--delay", "14", "I'd say \"Pepe,\" new--s ... next.")
         typed = "I’d say “Pepe,” new—s … next."
         save_and_check(first + second + typed)
         print("Wayland keyboard converted apostrophe, quotes, dash, and ellipsis.", flush=True)
 
-        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Next", "ctrl+Down", "Tab", "Tab", "shift+Tab")
+        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Prior", "ctrl+Down", "Tab", "Tab", "shift+Tab")
         keyboard("type", "--clearmodifiers", "Verified ")
         verified = first + "Crumb 2: Verified Second: " + typed
         save_and_check(verified)
         print("Wayland Ctrl+Down, Tab, and Shift+Tab reached the intended fields.", flush=True)
 
-        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Prior", "Down", "Down", "ctrl+Return")
+        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Next", "Down", "Down", "ctrl+Return")
         keyboard("type", "--clearmodifiers", "V")
         save_and_check(verified + "\n\nV")
         keyboard("key", "--clearmodifiers", "ctrl+z")

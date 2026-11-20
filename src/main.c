@@ -4,6 +4,11 @@
 #include "window.h"
 #include <gtksourceview/gtksource.h>
 #include <locale.h>
+#ifdef GDK_WINDOWING_WAYLAND
+#include <gdk/gdkwayland.h>
+#endif
+
+#define APPLICATION_ID "org.thecrumbs.CrumbWriter"
 
 static void
 install_styles(void)
@@ -38,12 +43,17 @@ cw_app_apply_preferences(CwApp *app)
 static void
 startup(GtkApplication *gtk, CwApp *app)
 {
+#ifdef GDK_WINDOWING_WAYLAND
+    /* GTK 3 advertises the program name as its xdg_toplevel app_id. */
+    if (GDK_IS_WAYLAND_DISPLAY(gdk_display_get_default()))
+        g_set_prgname(APPLICATION_ID);
+#endif
     gtk_source_init();
     cw_preferences_load(app);
     cw_preferences_theme(app);
     install_styles();
     cw_window_register_shortcuts(gtk);
-    gtk_window_set_default_icon_name("accessories-text-editor");
+    gtk_window_set_default_icon_name(APPLICATION_ID);
 }
 
 static void
@@ -91,7 +101,7 @@ local_options(GApplication *application, GVariantDict *options, gpointer data)
     (void)application;
     (void)data;
     if (g_variant_dict_contains(options, "version")) {
-        g_print("Crumb Writer 1.1\n");
+        g_print("Crumb Writer 1.2\n");
         return 0;
     }
     return -1;
@@ -104,7 +114,7 @@ main(int argc, char **argv)
     g_set_prgname("crumbwriter");
     g_set_application_name("Crumb Writer");
     CwApp app = {0};
-    app.gtk = gtk_application_new("org.thecrumbs.CrumbWriter", G_APPLICATION_HANDLES_OPEN);
+    app.gtk = gtk_application_new(APPLICATION_ID, G_APPLICATION_HANDLES_OPEN);
     g_application_add_main_option(G_APPLICATION(app.gtk), "version", 'v', G_OPTION_FLAG_NONE,
                                   G_OPTION_ARG_NONE, "Show the program version", NULL);
     g_application_set_option_context_parameter_string(G_APPLICATION(app.gtk), "[FILE…]");

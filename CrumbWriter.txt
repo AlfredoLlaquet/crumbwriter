@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 1.1. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 1.2. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Purpose and platform
 --------------------
@@ -37,13 +37,26 @@ select the new location. Settings can disable automatic reopening.
 The application uses the desktop session bus for single-instance activation.
 Run make check within a graphical session. Run make check-core
 without a display for the parser and file tests. make install installs the
-executable, this document and the applications-menu entry under /usr/local.
+executable, this document, the applications-menu entry and the Crumbs icon
+under /usr/local.
 The Makefile accepts PREFIX and DESTDIR for user or staged installations.
 
 To update an existing checkout, close all Crumb Writer windows, run
 git pull --ff-only followed by make, and launch ./crumbwriter. Repeat the
 original make install command when using the installed Plasma launcher.
 Running ./crumbwriter --version prints the version of the binary in the checkout.
+
+The window icon comes from the official Crumbs website's favicon.ico. Its
+seven original frames, from 16 to 256 pixels, are stored as lossless PNGs.
+On Wayland, Plasma uses the window's application ID, org.thecrumbs.CrumbWriter,
+to locate the matching desktop entry and its icon in the hicolor theme.
+Run make install after updating to this icon, including when launching the
+binary from the checkout. For a per-account installation, use
+make install PREFIX="$HOME/.local" with $HOME/.local/bin on PATH. On X11
+the executable also supplies the icon directly to the window manager.
+
+The original favicon is preserved in the website repository.
+https://github.com/AlfredoLlaquet/Alfredo_Llaquet-Alsina_Crumbs/blob/572a8e6cb2742e9d815fd2b86c536a0cd051ebd8/favicon.ico
 
 Representation
 --------------
@@ -129,13 +142,13 @@ selection, cut, copy, paste, undo and redo remain available.
 
     Ctrl+Home / Ctrl+Begin     Start of the current crumb's header
     Ctrl+End                   End of its body, including any trailing spaces
-    Ctrl+Page Down / Ctrl+Next Absolute beginning of the file
-    Ctrl+Page Up / Ctrl+Prior  Absolute end of the file
+    Ctrl+Page Up / Ctrl+Prior  Absolute beginning of the file (RePág)
+    Ctrl+Page Down / Ctrl+Next Absolute end of the file (AvPág)
 
 These shortcuts work anywhere in the manuscript, including the middle of a
 wrapped line. Ctrl+Home on line 1 skips the optional work title before //.
 On an incomplete line, Home and End with Ctrl use its physical boundaries.
-Ctrl+End stops before the current crumb's line break. Ctrl+Page Up reaches
+Ctrl+End stops before the current crumb's line break. Ctrl+Page Down reaches
 the actual end of the buffer, after its final newline when one is present.
 Opening a manuscript still lands at the writing position before that newline.
 The corresponding keypad navigation keys work with Num Lock off.
@@ -232,11 +245,14 @@ has focus. The mode menu shows all three choices together.
     Alt+Down           Open recent searches and focus their list
     Enter in query     Continue in the chosen direction or jump to the number
     Shift+Enter        Continue in the opposite direction
-    F3 / Shift+F3      Next / previous match
+    F3                 Repeat in the direction that opened the search
+    Shift+F3           Repeat once in the opposite direction
     Escape             Close search, clear selection, return to the manuscript
 
 With search closed, Ctrl+N appends a crumb and Ctrl+W closes the document.
-F3 and Shift+F3 can continue a text search with the panel closed.
+F3 and Shift+F3 also work with the panel closed. After Ctrl+G, F3 goes
+backward and Shift+F3 goes forward. After Ctrl+F or Ctrl+H, F3 goes forward
+and Shift+F3 goes backward. Using Shift+F3 leaves the direction of F3 intact.
 For a numeric jump, open Find and press Ctrl+N, or choose Go to Crumb in the
 document menu. It checks numeric headers, including alternate labels and the
 first-line work-title prefix. If two headers share a number, the nearest one
@@ -335,6 +351,15 @@ The split pane can shrink and the sidebar can scroll in a shallow tile. Find
 and Replace open inside the manuscript and Settings is a modeless transient
 dialog. F9 gives the manuscript the entire width of a narrow tile.
 
+The split pane sets the writing width directly on the first allocation after
+a resize. Its scroller uses GTK_POLICY_EXTERNAL horizontally so the measured
+width of previously wrapped text cannot force a wider pane. GTK rewraps the
+visible paragraphs at the new width and measures the rest in the background.
+A column narrower than its usual side margins gives that space back to the
+text so long words can still wrap. Widening the column restores the margins.
+A height change reuses the blank space below the last crumb. Centering a line
+or placing a crumb at the top can grow that space when the position needs it.
+
 Document scrolling is immediate. A wheel step, page movement, scrollbar
 action, search result or history jump takes effect without an animated glide.
 Long documents wrap progressively. If newly measured paragraphs move the
@@ -342,7 +367,9 @@ target, the view keeps the caret visible. A subsequent manual scroll takes
 priority. Other desktop applications keep their scrolling preferences.
 The text view has its own scroll adjustments. The native scrollbars mirror
 their bounds and values, which keeps GTK's page animation out of the writing
-pane. Touch panning follows the finger and stops on release.
+pane. After applying a scrollbar step or page command, the handler stops the
+GTK default from applying the same movement again during a later redraw.
+Touch panning follows the finger and stops on release.
 
 Settings, search history and the last document's local file URI are saved in
 $XDG_CONFIG_HOME/crumbwriter/settings.ini or ~/.config/crumbwriter/settings.ini.
@@ -353,7 +380,8 @@ Source map and change boundaries
 --------------------------------
 AGENTS.md          Standing instruction to update this manual with every change.
 src/main.c         GTK application lifetime, command-line files, startup
-                   recovery, shared style and preference notifications.
+                   recovery, shared style, per-backend desktop identity
+                   and preference notifications.
 src/app.h          Shared application state. One GKeyFile belongs to CwApp.
 src/window.c       One CwWindow owns one view and its controller objects.
                    The command table maps menu actions and accelerators.
@@ -370,11 +398,14 @@ src/editor.c       Per-line parse cache, number and genre indexes, text tags,
                    A changed line count shifts subsequent header comparisons.
 src/search.c       Search panel, cursor-anchored directional previews,
                    GtkSourceSearchContext, history, numeric jumps and replace.
+                   F3 repeats in the opening direction, even after Escape.
+                   An edit or manual caret movement sets a fresh search origin.
 src/shortcuts.c    Searchable keyboard reference and its per-window lifetime.
 src/genres.c       Genre-title interpretation and the alphabetized sidebar list.
 src/reveal.c       Immediate document scrolling and caret visibility while
                    GTK measures proportional, word-wrapped paragraphs. Aligns
-                   the chosen visual line or header inside the viewport.
+                   the chosen visual line or header inside the viewport and
+                   configures the manuscript scroller's shrink behavior.
 src/virtual.c      Virtual caret rows below EOF and their conversion into
                    actual manuscript lines on text entry.
 src/typography.c   Observes text committed by the manuscript input method,
@@ -382,13 +413,15 @@ src/typography.c   Observes text committed by the manuscript input method,
 src/storage.c      Validates and decodes disk bytes, retains newline styles,
                    takes backups, detects conflicts and commits atomic saves.
 src/draft.c        Private crash-recovery files, discovery and cleanup.
-data/              Desktop launcher installed by make install.
+data/              Desktop launcher, the favicon PNGs and the GLib manifest
+                   that embeds those images in the executable. The Makefile
+                   also installs them under share/icons/hicolor.
 tests/             Executable specifications for parsing, storage, the search
                    and editor widgets, and real GTK keyboard input.
                    check-krohnkite.py checks window geometry and record
                    shortcuts under an isolated KWin session.
-                   check-wayland.py types into the native Wayland application
-                   under Weston and compares the saved UTF-8 bytes.
+                   check-wayland.py checks the window's reported desktop ID
+                   under Weston and compares the saved UTF-8 bytes from typing.
 .github/workflows/ Native FreeBSD 15.1, Linux and KWin/Krohnkite test jobs.
 
 Each module's public contract is in its matching header. Parser output owns
@@ -428,6 +461,10 @@ writer placed it.
 For viewport changes, check both alignment commands on one-line files and
 on a long, wrapped final crumb. Move below EOF, save before entering text,
 then type or paste and undo. Compare the actual bytes at each step.
+In a tiled window, narrow a large manuscript and compare its scroller width
+with the divider position on the first allocation. During a height-only drag,
+check how often GTK changes a text margin. Each change invalidates wrapping
+throughout the manuscript.
 For a search change, put the caret between repeated passages. Extend and
 shorten a forward and a backward query, test both wrap settings, and confirm
 that an older asynchronous result cannot move the caret after a newer query.

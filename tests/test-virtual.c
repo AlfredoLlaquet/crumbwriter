@@ -128,6 +128,23 @@ navigation(Fixture *f, gconstpointer unused)
     key(f, GDK_KEY_Escape, 0);
     g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 0);
     g_assert_true(gtk_text_view_get_cursor_visible(GTK_TEXT_VIEW(f->view)));
+
+    key(f, GDK_KEY_Down, 0);
+    g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 1);
+    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    GtkTextIter at = cursor(f);
+    g_assert_true(gtk_text_iter_is_start(&at));
+    g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 0);
+    key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
+    at = cursor(f);
+    g_assert_true(gtk_text_iter_is_end(&at));
+    g_assert_true(gtk_text_iter_starts_line(&at));
+    key(f, GDK_KEY_Down, 0);
+    g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 1);
+    key(f, GDK_KEY_KP_Page_Down, GDK_CONTROL_MASK);
+    at = cursor(f);
+    g_assert_true(gtk_text_iter_is_end(&at));
+    g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 0);
     g_assert_false(gtk_source_buffer_can_undo(GTK_SOURCE_BUFFER(f->buffer)));
     g_assert_false(gtk_text_buffer_get_modified(f->buffer));
     assert_text(f, original);
@@ -138,7 +155,7 @@ type_and_undo(Fixture *f, gconstpointer data)
 {
     const gchar *original = data;
     cw_editor_load_at(f->editor, original, -1, 0);
-    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
     key(f, GDK_KEY_Down, 0);
     g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 2);
@@ -160,7 +177,7 @@ preceding_record(Fixture *f, gconstpointer data)
     const gchar *ending = data;
     g_autofree gchar *text = g_strconcat("Note 1: : A\n  Note 2: Last: ", ending, NULL);
     cw_editor_load_at(f->editor, text, -1, 0);
-    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
     key(f, GDK_KEY_Down, GDK_CONTROL_MASK);
     g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 1);
@@ -169,7 +186,7 @@ preceding_record(Fixture *f, gconstpointer data)
     GtkTextIter at = cursor(f);
     g_assert_cmpint(gtk_text_iter_get_line(&at), ==, 1);
     g_assert_cmpint(gtk_text_iter_get_line_offset(&at), ==, 2);
-    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
     key(f, GDK_KEY_ISO_Left_Tab, GDK_SHIFT_MASK);
     at = cursor(f);
@@ -245,7 +262,7 @@ ime_and_paste(Fixture *f, gconstpointer data)
     assert_text(f, "Note 1: : Body.\nCafé — oui...");
     gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
     assert_text(f, original);
-    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
     key(f, GDK_KEY_Down, 0);
     const gchar *pasted = "Note 2: À: One--two...\nNote 3: : Z. ";
@@ -280,7 +297,7 @@ cancel_on_actual_edit(Fixture *f, gconstpointer data)
     gtk_text_buffer_get_start_iter(f->buffer, &it);
     gtk_text_buffer_place_cursor(f->buffer, &it);
     g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 0);
-    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
     cw_editor_append(f->editor);
     assert_text(f, "Note 1: Test: Original.\nNote 2: : ");

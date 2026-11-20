@@ -46,8 +46,8 @@ static const Shortcut navigation[] = {
     {"Shift+Tab", "Go to the start of the previous header, title, or body"},
     {"Ctrl+Home / Ctrl+Begin", "Go to the start of the current crumb"},
     {"Ctrl+End", "Go to the end of the current crumb"},
-    {"Ctrl+Page Down / Ctrl+Next", "Go to the start of the file, including the work title"},
-    {"Ctrl+Page Up / Ctrl+Prior", "Go to the physical end of the file, including its final newline"}
+    {"Ctrl+Page Up / Ctrl+Prior", "Go to the start of the file, including the work title"},
+    {"Ctrl+Page Down / Ctrl+Next", "Go to the physical end of the file, including its final newline"}
 };
 
 static const Shortcut sidebar[] = {
@@ -63,8 +63,8 @@ static const Shortcut find[] = {
     {"Ctrl+F", "Find forward from the manuscript caret"},
     {"Ctrl+G", "Find backward from the manuscript caret"},
     {"Ctrl+H", "Open forward Find and Replace"},
-    {"F3", "Find the next match"},
-    {"Shift+F3", "Find the previous match"}
+    {"F3", "Repeat in the opening direction (forward after Ctrl+F, backward after Ctrl+G)"},
+    {"Shift+F3", "Repeat in the opposite direction (backward after Ctrl+F, forward after Ctrl+G)"}
 };
 
 static const Shortcut search_panel[] = {
@@ -120,6 +120,11 @@ fold(const gchar *value)
             g_string_append_unichar(key, c);
     }
     g_string_replace(key, "control", "ctrl", 0);
+    g_string_replace(key, "repág", "pageup", 0);
+    g_string_replace(key, "repag", "pageup", 0);
+    g_string_replace(key, "avpág", "pagedown", 0);
+    g_string_replace(key, "avpag", "pagedown", 0);
+    g_string_replace(key, "avpg", "pagedown", 0);
     return g_string_free(key, FALSE);
 }
 
