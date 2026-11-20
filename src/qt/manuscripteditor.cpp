@@ -85,7 +85,7 @@ ManuscriptEditor::ManuscriptEditor(QWidget *parent)
     setLineWrapMode(WidgetWidth);
     setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    setCenterOnScroll(true); // Allows the last real row to land at the top.
+    setCenterOnScroll(true); // Normal editing allows the last row to reach the top.
     document()->setDocumentMargin(8);
     highlighter_ = new CrumbHighlighter(this, *model_);
     connect(this, &QPlainTextEdit::cursorPositionChanged, this, [this]{ onCursorMoved(); });
@@ -152,8 +152,12 @@ void ManuscriptEditor::openAtEnd()
 {
     clearVirtual();
     clearAlignment();
+    // Qt clamps the last page to the real text when the hidden window is shown.
+    // This also restores the preceding writing after reopening a top-aligned file.
+    setCenterOnScroll(false);
     setTextCursor(writingEnd());
-    ensureCursorVisible();
+    if (isVisible())
+        finishOpeningViewport();
 }
 
 void ManuscriptEditor::setSmartPunctuation(bool enabled)

@@ -39,8 +39,9 @@ windows. An explicit filename takes precedence over the last-document setting.
 On a fresh launch, the default is to reopen the last named manuscript. A first
 launch opens an untitled document. Ctrl+O opens a manuscript, and Ctrl+Shift+N
 opens a new untitled window. Opening places the caret at the end of the file's
-content, just before a final newline when present. Opening the same file
-again raises its existing window and returns to that writing position.
+content, just before a final newline when present. The opening view shows
+the preceding crumbs that fit in the editor. Opening the same file again
+raises its existing window and returns to that writing position.
 Launching again without a filename reactivates a window at its current caret.
 
 Run make install as root to install the executable, manual, Plasma launcher
@@ -394,10 +395,11 @@ Whole-file regex scans and replacement planning can run in the background.
 Stale results are invalidated when the query or document changes.
 
 On the Linux/X11 test machine, Xfwm tiled the complete editor from
-1050 x 680 to 672 x 990 with the last of 3,371 crumbs on screen. Version
-2.0 drew the manuscript in 14-20 ms and used 0.03-0.04 process CPU seconds
-for the unedited tile. The same outer window transition in 1.4 used
-1.83-1.90 CPU seconds. Ten characters typed during a separate tile reached
+1050 x 680 to 672 x 990 with the last of 3,371 crumbs on screen. In two
+unedited trials, version 2.0 drew the resized manuscript in 18.48 ms and
+14.69 ms. The process used 0.02 and 0.03 CPU seconds across the respective
+observation windows of 2.15 seconds. In version 1.4 the same window resize
+used 1.83-1.90 CPU seconds. Ten characters typed during a separate tile reached
 the last crumb on disk through normal live saving. These are Linux software
 paint measurements. The resize test also runs natively on FreeBSD and
 prints its own results for 3,371 and 25,092 synthetic crumbs.

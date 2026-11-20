@@ -60,6 +60,7 @@ protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private:
     enum class Alignment { Visible, Center, Top };
@@ -85,6 +86,7 @@ private:
     bool onLastVisualRow() const;
     int rowPitch() const;
     void align(Alignment mode);
+    void finishOpeningViewport();
     void clearAlignment();
     void setTopInset(int value);
     QRect virtualCaretRect() const;

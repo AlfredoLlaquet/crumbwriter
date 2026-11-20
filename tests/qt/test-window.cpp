@@ -97,6 +97,8 @@ void testWindow(const QTemporaryDir &tmp)
     CHECK(until([&] { return editor->hasFocus(); }));
     CHECK(!window.windowTitle().startsWith("•"));
     CHECK(editor->textCursor().blockNumber() == 2);
+    CHECK(editor->cursorRect(QTextCursor(editor->document())).top() >= 0);
+    CHECK(editor->viewport()->rect().contains(editor->cursorRect()));
     key(Qt::Key_1, Qt::ControlModifier);
     CHECK(editor->textCursor().selectedText() == "Note 3");
     CHECK(QApplication::clipboard()->text() == "Note 3");

@@ -15,6 +15,7 @@ extern "C" {
 #include <QtGui/QMouseEvent>
 #include <QtGui/QTextBlock>
 #include <QtWidgets/QApplication>
+#include <QtWidgets/QVBoxLayout>
 #include <cstdio>
 #include <cstdlib>
 
@@ -313,6 +314,45 @@ void fieldsAndClipboard(ManuscriptEditor &ed)
     expect(ed, QStringLiteral("Note 1: Haiku #4: x\nNote 2: Haiku : y\n"));
 }
 
+void openingViewport()
+{
+    for (const int count : {3, 350}) {
+        QWidget window;
+        QVBoxLayout layout(&window);
+        layout.setSizeConstraint(QLayout::SetNoConstraint);
+        ManuscriptEditor ed;
+        layout.addWidget(&ed);
+        // A hidden splitter can still allocate a placeholder-sized editor.
+        // Loading positions the real caret before the final newline.
+        ed.resize(92, 30);
+        QString text;
+        const QString body = QStringLiteral("A reference to crumb 1. ").repeated(count == 3 ? 1 : 4).trimmed();
+        for (int i = 1; i <= count; ++i)
+            text += QStringLiteral("Crumb %1: Notes: %2\n").arg(i).arg(body);
+        ed.loadText(text);
+        window.resize(760, 460);
+        window.show();
+        ed.setFocus();
+        settle();
+        const int top = ed.cursorForPosition(QPoint(1, 1)).blockNumber();
+        require(ed.textCursor().blockNumber() == count - 1 && ed.textCursor().atBlockEnd(),
+                "opening places the caret at the end of the last real crumb");
+        require(ed.viewport()->rect().contains(ed.cursorRect()), "opening shows the whole writing caret");
+        if (count == 3) {
+            require(top == 0 && ed.cursorRect(QTextCursor(ed.document())).top() >= 0,
+                    "initial viewport shows the first crumb when the manuscript fits");
+        } else {
+            require(top < count - 5, "initial viewport shows the end of the preceding page too");
+        }
+        ed.topCurrentCrumb();
+        const QTextCursor header(ed.textCursor().block());
+        require(ed.cursorRect(header).top() <= 2, "explicitly pinning the last crumb still works");
+        ed.openAtEnd();
+        require(ed.cursorForPosition(QPoint(1, 1)).blockNumber() <= (count == 3 ? 0 : count - 5),
+                "opening an already visible manuscript restores the writing context");
+    }
+}
+
 void geometry(ManuscriptEditor &ed)
 {
     const auto first = QStringLiteral("Crumb 1: A: ") + QStringLiteral("one more word ").repeated(35).trimmed();
@@ -396,6 +436,7 @@ int main(int argc, char **argv)
     undoAndBoundaries(editor);
     unicodeRoundTrip(editor);
     fieldsAndClipboard(editor);
+    openingViewport();
     geometry(editor);
     std::puts("Qt editor input, clipboard, layout, virtual space and navigation passed.");
 }

@@ -227,6 +227,20 @@ void ManuscriptEditor::align(Alignment mode)
 void ManuscriptEditor::centerCurrentLine() { align(Alignment::Center); }
 void ManuscriptEditor::topCurrentCrumb() { align(Alignment::Top); }
 
+void ManuscriptEditor::finishOpeningViewport()
+{
+    ensureCursorVisible();
+    // Qt preserves the visible top line when extending the scrollbar below EOF.
+    setCenterOnScroll(true);
+}
+
+void ManuscriptEditor::showEvent(QShowEvent *e)
+{
+    QPlainTextEdit::showEvent(e);
+    if (!centerOnScroll())
+        finishOpeningViewport();
+}
+
 void ManuscriptEditor::resizeEvent(QResizeEvent *e)
 {
     QPlainTextEdit::resizeEvent(e);
