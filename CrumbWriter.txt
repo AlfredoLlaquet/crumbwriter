@@ -351,6 +351,10 @@ spaces and converts document paragraph boundaries to LF. Only the disk layer
 reintroduces physical line endings. Formatting and search highlights stay
 outside the manuscript text.
 
+The manuscripttext adapter preserves literal U+2029, U+FDD0 and U+FDD1,
+which Qt uses internally for document structure. Reading spans through this
+adapter keeps file bytes, clipboard text and search positions consistent.
+
     src/qt/main.cpp, application.*         Command line, desktop ID and icon,
                                            local single-instance activation,
                                            recovery and manuscript windows
@@ -389,6 +393,15 @@ current width. The background band is painted over visible wrapped rows.
 Whole-file regex scans and replacement planning can run in the background.
 Stale results are invalidated when the query or document changes.
 
+On the Linux/X11 test machine, Xfwm tiled the complete editor from
+1050 x 680 to 672 x 990 with the last of 3,371 crumbs on screen. Version
+2.0 drew the manuscript in 14-20 ms and used 0.03-0.04 process CPU seconds
+for the unedited tile. The same outer window transition in 1.4 used
+1.83-1.90 CPU seconds. Ten characters typed during a separate tile reached
+the last crumb on disk through normal live saving. These are Linux software
+paint measurements. The resize test also runs natively on FreeBSD and
+prints its own results for 3,371 and 25,092 synthetic crumbs.
+
 The model uses each edited range from QTextDocument. A same-line change
 reparses that line, and a genre edit revisits affected successor warnings.
 A change to physical line numbering reuses the parsed records for unaffected
@@ -410,7 +423,9 @@ Verification
 
 Use make check-core for the parser and storage tests without a display. In a
 graphical session, make check runs the core and Qt suites. make check-gui
-runs the model, document store, bookmarks, editor, search and window tests.
+runs the model, document store, bookmarks, editor, search, window and resize
+tests. The resize test measures a completed paint after typing in a moving
+window and checks the actual text and caret.
 The same Makefile supports FreeBSD base make and GNU make.
 
 For a counting change, compare each valid Qt model record against sed and
@@ -432,6 +447,8 @@ manuscript. Verify the entered text and saved bytes, caret visibility and
 centering, current-crumb band and immediate scrolling. A first text paint,
 key-to-paint delay and CPU consumed after resizing measure different costs.
 The desktop checks live in tests/check-krohnkite.py and tests/check-wayland.py.
+The tiling check reads window geometry from X11 and samples the active and
+inactive paper colors with tests/sample-x11-paper.c.
 
 Update this manual in the same change as each modification to Crumb Writer.
 Update README.md and the in-app shortcut reference when controls, platform

@@ -1,4 +1,7 @@
 #include "committedpunctuation.h"
+#include "manuscripttext.h"
+
+#include <QtCore/QStringList>
 
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextCursor>
@@ -33,7 +36,7 @@ void replace(QTextDocument *doc, int start, int end, QChar value)
     QTextCursor cursor(doc);
     cursor.setPosition(start);
     cursor.setPosition(end, QTextCursor::KeepAnchor);
-    cursor.insertText(QString(value));
+    ManuscriptText::insert(cursor, QString(value));
 }
 
 bool hasOpenQuote(QTextDocument *doc, int pos, bool single)

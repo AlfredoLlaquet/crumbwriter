@@ -1,5 +1,8 @@
 #include "manuscripteditor.h"
 #include "committedpunctuation.h"
+#include "manuscripttext.h"
+
+#include <climits>
 
 #include <QtCore/QMimeData>
 #include <QtCore/QScopedValueRollback>
@@ -34,7 +37,7 @@ QString ManuscriptEditor::normalizeInsertion(QString text, bool keepFinalSpace)
                 ++read;
             ch = u'\n';
         }
-        if (space && !newline(ch))
+        if (space && ch != u'\n')
             data[written++] = u' ';
         space = false;
         data[written++] = ch;
@@ -83,7 +86,7 @@ void ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
     if (leftSpace) {
         if (text.startsWith(u' '))
             text.remove(0, 1);
-        if ((!text.isEmpty() && newline(text.front())) || (text.isEmpty() && atEnd &&
+        if ((text.startsWith(u'\n')) || (text.isEmpty() && atEnd &&
             !(kind == Input::Typed && !input.isEmpty() && horizontal(input.back()))))
             --first;
     }
@@ -97,7 +100,7 @@ void ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
         if (cursor.hasSelection())
             cursor.removeSelectedText();
     } else {
-        cursor.insertText(text);
+        ManuscriptText::insert(cursor, text);
     }
     if (kind == Input::Typed && smart_)
         punctuation_->feed(document(), first, text);
@@ -110,7 +113,7 @@ void ManuscriptEditor::recordEditForHash(QTextCursor &cursor, const QString &inp
     if (input.endsWith(u'#') && cursor.positionInBlock() > 0) {
         const auto digits = model_->completeGenre(cursor.blockNumber(), cursor.positionInBlock()-1);
         if (!digits.isEmpty())
-            cursor.insertText(digits);
+            ManuscriptText::insert(cursor, digits);
     }
 }
 
@@ -126,7 +129,7 @@ void ManuscriptEditor::typeText(const QString &text, int replaceStart, int repla
         const int count = rows_;
         clearVirtual();
         c.movePosition(QTextCursor::End);
-        c.insertText(QString(count, u'\n'));
+        ManuscriptText::insert(c, QString(count, u'\n'));
     }
     if (replaceStart || replaceLength) {
         if (c.hasSelection())
@@ -163,17 +166,12 @@ void ManuscriptEditor::insertSelection(const QString &text, Input kind)
         const int count = rows_;
         clearVirtual();
         c.movePosition(QTextCursor::End);
-        c.insertText(QString(count, u'\n'));
+        ManuscriptText::insert(c, QString(count, u'\n'));
     }
     replaceAt(c, text, kind);
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
-}
-
-void ManuscriptEditor::replaceSelectionLiteral(const QString &text)
-{
-    insertSelection(text, Input::Replacement);
 }
 
 int ManuscriptEditor::replaceRangeLiteral(int start, int end, const QString &text)
@@ -200,8 +198,7 @@ void ManuscriptEditor::insertFromMimeData(const QMimeData *source)
 QMimeData *ManuscriptEditor::createMimeDataFromSelection() const
 {
     auto *mime = new QMimeData;
-    QString text = textCursor().selectedText();
-    mime->setText(text.replace(QChar::ParagraphSeparator, u'\n'));
+    mime->setText(ManuscriptText::selectedText(textCursor()));
     return mime;
 }
 

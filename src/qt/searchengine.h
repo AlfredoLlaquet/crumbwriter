@@ -59,6 +59,7 @@ public:
     Pattern(const QString &query, Options options);
     QString error() const;
     Span nearestLiteral(const QString &text, int origin, bool backwards, bool wrap, bool &wrapped) const;
+    bool hasOverlappingPredecessor(const QString &text, Span selected) const;
     Matches collect(const QString &text, const std::atomic_bool &cancel) const;
     QString expandOne(const QString &text, Span selected, const QString &replacement,
                       QString &error) const;

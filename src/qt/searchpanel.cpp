@@ -1,6 +1,7 @@
 #include "searchpanel.h"
 #include "crumbmodel.h"
 #include "manuscripteditor.h"
+#include "manuscripttext.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -20,6 +21,7 @@
 #include <QScopedValueRollback>
 #include <QStackedWidget>
 #include <QStringListModel>
+#include <QTextBlock>
 #include <QThreadPool>
 #include <QTimer>
 #include <QToolButton>
@@ -98,6 +100,7 @@ SearchPanel::SearchPanel(ManuscriptEditor *editor, QSettings *settings, QWidget 
         origin = this->editor->textCursor();
         origin.clearSelection();
         recorded = false;
+        previewPending = false;
         pendingSteps.clear();
         if (!isHidden())
             showStatus();
@@ -322,11 +325,11 @@ void SearchPanel::open(Mode mode, bool reverse, bool replace)
     beginOrigin();
     const QTextCursor selected = editor->textCursor();
     if (wasHidden && mode != Mode::Number && selected.hasSelection() &&
-        selected.anchor() != selected.position() && !selected.selectedText().contains(QChar::ParagraphSeparator) &&
+        selected.document()->findBlock(selected.selectionStart()) == selected.document()->findBlock(selected.selectionEnd()) &&
         !(previousHit == Span{selected.selectionStart(), selected.selectionEnd()})) {
         QScopedValueRollback<bool> guard(settingControls, true);
         mode = Mode::Text;
-        findEntry->setText(selected.selectedText());
+        findEntry->setText(ManuscriptText::selectedText(selected));
     }
     options.mode = mode;
     if (mode != Mode::Number)
@@ -414,7 +417,7 @@ void SearchPanel::showRecent()
 
 void SearchPanel::recall(int row)
 {
-    if (row < 0 || row >= recentEntries.size())
+    if (!recentPopup->isVisible() || row < 0 || row >= recentEntries.size())
         return;
     auto recalled = recentEntries[row];
     recentPopup->hide();
@@ -444,6 +447,7 @@ void SearchPanel::closeSearch()
     recentPopup->hide();
     cancelPreview();
     refreshDelay->stop();
+    previewPending = false;
     pendingSteps.clear();
     hide();
     visibleHits.clear();
@@ -502,6 +506,7 @@ void SearchPanel::invalidateIndex()
         indexCancel->store(true);
     indexCancel.reset();
     indexReady = false;
+    previewPending = false;
     matches = {};
     pendingSteps.clear();
     scanDelay->stop();
@@ -555,6 +560,13 @@ void SearchPanel::indexFinished(cwsearch::Matches result)
     indexCancel.reset();
     matches = std::move(result);
     indexReady = true;
+    if (previewPending && !isHidden()) {
+        previewPending = false;
+        previewText(restorePending);
+    }
+    if (matches.spans.isEmpty() &&
+        (notice == QStringLiteral("No earlier match") || notice == QStringLiteral("No later match")))
+        notice.clear();
     updateHighlights();
     showStatus();
     const auto queued = std::move(pendingSteps);
@@ -612,12 +624,35 @@ void SearchPanel::showMatch(Span selected, bool didWrap)
     showStatus();
 }
 
+SearchPanel::Span SearchPanel::literalAt(int position, bool reverse, bool &didWrap, bool &waitForIndex)
+{
+    waitForIndex = false;
+    if (indexReady) {
+        const int index = cwsearch::nearestIndex(matches.spans, position, reverse, options.wrap, didWrap);
+        return index >= 0 ? matches.spans[index] : Span{};
+    }
+    const QString &text = snapshot();
+    const auto candidate = pattern.nearestLiteral(text, position, reverse, options.wrap, didWrap);
+    // For "ana" in "bananana", the count and Replace All use occurrences at
+    // positions 1 and 5. Position 3 overlaps the first and must never become a
+    // navigation result. Only this ambiguous case needs the completed index.
+    waitForIndex = pattern.hasOverlappingPredecessor(text, candidate);
+    return candidate;
+}
+
 void SearchPanel::previewText(bool restorePrevious)
 {
     bool didWrap = false;
     Span selected;
+    bool wait = false;
     if (!findEntry->text().isEmpty())
-        selected = pattern.nearestLiteral(snapshot(), origin.position(), backwards, options.wrap, didWrap);
+        selected = literalAt(origin.position(), backwards, didWrap, wait);
+    if (wait) {
+        previewPending = true;
+        restorePending = restorePrevious;
+        collectMatches();
+        return;
+    }
     if (selected.found()) {
         showMatch(selected, didWrap);
         return;
@@ -686,7 +721,13 @@ void SearchPanel::step(bool reverse)
     Span selected;
     const int start = hit.found() ? (reverse ? hit.start : hit.end) : origin.position();
     if (options.mode == Mode::Text) {
-        selected = pattern.nearestLiteral(snapshot(), start, reverse, options.wrap, didWrap);
+        bool wait = false;
+        selected = literalAt(start, reverse, didWrap, wait);
+        if (wait || previewPending) {
+            pendingSteps.append(reverse);
+            collectMatches();
+            return;
+        }
     } else if (!indexReady) {
         pendingSteps.append(reverse);
         collectMatches();
@@ -792,6 +833,10 @@ void SearchPanel::replaceOne()
         setNotice(error);
         return;
     }
+    if (QStringView(snapshot()).mid(selected.start, selected.end - selected.start) == expanded) {
+        step(false);
+        return;
+    }
     int caret;
     {
         QScopedValueRollback<bool> guard(replacing, true);
@@ -872,7 +917,7 @@ void SearchPanel::applyPreview()
             QTextCursor edit(editor->document());
             edit.setPosition(it->original.start);
             edit.setPosition(it->original.end, QTextCursor::KeepAnchor);
-            edit.insertText(it->replacement);
+            ManuscriptText::insert(edit, it->replacement);
         }
         transaction.endEditBlock();
     }

@@ -199,6 +199,23 @@ void anchoredNavigation()
     check(f.isAt(0, QStringLiteral("needle")), "manual caret movement establishes new origin");
 }
 
+void overlappingSearch()
+{
+    Fixture f;
+    const QString word = QStringLiteral("bananana");
+    for (const QString &paper : {word, word + QString(40000, u'z')}) {
+        f.search->reset();
+        f.editor->loadText(paper);
+        f.editor->jumpTo(2, false);
+        f.search->find();
+        f.query->setText(QStringLiteral("ana"));
+        waitFor([&] { return f.editor->textCursor().position() == 5 && f.status().contains(QStringLiteral("of 2")); },
+                "overlapping query uses same occurrences for count, preview and navigation");
+        f.search->repeat();
+        check(f.editor->textCursor().position() == 1, "overlapping query wraps to first occurrence");
+    }
+}
+
 void controlsAndReplace()
 {
     Fixture f;
@@ -247,6 +264,35 @@ void controlsAndReplace()
     check(list->isVisible() && list->model()->rowCount() >= 2, "recent query list with modes");
 }
 
+void staleAndReservedText()
+{
+    Fixture f;
+    const QString source = QStringLiteral("Crumb 1: : A\u2029B.\nCrumb 2: : A\u2029B.");
+    f.editor->loadText(source);
+    const int at = source.indexOf(QStringLiteral("A\u2029B"));
+    f.editor->selectRange(at, at + 3);
+    f.search->findReplace();
+    check(f.query->text() == QStringLiteral("A\u2029B"), "physical-line selection preserves a literal paragraph separator");
+    f.replacement->setText(QStringLiteral("x\ufdd0\u2029y"));
+    auto *all = f.button("cw-replace-all");
+    all->click();
+    auto *preview = f.search->findChild<QPlainTextEdit *>(QStringLiteral("cw-replace-preview"));
+    check(preview->isVisible(), "initial two-crumb preview");
+    f.editor->replaceRangeLiteral(at, at + 3, QStringLiteral("edited"));
+    check(!preview->isVisible(), "manuscript edits invalidate a displayed confirmation immediately");
+    waitFor([&] { return all->isEnabled(); }, "updated match count after manuscript edit");
+    all->click();
+    check(preview->toPlainText().startsWith(QStringLiteral("1 replacement in 1 crumb")),
+          "new preview shows revised count");
+    all->click();
+    check(f.editor->blockCount() == 2 && f.editor->manuscriptText().endsWith(QStringLiteral("x\ufdd0\u2029y.")),
+          "bulk replacement retains reserved Qt characters as literal Unicode");
+    f.editor->undo();
+    check(f.editor->manuscriptText().endsWith(QStringLiteral("A\u2029B.")) &&
+          f.editor->manuscriptText().startsWith(QStringLiteral("Crumb 1: : edited.")),
+          "one undo restores the bulk edit without changing earlier manual work");
+}
+
 void asynchronousSearch()
 {
     Fixture f;
@@ -280,7 +326,9 @@ int main(int argc, char **argv)
     regexEngine();
     historyImport();
     anchoredNavigation();
+    overlappingSearch();
     controlsAndReplace();
+    staleAndReservedText();
     asynchronousSearch();
     std::puts("Qt search, regex, history, navigation and replacement checks passed");
 }

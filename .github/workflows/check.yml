@@ -39,16 +39,14 @@ jobs:
             export DISPLAY=":$(cat "$display_file")" QT_QPA_PLATFORM=xcb
             export LC_ALL=en_US.UTF-8
             make check
-            pkg install -y dbus python3 xterm xdotool xclip wmctrl xprop xwininfo xauth font-misc-misc
-            python_tag=$(python3 -c 'import sys; print("%d%d" % sys.version_info[:2])')
-            pkg install -y "py${python_tag}-pillow"
+            pkg install -y dbus python3 xterm xdotool xclip xprop xwininfo xauth font-misc-misc
             # Plasma split the X11 window manager into its own package.
             if pkg rquery '%n' plasma6lts-kwin-x11 | grep -qx plasma6lts-kwin-x11; then
-              pkg install -y plasma6lts-kwin-x11
+              pkg install -y plasma6lts-kwin-x11 plasma6lts-plasma-workspace
             elif pkg rquery '%n' plasma6-kwin-x11 | grep -qx plasma6-kwin-x11; then
-              pkg install -y plasma6-kwin-x11
+              pkg install -y plasma6-kwin-x11 plasma6-plasma-workspace
             else
-              pkg install -y plasma6-kwin
+              pkg install -y plasma6-kwin plasma6-plasma-workspace
             fi
             command -v kwin_x11
             dbus-uuidgen --ensure
@@ -100,8 +98,8 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates build-essential pkgconf npm qt6-base-dev qt6-qpa-plugins libglib2.0-dev libxcb-cursor0 \
-            kwin-x11 plasma-workspace dbus-x11 xvfb xauth x11-utils xterm xdotool wmctrl xclip \
-            shared-mime-info xfonts-base fonts-dejavu-core python3-pil
+            kwin-x11 plasma-workspace dbus-x11 xvfb xauth x11-utils xterm xdotool xclip \
+            shared-mime-info xfonts-base fonts-dejavu-core python3 libx11-dev
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

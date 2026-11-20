@@ -6,13 +6,11 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
 import time
-
-from PIL import ImageGrab
-
 
 INACTIVE_PAPER = (229, 229, 229)
 
@@ -31,16 +29,26 @@ def wait_for(description, check):
         if result:
             return result
         time.sleep(0.1)
-    raise AssertionError(f'{description}\nManaged windows:\n{output("wmctrl", "-lG")}')
+    raise AssertionError(f'{description}\nManaged windows: {windows()}')
 
 
 def windows():
     result = {}
-    for line in output('wmctrl', '-l').splitlines():
-        fields = line.split(None, 3)
-        if len(fields) == 4:
-            result[fields[3]] = fields[0]
+    clients = output('xprop', '-root', '_NET_CLIENT_LIST')
+    for window in re.findall(r'0x[0-9a-fA-F]+', clients):
+        # A closing client may disappear between the two X11 requests.
+        try:
+            name = output('xdotool', 'getwindowname', window)
+        except subprocess.CalledProcessError:
+            continue
+        result[name] = window
     return result
+
+
+def kwin_running():
+    manager = output('xprop', '-root', '_NET_SUPPORTING_WM_CHECK')
+    window = re.search(r'0x[0-9a-fA-F]+', manager)
+    return window and 'KWin' in output('xprop', '-id', window[0], '_NET_WM_NAME')
 
 
 def rectangle(window):
@@ -53,8 +61,7 @@ def paper_color(window):
     x, y, width, height = rectangle(window)
     # A blank patch of the manuscript below the short fixture and above the footer.
     left, top = x + width // 10, y + height - 54
-    patch = ImageGrab.grab((left, top, left + 5, top + 5), xdisplay=os.environ['DISPLAY']).convert('RGB')
-    return max(patch.getcolors(), key=lambda item: item[0])[1]
+    return tuple(map(int, output(os.environ['CW_TEST_PAPER_SAMPLER'], str(left), str(top)).split()))
 
 
 def expect_paper(window, expected, context):
@@ -102,7 +109,7 @@ def session(app, run):
 
         try:
             launch('kwin_x11')
-            wait_for('KWin owns the X screen', lambda: 'KWin' in output('wmctrl', '-m'))
+            wait_for('KWin owns the X screen', kwin_running)
             wait_for('KWin loaded Krohnkite', lambda: 'true' in output(
                 'gdbus', 'call', '--session', '--dest', 'org.kde.KWin', '--object-path', '/Scripting',
                 '--method', 'org.kde.kwin.Scripting.isScriptLoaded', 'krohnkite'))
@@ -113,7 +120,7 @@ def session(app, run):
             first.write_text(original.replace(middle, 'Crumb 2:\tMiddle: Copy \t this crumb.  '))
             second.write_text('Crumb 1: Second: Another editor window.\n')
             screen = tuple(map(int, output('xdotool', 'getdisplaygeometry').split()))
-            launch(app, first)
+            first_process = launch(app, first)
             first_title = 'Alpha.txt — Crumb Writer'
             alpha = wait_for('first document', lambda: windows().get(first_title))
             peer_process = launch('xterm', '-title', 'Tile peer', '-e', 'sleep', '240')
@@ -183,7 +190,7 @@ def session(app, run):
                                     ('ctrl+z', edited), ('ctrl+z', original)]:
                 key(alpha, chord)
                 key(alpha, 'ctrl+s')
-                assert first.read_bytes() == contents.encode(), f'wrong saved bytes after {chord}'
+                wait_for(f'saved bytes after {chord}', lambda: first.read_bytes() == contents.encode())
 
             key(alpha, 'ctrl+End')
             subprocess.run(['xclip', '-selection', 'clipboard', '-in'], input=b'  Pasted\tclean\t \twords.  ',
@@ -194,7 +201,7 @@ def session(app, run):
             pasted = middle + ' Pasted clean words.'
             assert copied == pasted.encode(), f'clipboard after paste: {copied!r}'
             key(alpha, 'ctrl+s')
-            assert first.read_bytes() == original.replace(middle, pasted).encode()
+            wait_for('saved bytes after paste', lambda: first.read_bytes() == original.replace(middle, pasted).encode())
 
             subprocess.run([app, second], check=True, timeout=8)
             beta = wait_for('additional document', lambda: windows().get('Beta.txt — Crumb Writer'))
@@ -219,6 +226,7 @@ def session(app, run):
             peer_process.terminate()
             wait_for('closing test documents', lambda: alpha not in windows().values()
                      and peer not in windows().values())
+            assert first_process.wait(timeout=8) == 0
             check_live_resize(app, run, launch, screen)
         except BaseException:
             print(log.read_text(errors='replace')[-16000:], file=sys.stderr)
@@ -269,6 +277,11 @@ def isolated(app, package, existing_display=False):
         run = Path(tmp)
         env = dict(os.environ, QT_QPA_PLATFORM='xcb', KWIN_COMPOSE='N', QT_QUICK_BACKEND='software')
         env.setdefault('LC_ALL', 'C.UTF-8')
+        sampler = run / 'sample-paper'
+        flags = shlex.split(output('pkg-config', '--cflags', '--libs', 'x11'))
+        subprocess.run(['cc', '-std=c11', str(Path(__file__).with_name('sample-x11-paper.c')),
+                        '-o', str(sampler), *flags], check=True)
+        env['CW_TEST_PAPER_SAMPLER'] = str(sampler)
         for kind in ('config', 'data', 'state', 'cache', 'runtime'):
             subdir = run / kind
             subdir.mkdir(mode=0o700)

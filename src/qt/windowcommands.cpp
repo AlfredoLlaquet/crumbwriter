@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "bookmarks.h"
 #include "manuscripteditor.h"
+#include "manuscripttext.h"
 #include "preferences.h"
 #include "searchpanel.h"
 
@@ -141,7 +142,8 @@ void MainWindow::followReference()
         ")\\h+([0-9]+)(?![\\p{L}\\p{M}\\p{N}_])",
         QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
     const int here = c.positionInBlock();
-    auto matches = expression.globalMatch(c.block().text());
+    const QString line = ManuscriptText::blockText(c.block());
+    auto matches = expression.globalMatch(line);
     while (matches.hasNext()) {
         const auto match = matches.next();
         if (here < match.capturedStart() || here > match.capturedEnd()) continue;

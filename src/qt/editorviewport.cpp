@@ -8,7 +8,7 @@
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextLayout>
 #include <QtWidgets/QScrollBar>
-#include <limits>
+#include <climits>
 
 void ManuscriptEditor::setPaperPalette(const QPalette &palette)
 {

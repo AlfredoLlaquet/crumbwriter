@@ -229,6 +229,16 @@ Span Pattern::nearestLiteral(const QString &text, int origin, bool backwards, bo
     return span;
 }
 
+bool Pattern::hasOverlappingPredecessor(const QString &text, Span selected) const
+{
+    if (!compiled || !selected.found() || !selected.start || compiled->query.size() < 2)
+        return false;
+    const int from = std::max(0, selected.start - int(compiled->query.size()) + 1);
+    // The selected occurrence is already known to match. Starting this
+    // bounded distance earlier can only find it or an overlapping predecessor.
+    return compiled->literal(text, from, false).start < selected.start;
+}
+
 int nearestIndex(const QVector<Span> &matches, int origin, bool backwards, bool wrap, bool &wrapped)
 {
     wrapped = false;

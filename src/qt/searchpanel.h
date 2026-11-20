@@ -63,6 +63,7 @@ private:
     void indexFinished(cwsearch::Matches result);
     void updateHighlights();
     void scheduleHighlights();
+    Span literalAt(int position, bool reverse, bool &didWrap, bool &waitForIndex);
     void previewText(bool restorePrevious);
     void step(bool backwards);
     void stepNumber(bool backwards);
@@ -92,6 +93,8 @@ private:
     Span hit;
     bool paperDirty = true;
     bool indexReady = false;
+    bool previewPending = false;
+    bool restorePending = false;
     bool backwards = false;
     bool showingReplace = false;
     bool recorded = false;

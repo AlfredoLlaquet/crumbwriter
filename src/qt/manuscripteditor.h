@@ -44,7 +44,6 @@ public:
 
     static QString normalizeInsertion(QString text, bool keepFinalSpace = false);
     int replaceRangeLiteral(int start, int end, const QString &text);
-    void replaceSelectionLiteral(const QString &text);
     void undo();
     void redo();
     void cut();

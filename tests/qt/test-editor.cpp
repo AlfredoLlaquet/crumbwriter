@@ -1,4 +1,11 @@
 #include "manuscripteditor.h"
+#include "storage.h"
+extern "C" {
+#include "crumb.h"
+}
+
+#include <QtCore/QFile>
+#include <QtCore/QTemporaryDir>
 
 #include <QtCore/QMimeData>
 #include <QtGui/QClipboard>
@@ -199,6 +206,67 @@ void undoAndBoundaries(ManuscriptEditor &ed)
     expect(ed, QStringLiteral("Leaf 1: : broken--s—"));
 }
 
+void unicodeRoundTrip(ManuscriptEditor &ed)
+{
+    // Qt uses a paragraph separator and two otherwise valid noncharacters as
+    // internal control markers. In the file only CR or LF begins another crumb.
+    const auto prefix = QStringLiteral("Crumb 1: A");
+    const auto title = QStringLiteral("A") + QChar(0x2029) + u'B';
+    const auto first = prefix + QChar(0x2029) + QStringLiteral("B: x")
+        + QChar(0x00a0) + u'y' + QChar(0x2028) + u'z' + QChar(0xfdd0)
+        + QStringLiteral("literal") + QChar(0xfdd1) + QChar(0xfffd);
+    const auto original = first + QStringLiteral("\nCrumb 2: End: ok");
+    ed.loadText(original);
+    expect(ed, original);
+    require(ed.blockCount()==2, "literal Unicode separators retain physical line numbers");
+    require(ed.model().record(0).title == title, "sidebar title keeps literal Unicode");
+    require(ed.model().record(0).words == int(cw_crumb_words(first.toUtf8().constData(), true)),
+            "official word count sees original Unicode code points");
+    ed.jumpTo(0,false);
+    ed.copyCrumb();
+    require(QApplication::clipboard()->text() == first, "clipboard restores literal Unicode");
+    ed.jumpTo(prefix.size()+1,false);
+    type(ed, QStringLiteral("Z"));
+    expect(ed, QString(original).insert(prefix.size()+1, u'Z'));
+    ed.undo();
+    expect(ed, original);
+    ed.jumpTo(prefix.size()+1,false);
+    press(ed, Qt::Key_Backspace);
+    expect(ed, QString(original).remove(prefix.size(), 1));
+    ed.undo();
+    expect(ed, original);
+    ed.openAtEnd();
+    QApplication::clipboard()->setText(QString(QChar(0x2029)) + QChar(0xfdd0));
+    ed.paste();
+    expect(ed, original + QChar(0x2029) + QChar(0xfdd0));
+    ed.undo();
+    expect(ed, original);
+
+    QTemporaryDir isolated;
+    require(isolated.isValid(), "disposable storage directory");
+    const auto path = isolated.filePath(QStringLiteral("Manuscript.txt"));
+    const QByteArray diskBytes = first.toUtf8() + "\r\nCrumb 2: End: ok";
+    QFile disk(path);
+    require(disk.open(QIODevice::WriteOnly) &&
+            disk.write(QByteArray::fromHex("efbbbf") + diskBytes) == diskBytes.size()+3, "write UTF-8 fixture");
+    disk.close();
+    gchar *decoded = nullptr;
+    GError *error = nullptr;
+    auto *file = cw_file_open(QFile::encodeName(path).constData(), true, &decoded, &error);
+    require(file && !error, "production storage opens noncharacters and Unicode separators");
+    ed.loadText(QString::fromUtf8(decoded));
+    g_free(decoded);
+    type(ed, QStringLiteral("!"));
+    require(cw_file_save(file, ed.manuscriptText().toUtf8().constData(), &error) && !error,
+            "production storage saves the edited Unicode manuscript");
+    QFile backup(QFile::decodeName(cw_file_backup_path(file)));
+    require(backup.open(QIODevice::ReadOnly) && backup.readAll() == QByteArray::fromHex("efbbbf")+diskBytes,
+            "startup backup preserves original BOM and all Unicode bytes");
+    require(disk.open(QIODevice::ReadOnly) && disk.readAll() == diskBytes+'!',
+            "physical lines, exact Unicode bytes and CRLF survive open/Qt edit/save");
+    cw_file_free(file);
+}
+
 void fieldsAndClipboard(ManuscriptEditor &ed)
 {
     const auto original = QStringLiteral("Títol// Bóci 1: Haiku #1: hóla.\nBóci 2: : 👩🏽‍🔬\n");
@@ -326,6 +394,7 @@ int main(int argc, char **argv)
     punctuation(editor);
     spacing(editor);
     undoAndBoundaries(editor);
+    unicodeRoundTrip(editor);
     fieldsAndClipboard(editor);
     geometry(editor);
     std::puts("Qt editor input, clipboard, layout, virtual space and navigation passed.");

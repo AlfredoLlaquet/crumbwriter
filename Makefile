@@ -16,7 +16,7 @@ LIBS = $(QT_LIBS) $(CORE_LIBS) $(LDLIBS)
 
 CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/draft.o
 CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/draft.h
-MODEL_OBJECTS = src/qt/crumbmodel.o
+MODEL_OBJECTS = src/qt/crumbmodel.o src/qt/manuscripttext.o
 EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o \
                  src/qt/editorviewport.o src/qt/committedpunctuation.o
 SEARCH_OBJECTS = $(EDITOR_OBJECTS) src/qt/searchpanel.o src/qt/searchengine.o src/qt/searchhistory.o

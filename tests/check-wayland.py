@@ -51,6 +51,10 @@ def check(app, run):
     def save_and_check(expected):
         keyboard("key", "--clearmodifiers", "ctrl+s")
         wait_for(f"saved UTF-8 bytes {expected!r}", lambda: manuscript.read_bytes() == expected.encode("utf-8"))
+        def save_reported():
+            titles = re.findall(r'xdg_toplevel[^\s(]*\.set_title\("([^"]*)"\)', client_log.read_text(errors="replace"))
+            return titles and titles[-1] == "Typing.txt — Crumb Writer"
+        wait_for("the window to acknowledge the completed save", save_reported)
 
     try:
         # Give the compositor and this one client a private Wayland connection.

@@ -1,5 +1,6 @@
 #include "manuscripteditor.h"
 #include "committedpunctuation.h"
+#include "manuscripttext.h"
 
 #include <QtCore/QScopedValueRollback>
 #include <QtCore/QSet>
@@ -120,9 +121,7 @@ QTextCursor ManuscriptEditor::at(int position) const
 
 QString ManuscriptEditor::manuscriptText() const
 {
-    // toPlainText() folds a nonbreaking space into an ordinary space.
-    QString text = document()->toRawText();
-    return text.replace(QChar::ParagraphSeparator, u'\n');
+    return ManuscriptText::documentText(document());
 }
 
 QTextCursor ManuscriptEditor::writingEnd() const
@@ -142,7 +141,7 @@ void ManuscriptEditor::loadText(const QString &text)
     clearVirtual();
     clearAlignment();
     setExtraSelections({});
-    setPlainText(normalizeInsertion(text));
+    ManuscriptText::load(document(), normalizeInsertion(text));
     model_->markOpened();
     document()->setModified(false);
     openAtEnd();
@@ -253,8 +252,8 @@ void ManuscriptEditor::appendCrumb(const QString &genre)
     while (c.atBlockStart() && c.blockNumber() > 0)
         c.movePosition(QTextCursor::PreviousCharacter);
     const bool prefix = c.blockNumber() == 0 && !model_->record(0).valid &&
-        c.block().text().left(c.positionInBlock()).trimmed().endsWith(QStringLiteral("//"));
-    c.insertText((c.atStart() || prefix ? QString() : QStringLiteral("\n")) + header);
+        ManuscriptText::blockText(c.block()).left(c.positionInBlock()).trimmed().endsWith(QStringLiteral("//"));
+    ManuscriptText::insert(c, (c.atStart() || prefix ? QString() : QStringLiteral("\n")) + header);
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
@@ -279,7 +278,7 @@ void ManuscriptEditor::copyField(bool header)
     c.setPosition(block.position() + (header ? r.headerEnd : block.length() - 1),
                   QTextCursor::KeepAnchor);
     setTextCursor(c);
-    QGuiApplication::clipboard()->setText(c.selectedText());
+    QGuiApplication::clipboard()->setText(ManuscriptText::selectedText(c));
     setFocus();
 }
 

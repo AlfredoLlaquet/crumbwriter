@@ -1,4 +1,5 @@
 #include "crumbmodel.h"
+#include "manuscripttext.h"
 
 #include <QtCore/QPointer>
 #include <QtGui/QTextBlock>
@@ -344,7 +345,7 @@ CrumbModel::CrumbModel(QTextDocument *document)
     document->documentLayout();
     CrumbChange initial;
     for (auto block = document->begin(); block.isValid(); block = block.next())
-        d->rows.push_back(parseRecord(block.text(), block.blockNumber() == 0));
+        d->rows.push_back(parseRecord(ManuscriptText::blockText(block), block.blockNumber() == 0));
     d->rebuildIndices(initial);
     markOpened();
     connect(document, &QTextDocument::contentsChange, this, &CrumbModel::update);
@@ -376,7 +377,7 @@ void CrumbModel::update(int position, int removed, int added)
     auto block = doc->findBlockByNumber(first);
     bool changed = delta != 0;
     for (int line = first; line <= last; ++line, block = block.next()) {
-        const QString text = block.text();
+        const QString text = ManuscriptText::blockText(block);
         const auto *old = line < oldEnd ? &d->rows[line] : nullptr;
         if (old && old->text == text) {
             parsed.push_back(*old);
@@ -511,7 +512,7 @@ QString CrumbModel::completeGenre(int line, int hashColumn) const
     if (!block.isValid())
         return {};
     // Input methods may deliver # inside a still-open QTextCursor edit block.
-    const CrumbRecord current = parseRecord(block.text(), line == 0);
+    const CrumbRecord current = parseRecord(ManuscriptText::blockText(block), line == 0);
     const int hash = hashColumn - current.titleStart;
     const auto &title = current.title;
     if (!current.valid || hash < 0 || hash >= title.size() || title.at(hash) != u'#')
