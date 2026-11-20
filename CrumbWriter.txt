@@ -1,0 +1,226 @@
+Crumb Writer
+============
+
+Purpose and platform
+--------------------
+Crumb Writer edits a local plain-text manuscript in a single modeless writing
+view per document. It is a C11 application for FreeBSD 15 and KDE Plasma 6 or
+later. GTK 3.24 and GtkSourceView 4 supply C APIs for proportional rich display,
+native text input, accessible widgets, undo, and Unicode search. The window
+manager provides the decorations. The application also builds on Linux.
+
+Build and launch
+----------------
+On FreeBSD, install git, pkgconf, gtk3 and gtksourceview4 with pkg as root.
+The base system provides cc and make. In the repository, run these commands as
+the desktop account.
+
+    make
+    ./crumbwriter
+    ./crumbwriter /path/to/Crumbs.txt
+
+The final two commands are alternative launch methods. Pass several filenames
+to open several windows. Opening the same file again presents its existing
+window. The application uses the desktop session bus for single-instance
+activation. Run make check within a graphical session. Run make check-core
+without a display for the parser and file tests. make install installs the
+executable, this document and the applications-menu entry under /usr/local.
+The Makefile accepts PREFIX and DESTDIR for user or staged installations.
+
+Representation
+--------------
+The GTK text buffer is the editable source of truth. Each physical line usually
+holds a header, a title and a body. The first two field-separating colons delimit
+these parts. Further colons, inline-footnotes inside ‹{ }›, a blank title and
+a blank body all survive editing. On the first line, a work title can precede
+the header and end in //. A URL in the first crumb's body can contain // too.
+A partially typed or unnumbered line stays editable.
+
+All saved manuscripts use UTF-8 without a BOM. A leading BOM on input is read
+as an encoding signature. Ctrl+S strips it even from an otherwise untouched
+document. A startup backup contains the exact input bytes, including any
+original BOM. The logical buffer uses LF. Storage retains the input line-ending
+convention and the presence or absence of a final newline. A new untitled
+manuscript uses LF.
+
+Field positions and cursor columns count Unicode characters. Byte offsets are
+used for disk I/O. Header and title styling lives exclusively in GtkTextTags.
+Soft wrap can stretch one crumb like an accordion hired to transport a giraffe.
+The disk file still contains a single physical line for that crumb.
+
+Word counting
+-------------
+The sidebar counts the header, title and body together. For the first crumb,
+the work title and its // delimiter are excluded. A per-crumb count treats
+an em dash as a space and applies the exact non-overlapping replacement of
+space, slash, space with one space. It then follows the host wc -w convention
+in the active locale. Punctuation, hyphens and attached slashes otherwise stay
+with their tokens. Alfredo's whole-file reference command is shown below.
+
+    sed -e '1s@//@ @' -e 's/—/ /g' -e 's@ / @ @g' Crumbs.txt | wc -w
+
+For example, the empty template "Crumb 2: : " contains three words under
+this convention. The first-line work title explains why the sum of the sidebar
+counts can differ from the count of the entire file.
+
+Editing and navigation
+----------------------
+Ctrl+N appends a header using the last recognizable label in the document and
+one greater than its largest valid number. In a fresh document the label is
+Crumb and numbering starts at 1. If only a work title ending in // is present,
+the first header follows that delimiter. The insertion point follows the final
+space in "Crumb N: : ". The entire insertion is one undoable edit. An existing
+final newline stays after the new crumb.
+
+Tab and Shift+Tab move through starts of headers, titles and bodies, including
+empty fields. Ctrl+Up and Ctrl+Down visit neighboring recognizable crumbs.
+Unmodified Up and Down move through visual, wrapped lines. Ordinary text entry,
+selection, cut, copy, paste, undo and redo remain available.
+
+The sidebar tracks distinct crumb numbers in most-recently-visited order.
+Repeated visits move an item to the top. A changed title updates its existing
+entry. Clicking an entry or activating it with Enter jumps to that header. F6
+switches between editor and history. F9 toggles the sidebar. A session count
+is the number of distinct headers currently present whose numbers were absent
+when this document opened. Typing, pasting, appending, deleting and undoing all
+update it. Saving leaves this baseline in place. At first open the cursor is at
+the end of the last crumb. Later opens restore the last recorded line and
+character column, clamped to the current document.
+
+Punctuation
+-----------
+With smart punctuation enabled, the next typed character supplies context.
+Typing the d in I'd changes the text to I’d. A space after Pepe," produces
+Pepe,” followed by the space. Typing the s in new--s produces new—s. Three
+periods become an ellipsis on the next character. Opening and closing quotes,
+word-internal apostrophes, common leading elisions and possessives use context.
+Quote direction is a heuristic. It can be overridden by typing the desired
+Unicode character directly or by disabling smart punctuation in Settings.
+
+The conversion changes the buffer and is saved as literal Unicode. The input
+and its automatic correction share an undo action. Moving the caret, leaving
+the editor, explicitly saving or closing resolves terminal pending punctuation.
+Until then live saving records the current visible text. Bulk paste, search
+replacements and text already on disk retain their literal punctuation.
+
+Find and replace
+----------------
+Ctrl+F opens the inline search panel and Ctrl+H adds replacement controls.
+Text search starts case-insensitive with wrapping enabled. Optional settings
+select case, whole words, regular expressions and whether to wrap. Enter or F3
+searches forward. Shift+Enter in the query and Shift+F3 search backward.
+Escape returns to writing. F3 continues a text search with the panel closed.
+Ctrl+G checks numeric headers, including alternate labels and the first-line
+work-title prefix. Numbers mentioned in a body do not qualify.
+
+Matches are highlighted. The panel shows a count, an error for an invalid
+expression, and the match position when inexpensive to compute. GtkSourceView
+uses GLib regular expressions. Search for a nonempty span to select a match.
+For example, search for ^Crumb ([0-9]+): and replace with Crumb \1: to reuse
+the first capture. Replace All displays the count and asks for a second
+activation in the same panel. Ctrl+Z undoes the entire replacement.
+
+Executed queries and their modes, case, word and wrap settings are deduplicated
+and saved in recency order. The Recent control restores them across windows
+and restarts. Executing a search adds its completed query to history.
+
+Saving and recovery
+-------------------
+The defaults are a sibling backup before opening an existing manuscript,
+live saving at one-second intervals, and smart punctuation. The interval is
+measured from the first outstanding edit. Continuous typing cannot postpone
+the write indefinitely. Settings can change the interval from 1 to 30 seconds
+or select manual saving. Ctrl+S writes immediately. Ctrl+Shift+S opens
+Save As. The menu, search, settings and unsaved-close controls are modeless.
+
+Opening a file creates a timestamped, owner-only backup before its contents
+enter an editable window. Its filename follows this pattern.
+
+    Crumbs.txt.YYYYMMDD-HHMMSS-xxxxxxxx.bak
+
+The status tooltip includes the manuscript and backup paths. Each opened file
+gets a new backup name. Backups remain until removed by the owner. Saving uses
+a temporary sibling, fsync, and an atomic rename. Creation of a new destination
+and backup uses an exclusive link to avoid displacing a competing file. Save
+As honors the backup setting before replacing a confirmed destination.
+
+The file layer checks the previous identity and exact bytes. An external edit,
+replacement or deletion pauses live writes to that manuscript. The editor
+keeps the working text, reports the failure, and attempts a private recovery
+draft. Ctrl+Shift+S writes the work under another filename. Ctrl+S retries the
+original. An advisory lock coordinates Crumb Writer processes. Other programs
+can ignore advisory locks. Existing symlink targets are resolved on open.
+
+Untitled documents get recovery drafts while live saving is on. Recovery text
+lives in $XDG_DATA_HOME/crumbwriter/drafts or ~/.local/share/crumbwriter/drafts.
+At the next launch, drafts reopen as unsaved documents. A successful manuscript
+save or an explicit discard removes the corresponding draft. A failed save
+keeps the window open. A normal close flushes pending edits to a named
+live-saving file. Manual or unnamed documents offer Save and Close, Discard,
+and Keep Editing.
+
+Appearance and preferences
+--------------------------
+The default appearance follows the desktop GTK theme, including Plasma's GTK
+integration. Settings offers explicit Light and Dark overrides using the GTK
+Adwaita variants. The default writing font is proportional Serif at 14 pt.
+The font family and point size affect the text view without modifying any
+manuscript byte. Toolbar and sidebar keep their desktop UI font.
+
+Settings, search history and the most recent cursor coordinates are saved in
+$XDG_CONFIG_HOME/crumbwriter/settings.ini or ~/.config/crumbwriter/settings.ini.
+Positions are keyed by a digest of the resolved file path. Each open document
+has its own buffer, undo stack, visit history, and starting set of crumb numbers.
+
+Source map and change boundaries
+--------------------------------
+src/main.c         GTK application lifetime, command-line files, startup
+                   recovery, shared style and preference notifications.
+src/app.h          Shared application state. One GKeyFile belongs to CwApp.
+src/window.c       One CwWindow owns one view and its controller objects.
+                   The command table maps menu actions and accelerators.
+                   Contains the save timer, modeless notices and file chooser.
+src/preferences.c  Configuration, font CSS, theme overrides, cursor records,
+                   and modeless settings. Applies changes to all open windows.
+src/crumb.c        Field boundaries, header recognition and official counting.
+                   Consumes one UTF-8 line and its first-line flag.
+src/editor.c       Per-line parse cache, header-number lookup, text tags,
+                   sidebar, navigation and append. The ordered line sequence
+                   and numeric index are rebuilt only where edits touch them.
+src/search.c       Search panel, GtkSourceSearchContext, option recall,
+                   asynchronous search requests, numeric jumps and replace.
+src/typography.c   Per-view keyboard context and pending punctuation only.
+                   Uses GTK's input method and buffer-level undo grouping.
+src/storage.c      Validates and decodes disk bytes, retains newline styles,
+                   takes backups, detects conflicts and commits atomic saves.
+src/draft.c        Private crash-recovery files, discovery and cleanup.
+data/              Desktop launcher installed by make install.
+tests/             Executable specifications for parsing, storage, the search
+                   and editor widgets, and real GTK keyboard input.
+.github/workflows/ FreeBSD 15.1 VM and Linux build and test definitions.
+
+Each module's public contract is in its matching header. Parser output owns
+its label and title and must be cleared with cw_crumb_clear. CwFile owns the
+resolved path, previous bytes, identity and newline metadata. CwEditor owns the
+line index for exactly one buffer. Loading a second document resets that index,
+history, and undo state together. A save never resets those three structures.
+CwSearch owns the search context and cancels pending requests. CwTypography
+observes interactive key events and tracks the characters they insert.
+Keep window-lifetime callbacks disconnected before freeing their owner.
+
+Maintenance checks
+------------------
+Run make and make check after changing a module. make accepts both BSD and GNU
+make. The FreeBSD job runs native cc and base make inside the VM. The Linux job
+also runs graphical tests using a virtual X display. Both jobs compile the same
+production sources. The GTK tests exercise widgets and cursor movement.
+
+For a parser or counting change, compare every source line against the actual
+sed and wc pipeline, taking the first work-title prefix off for an individual
+count. Include adjacent verse separators, an em dash on either side of a slash,
+an empty title and non-ASCII field widths. For a navigation or formatting
+change, check the cursor position, history and tags after an edit and its undo.
+For a storage change, compare input and backup bytes, test an untouched BOM
+file, check CRLF and missing terminal LF, and simulate an external writer.
+For typography, deliver real key events and check both the instant the glyph
+changes and what Undo restores. Use a disposable manuscript for live-save tests.

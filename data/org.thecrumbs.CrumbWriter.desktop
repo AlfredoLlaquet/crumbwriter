@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Crumb Writer
+GenericName=Manuscript Editor
+Comment=Write and navigate numbered crumbs in a plain-text manuscript
+Exec=crumbwriter %F
+TryExec=crumbwriter
+Icon=accessories-text-editor
+Terminal=false
+Categories=Utility;TextEditor;GTK;
+MimeType=text/plain;
+StartupNotify=true

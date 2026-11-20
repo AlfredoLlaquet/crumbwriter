@@ -1,0 +1,60 @@
+name: Build and test
+
+on: [push, pull_request, workflow_dispatch]
+
+permissions:
+  contents: read
+
+jobs:
+  freebsd:
+    name: FreeBSD 15.1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
+        with:
+          release: '15.1'
+          copyback: false
+          prepare: |
+            pkg install -y gtk3 gtksourceview4 pkgconf xorg-vfbserver dejavu
+          run: |
+            set -eu
+            make -j2
+            # Xvfb reports the chosen display only after it can accept clients.
+            display_file=$(mktemp)
+            Xvfb -screen 0 1280x800x24 -nolisten tcp -displayfd 1 > "$display_file" &
+            server=$!
+            trap 'kill "$server" 2>/dev/null || true; rm -f "$display_file"' EXIT
+            for delay in $(jot 30); do
+              [ ! -s "$display_file" ] || break
+              kill -0 "$server"
+              sleep 1
+            done
+            test -s "$display_file"
+            export DISPLAY=":$(cat "$display_file")" GDK_BACKEND=x11
+            export LC_ALL=en_US.UTF-8 GSETTINGS_BACKEND=memory NO_AT_BRIDGE=1
+            make check
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build and test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtksourceview-4-dev xvfb xauth
+      - name: Build and test
+        env:
+          GDK_BACKEND: x11
+          GSETTINGS_BACKEND: memory
+          NO_AT_BRIDGE: '1'
+        run: |
+          make -j2
+          xvfb-run -a make check

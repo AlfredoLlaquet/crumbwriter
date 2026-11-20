@@ -1,0 +1,6 @@
+*.o
+/crumbwriter
+/tests/test-crumb
+/tests/test-storage
+/tests/test-editor
+/tests/test-typography
