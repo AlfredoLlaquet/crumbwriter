@@ -1,6 +1,8 @@
 Crumb Writer
 ============
 
+Version 1.1. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+
 Purpose and platform
 --------------------
 Crumb Writer edits a local plain-text manuscript in a single modeless writing
@@ -24,7 +26,11 @@ filename reopens the last manuscript by default. A first launch opens a blank
 document. Opening, navigating or editing a named document makes it the last
 one worked on. Closing a background window preserves that choice. An explicit
 filename takes precedence. Pass several filenames to open several windows.
-Opening the same file again presents its existing window. If the remembered
+Every open places the caret at the end of the last physical line of content,
+including a partial crumb. If the file has a final newline, the caret sits just
+before it. Opening the same file again takes its existing window to that point.
+Starting the program without a filename while it is already running raises the
+active window and keeps its current editing position. If the remembered
 file has been moved, startup shows its path and the open error, and Ctrl+O can
 select the new location. Settings can disable automatic reopening.
 
@@ -33,6 +39,11 @@ Run make check within a graphical session. Run make check-core
 without a display for the parser and file tests. make install installs the
 executable, this document and the applications-menu entry under /usr/local.
 The Makefile accepts PREFIX and DESTDIR for user or staged installations.
+
+To update an existing checkout, close all Crumb Writer windows, run
+git pull --ff-only followed by make, and launch ./crumbwriter. Repeat the
+original make install command when using the installed Plasma launcher.
+Running ./crumbwriter --version prints the version of the binary in the checkout.
 
 Representation
 --------------
@@ -51,7 +62,8 @@ convention and the presence or absence of a final newline. A new untitled
 manuscript uses LF.
 
 Field positions and cursor columns count Unicode characters. Byte offsets are
-used for disk I/O. Header and title styling lives exclusively in GtkTextTags.
+used for disk I/O. The italic header, bold title and number warnings are text
+tags. Plain-text clipboard contents and saved bytes contain only the text.
 Soft wrap can stretch one crumb like an accordion hired to transport a giraffe.
 The disk file still contains a single physical line for that crumb.
 
@@ -100,10 +112,34 @@ Multiple genres in one title contribute independently. For example,
 "Fingers (Haiku #157)" contributes to Haiku and "This One Is Very Good, Report
 #9" contributes to Report. These interpretations leave the full title intact.
 
+Bold red digits identify two kinds of numbering error. A header number must
+equal its one-based physical line number. A blank, a partial crumb and a long
+wrapped crumb each occupy one physical line. Within each numbered genre the
+first occurrence should be #1. Each later occurrence should be one greater
+than the number actually written in the preceding occurrence of that genre.
+For example, in Haiku #1, #3, #4 the 3 is flagged and the 4 follows normally.
+Compound titles are checked component by component in reading order. Adding
+or removing lines updates the affected warnings. To renumber the manuscript,
+edit the numbers themselves.
+
 Tab and Shift+Tab move through starts of headers, titles and bodies, including
 empty fields. Ctrl+Up and Ctrl+Down visit neighboring recognizable crumbs.
 Unmodified Up and Down move through visual, wrapped lines. Ordinary text entry,
 selection, cut, copy, paste, undo and redo remain available.
+
+Ctrl+Q selects the entire crumb at the insertion caret, copies it to the system
+clipboard and leaves it selected. The optional first-line work title through
+// and the ending line break are outside that selection. Trailing spaces in
+the crumb are copied. Escape clears the selection at the active end. With Find
+or Replace visible, the same Escape also closes the panel and returns focus
+to the manuscript.
+
+Ctrl+Y deletes the crumb on the caret's line as one undoable edit, even when
+a selection spans other lines. A following crumb moves up to take its place.
+The first-line work title and the final-newline convention survive deletion.
+After deleting a sole crumb, Ctrl+N starts the document's first crumb again.
+Ctrl+Z restores the deletion and Ctrl+Shift+Z redoes it. Copy and delete leave
+the numbers of neighboring crumbs intact.
 
 The sidebar tracks distinct crumb numbers in most-recently-visited order.
 Repeated visits move an item to the top. A changed title updates its existing
@@ -111,9 +147,7 @@ entry. Clicking an entry or activating it with Enter jumps to that header. F6
 switches between editor and history. F9 toggles the sidebar. A session count
 is the number of distinct headers currently present whose numbers were absent
 when this document opened. Typing, pasting, appending, deleting and undoing all
-update it. Saving leaves this baseline in place. At first open the cursor is at
-the end of the last crumb. Later opens restore the last recorded line and
-character column, clamped to the current document.
+update it. Saving leaves this baseline in place.
 
 Punctuation
 -----------
@@ -125,32 +159,86 @@ word-internal apostrophes, common leading elisions and possessives use context.
 Quote direction is a heuristic. It can be overridden by typing the desired
 Unicode character directly or by disabling smart punctuation in Settings.
 
-The conversion changes the buffer and is saved as literal Unicode. The input
-and its automatic correction share an undo action. Moving the caret, leaving
+The conversion changes the buffer and is saved as literal Unicode. Committed
+GTK input counts as typing, including a composed character or several
+characters delivered together by an input method. The input and its automatic
+correction share an undo action. Moving the caret, leaving
 the editor, explicitly saving or closing resolves terminal pending punctuation.
 Until then live saving records the current visible text. Bulk paste, search
 replacements and text already on disk retain their literal punctuation.
 
 Find and replace
 ----------------
-Ctrl+F opens the inline search panel and Ctrl+H adds replacement controls.
-Text search starts case-insensitive with wrapping enabled. Optional settings
-select case, whole words, regular expressions and whether to wrap. Enter or F3
-searches forward. Shift+Enter in the query and Shift+F3 search backward.
-Escape returns to writing. F3 continues a text search with the panel closed.
-Ctrl+G checks numeric headers, including alternate labels and the first-line
-work-title prefix. Numbers mentioned in a body do not qualify.
+Ctrl+F opens a forward search from the manuscript caret. Ctrl+G opens a
+backward search from the same position. Ctrl+H opens forward Find and Replace.
+In plain-text mode, typing selects the nearest matching passage in the chosen
+direction immediately. Each extension of the query starts from the original
+caret, so its own preview cannot cause the next letter to skip a match.
+For example, with the caret between two occurrences of "Dulcinea", Ctrl+G
+followed by typing the name selects the earlier one. From the same caret,
+Ctrl+F selects the later one. Keyboard focus stays in the query.
+An empty query or a refinement with no match returns the caret to its search
+origin after a preview. Escape keeps the caret at a successful match. Moving
+the caret by hand establishes a new origin. An arrow beside Find shows the
+active direction.
+Text and regex searches start case-insensitive with
+wrapping enabled. A search highlights matches and reports their count.
+Search controls apply while the panel is visible, including when the manuscript
+has focus. The mode menu shows all three choices together.
 
-Matches are highlighted. The panel shows a count, an error for an invalid
-expression, and the match position when inexpensive to compute. GtkSourceView
-uses GLib regular expressions. Search for a nonempty span to select a match.
-For example, search for ^Crumb ([0-9]+): and replace with Crumb \1: to reuse
-the first capture. Replace All displays the count and asks for a second
-activation in the same panel. Ctrl+Z undoes the entire replacement.
+    Ctrl+P             Plain text
+    Ctrl+R             Regular expression
+    Ctrl+N             Crumb number
+    Ctrl+F / Ctrl+G    Start forward / backward at the current manuscript caret
+    Ctrl+M             Toggle match case
+    Ctrl+W             Toggle whole words
+    Alt+W              Toggle wrapping past the end or beginning
+    Alt+Down           Open recent searches and focus their list
+    Enter in query     Continue in the chosen direction or jump to the number
+    Shift+Enter        Continue in the opposite direction
+    F3 / Shift+F3      Next / previous match
+    Escape             Close search, clear selection, return to the manuscript
 
-Executed queries and their modes, case, word and wrap settings are deduplicated
-and saved in recency order. The Recent control restores them across windows
-and restarts. Executing a search adds its completed query to history.
+With search closed, Ctrl+N appends a crumb and Ctrl+W closes the document.
+F3 and Shift+F3 can continue a text search with the panel closed.
+For a numeric jump, open Find and press Ctrl+N, or choose Go to Crumb in the
+document menu. It checks numeric headers, including alternate labels and the
+first-line work-title prefix. If two headers share a number, the nearest one
+in the chosen direction is found first. Alt+W controls wrapping for numeric
+lookups as well. Numbers mentioned in a body do not qualify.
+
+Regular expressions
+-------------------
+GtkSourceView uses GLib's Perl-compatible regular expressions. Start with a
+literal fragment and use metacharacters for its variable parts. A dot matches
+one character other than a line break, * allows zero or more repetitions, and
++ requires one or more. Crumb Writer uses ungreedy repetition by default, so
+the engine takes the shortest match that satisfies the rest of the pattern.
+These are search expressions as typed directly into the Find entry.
+
+    Haiku #[0-9]+:       A numbered Haiku title through its colon.
+    “.*”                 One curly-quoted passage on a line.
+    (?-U)“.*”            From the first opening to the last closing quote.
+    ‹\{.*\}›             One inline-footnote, including its delimiters.
+    ^Crumb ([0-9]+):     A line starting with Crumb and its number in group 1.
+
+The final example starts at a physical line boundary. An optional work-title
+prefix on line 1 precedes that line's header. Crumb-number mode recognizes
+both forms.
+Use \1 in a regex replacement to insert the first capture. Replace All shows
+the count and requires a second activation. Ctrl+Z undoes the complete change.
+Invalid expressions show an error in the panel. A match needs a nonempty span
+for the text selection to be visible.
+
+    Syntax reference    https://www.pcre.org/current/doc/html/pcre2syntax.html
+    Pattern guide       https://www.pcre.org/current/doc/html/pcre2pattern.html
+    GLib Regex          https://docs.gtk.org/glib/struct.Regex.html
+
+Completed queries and their modes, case, word and wrap settings are saved
+in recency order. Searching again with the same settings moves that entry to
+the top. Closing the panel remembers the completed query. Intermediate
+keystrokes from a plain-text preview stay out of history. Alt+Down opens the
+list. Use the arrow keys and Enter to recall a search across windows or restarts.
 
 Saving and recovery
 -------------------
@@ -195,42 +283,61 @@ Adwaita variants. The default writing font is proportional Serif at 14 pt.
 The font family and point size affect the text view without modifying any
 manuscript byte. Toolbar and sidebar keep their desktop UI font.
 
-Settings, search history, the last document's local file URI, and the most
-recent cursor coordinates are saved in
+The manuscript is a resizable normal application window. It first appears
+with its document loaded and delegates position and dimensions to KWin.
+The split pane can shrink and the sidebar can scroll in a shallow tile. Find
+and Replace open inside the manuscript and Settings is a modeless transient
+dialog. F9 gives the manuscript the entire width of a narrow tile.
+
+Document scrolling is immediate. A wheel step, page movement, scrollbar
+action, search result or history jump takes effect without an animated glide.
+Long documents wrap progressively. If newly measured paragraphs move the
+target, the view keeps the caret visible. A subsequent manual scroll takes
+priority. Other desktop applications keep their scrolling preferences.
+The text view has its own scroll adjustments. The native scrollbars mirror
+their bounds and values, which keeps GTK's page animation out of the writing
+pane. Touch panning follows the finger and stops on release.
+
+Settings, search history and the last document's local file URI are saved in
 $XDG_CONFIG_HOME/crumbwriter/settings.ini or ~/.config/crumbwriter/settings.ini.
-Positions are keyed by a digest of the resolved file path. Each open document
-has its own buffer, undo stack, visit history, and starting set of crumb numbers.
+Older saved cursor coordinates are ignored. Each open document has its own
+buffer, undo stack, visit history, and starting set of crumb numbers.
 
 Source map and change boundaries
 --------------------------------
+AGENTS.md          Standing instruction to update this manual with every change.
 src/main.c         GTK application lifetime, command-line files, startup
                    recovery, shared style and preference notifications.
 src/app.h          Shared application state. One GKeyFile belongs to CwApp.
 src/window.c       One CwWindow owns one view and its controller objects.
                    The command table maps menu actions and accelerators.
                    Contains the save timer, modeless notices and file chooser.
-src/preferences.c  Configuration, font CSS, theme overrides, cursor records,
+src/preferences.c  Configuration, font CSS, theme overrides, last manuscript,
                    and modeless settings. Applies changes to all open windows.
 src/crumb.c        Field boundaries, header recognition and official counting.
                    Consumes one UTF-8 line and its first-line flag.
-src/editor.c       Per-line parse cache, header-number lookup, text tags,
-                   sidebar, navigation, append and genre-number completion.
-                   The ordered line sequence and numeric index are rebuilt
-                   only where edits touch them.
-src/search.c       Search panel, GtkSourceSearchContext, option recall,
-                   asynchronous search requests, numeric jumps and replace.
+src/editor.c       Per-line parse cache, number and genre indexes, text tags,
+                   sidebar, navigation, copy, delete, append and completion.
+                   A changed genre occurrence can affect its next neighbor.
+                   A changed line count shifts subsequent header comparisons.
+src/search.c       Search panel, cursor-anchored directional previews,
+                   GtkSourceSearchContext, history, numeric jumps and replace.
 src/genres.c       Genre-title interpretation and the alphabetized sidebar list.
-src/reveal.c       Keeps long-distance cursor jumps visible while GTK measures
-                   thousands of proportional, word-wrapped paragraphs.
-src/typography.c   Per-view keyboard context and pending punctuation only.
-                   Uses GTK's input method and buffer-level undo grouping.
+src/reveal.c       Immediate document scrolling and caret visibility while
+                   GTK measures proportional, word-wrapped paragraphs.
+src/typography.c   Observes text committed by the manuscript input method,
+                   resolves pending punctuation inside the same undo action.
 src/storage.c      Validates and decodes disk bytes, retains newline styles,
                    takes backups, detects conflicts and commits atomic saves.
 src/draft.c        Private crash-recovery files, discovery and cleanup.
 data/              Desktop launcher installed by make install.
 tests/             Executable specifications for parsing, storage, the search
                    and editor widgets, and real GTK keyboard input.
-.github/workflows/ FreeBSD 15.1 VM and Linux build and test definitions.
+                   check-krohnkite.py checks window geometry and record
+                   shortcuts under an isolated KWin session.
+                   check-wayland.py types into the native Wayland application
+                   under Weston and compares the saved UTF-8 bytes.
+.github/workflows/ Native FreeBSD 15.1, Linux and KWin/Krohnkite test jobs.
 
 Each module's public contract is in its matching header. Parser output owns
 its label and title and must be cleared with cw_crumb_clear. CwFile owns the
@@ -238,11 +345,18 @@ resolved path, previous bytes, identity and newline metadata. CwEditor owns the
 line index for exactly one buffer. Loading a second document resets that index,
 history, and undo state together. A save never resets those three structures.
 CwSearch owns the search context and cancels pending requests. CwTypography
-observes interactive key events and tracks the characters they insert.
+observes GtkIMContext::commit and GtkTextView::insert-at-cursor. GTK 3 keeps
+the view's multicontext private. The signal hook recognizes the context whose
+commit handler belongs to this view. This permits a desktop input method to
+deliver text after the original key event or in a single multi-character commit.
 Keep window-lifetime callbacks disconnected before freeing their owner.
 
 Maintenance checks
 ------------------
+Update CrumbWriter.txt in the same change as every Crumb Writer modification.
+Keep behavior, keyboard commands, build instructions, design decisions,
+module responsibilities and verification steps current.
+
 Run make and make check after changing a module. make accepts both BSD and GNU
 make. The FreeBSD job runs native cc and base make inside the VM. The Linux job
 also runs graphical tests using a virtual X display. Both jobs compile the same
@@ -255,10 +369,16 @@ an empty title and non-ASCII field widths. For a navigation or formatting
 change, check the cursor position, history and tags after an edit and its undo.
 On a freshly opened long manuscript, also check that the destination stays
 inside the visible viewport while GTK measures the wrapped lines above it.
-Repeat after reopening at a saved position, jumping backward, searching and
+Repeat after reopening at the end, jumping backward, searching and
 activating history. A subsequent manual scroll must leave the view where the
 writer placed it.
+For a search change, put the caret between repeated passages. Extend and
+shorten a forward and a backward query, test both wrap settings, and confirm
+that an older asynchronous result cannot move the caret after a newer query.
 For a storage change, compare input and backup bytes, test an untouched BOM
 file, check CRLF and missing terminal LF, and simulate an external writer.
-For typography, deliver real key events and check both the instant the glyph
-changes and what Undo restores. Use a disposable manuscript for live-save tests.
+For typography, exercise real key events and delayed input-method commits.
+Check the triggering character, what Undo restores, and the bytes saved.
+Use a disposable manuscript for live-save tests. For window changes, run the
+Krohnkite check with two neighboring applications and a short three-window
+tile. Check Find, Replace, Settings and repeated document activation.

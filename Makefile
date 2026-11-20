@@ -38,14 +38,22 @@ tests/test-typography: tests/test-typography.c src/typography.o
 tests/test-genres: tests/test-genres.c src/genres.o
 	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-genres.c src/genres.o $(GTK_LIBS) $(LDLIBS)
 
+tests/test-numbering: tests/test-numbering.c $(EDITOR_OBJECTS)
+	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-numbering.c $(EDITOR_OBJECTS) $(GTK_LIBS) $(LDLIBS)
+
+tests/test-search-controls: tests/test-search-controls.c src/search.o src/crumb.o src/reveal.o
+	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-search-controls.c src/search.o src/crumb.o src/reveal.o $(GTK_LIBS) $(LDLIBS)
+
 check-core: tests/test-crumb tests/test-storage
 	./tests/test-crumb
 	./tests/test-storage
 
-check-gui: tests/test-editor tests/test-typography tests/test-genres
+check-gui: tests/test-editor tests/test-typography tests/test-genres tests/test-numbering tests/test-search-controls
 	./tests/test-editor
 	./tests/test-typography
 	./tests/test-genres
+	./tests/test-numbering
+	./tests/test-search-controls
 
 check: check-core check-gui
 
@@ -56,6 +64,6 @@ install: crumbwriter
 	install -m 644 CrumbWriter.txt "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 
 clean:
-	rm -f $(OBJECTS) crumbwriter tests/test-crumb tests/test-storage tests/test-editor tests/test-typography tests/test-genres
+	rm -f $(OBJECTS) crumbwriter tests/test-crumb tests/test-storage tests/test-editor tests/test-typography tests/test-genres tests/test-numbering tests/test-search-controls
 
 .PHONY: all check check-core check-gui install clean

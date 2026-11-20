@@ -10,8 +10,6 @@ gint cw_preference_integer(CwApp *app, const gchar *name, gint fallback,
 void cw_preferences_theme(CwApp *app);
 void cw_preferences_font(CwApp *app, GtkCssProvider *provider);
 void cw_preferences_show(CwApp *app, GtkWindow *parent);
-void cw_preferences_store_cursor(CwApp *app, const gchar *path, GtkTextBuffer *buffer);
-void cw_preferences_read_cursor(CwApp *app, const gchar *path, gint *line, gint *column);
 void cw_preferences_remember_document(CwApp *app, const gchar *path);
 
 #endif

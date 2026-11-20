@@ -1,5 +1,6 @@
 #include "genres.h"
 
+#include <errno.h>
 #include <string.h>
 
 static const gchar *
@@ -74,7 +75,7 @@ cw_genre_key_at(const gchar *title, const gchar *typed_hash)
 
 void
 cw_genre_foreach(const gchar *title,
-                 void (*found)(const gchar *key, const gchar *name, guint64 ordinal, gpointer data),
+                 void (*found)(const CwGenreComponent *part, gpointer data),
                  gpointer data)
 {
     if (!title || !found || !strchr(title, '#') || !g_utf8_validate(title, -1, NULL))
@@ -93,7 +94,15 @@ cw_genre_foreach(const gchar *title,
             name_bounds(start, digits - 1, &first_name, &last_name)) {
             g_autofree gchar *key = normalized_key(first_name, last_name);
             g_autofree gchar *name = g_strndup(first_name, last_name - first_name);
-            found(key, name, g_ascii_strtoull(digits, NULL, 10), data);
+            errno = 0;
+            guint64 ordinal = g_ascii_strtoull(digits, NULL, 10);
+            gboolean overflow = errno == ERANGE;
+            CwGenreComponent part = {
+                key, name, ordinal, (gint)g_utf8_pointer_to_offset(title, digits),
+                0, overflow
+            };
+            part.digits_end = part.digits_start + (gint)(last - digits);
+            found(&part, data);
         }
         if (!*end)
             break;
@@ -101,12 +110,14 @@ cw_genre_foreach(const gchar *title,
     }
 }
 
-enum { GENRE_NAME, GENRE_NUMBER, GENRE_ORDINAL, GENRE_KEY, GENRE_TOOLTIP, GENRE_AVAILABLE, GENRE_COLUMNS };
+enum { GENRE_NAME, GENRE_NUMBER, GENRE_ORDINAL, GENRE_KEY, GENRE_TOOLTIP, GENRE_AVAILABLE,
+       GENRE_WARNING, GENRE_COLUMNS };
 
 typedef struct {
     GtkTreeIter iter;       /* GtkListStore iterators stay valid across sorting. */
     gchar *name;
     guint64 ordinal;
+    gboolean warning;
 } GenreRow;
 
 struct CwGenres {
@@ -153,7 +164,7 @@ cw_genres_new(void (*activate)(const gchar *name, guint64 ordinal, gpointer data
     genres->data = data;
     genres->rows = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, free_row);
     genres->store = gtk_list_store_new(GENRE_COLUMNS, G_TYPE_STRING, G_TYPE_STRING, G_TYPE_UINT64,
-                                        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_BOOLEAN);
+                                        G_TYPE_STRING, G_TYPE_STRING, G_TYPE_BOOLEAN, G_TYPE_BOOLEAN);
     gtk_tree_sortable_set_sort_column_id(GTK_TREE_SORTABLE(genres->store), GENRE_KEY, GTK_SORT_ASCENDING);
     GtkWidget *tree = gtk_tree_view_new_with_model(GTK_TREE_MODEL(genres->store));
     genres->tree = GTK_TREE_VIEW(g_object_ref_sink(tree));
@@ -174,9 +185,11 @@ cw_genres_new(void (*activate)(const gchar *name, guint64 ordinal, gpointer data
     gtk_tree_view_append_column(genres->tree, names);
 
     GtkCellRenderer *number = gtk_cell_renderer_text_new();
-    g_object_set(number, "xalign", 1.0f, "ellipsize", PANGO_ELLIPSIZE_START, NULL);
+    g_object_set(number, "xalign", 1.0f, "ellipsize", PANGO_ELLIPSIZE_START,
+                 "foreground", CW_NUMBER_WARNING_COLOR, "weight", PANGO_WEIGHT_BOLD, NULL);
     GtkTreeViewColumn *numbers = gtk_tree_view_column_new_with_attributes(
-        "Last #", number, "text", GENRE_NUMBER, "sensitive", GENRE_AVAILABLE, NULL);
+        "Last #", number, "text", GENRE_NUMBER, "sensitive", GENRE_AVAILABLE,
+        "foreground-set", GENRE_WARNING, "weight-set", GENRE_WARNING, NULL);
     gtk_tree_view_column_set_alignment(numbers, 1.0f);
     gtk_tree_view_column_set_max_width(numbers, 124);
     gtk_tree_view_append_column(genres->tree, numbers);
@@ -241,6 +254,16 @@ cw_genres_update(CwGenres *genres, const gchar *key, const gchar *name, guint64 
     g_free(row->name);
     row->name = g_strdup(name);
     row->ordinal = ordinal;
+}
+
+void
+cw_genres_set_warning(CwGenres *genres, const gchar *key, gboolean warning)
+{
+    GenreRow *row = g_hash_table_lookup(genres->rows, key);
+    if (row && row->warning != warning) {
+        row->warning = warning;
+        gtk_list_store_set(genres->store, &row->iter, GENRE_WARNING, warning, -1);
+    }
 }
 
 void

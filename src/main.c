@@ -89,7 +89,7 @@ local_options(GApplication *application, GVariantDict *options, gpointer data)
     (void)application;
     (void)data;
     if (g_variant_dict_contains(options, "version")) {
-        g_print("Crumb Writer 1.0\n");
+        g_print("Crumb Writer 1.1\n");
         return 0;
     }
     return -1;

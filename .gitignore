@@ -5,3 +5,5 @@
 /tests/test-editor
 /tests/test-typography
 /tests/test-genres
+/tests/test-numbering
+/tests/test-search-controls

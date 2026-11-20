@@ -49,7 +49,7 @@ jobs:
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtksourceview-4-dev xvfb xauth librsvg2-common shared-mime-info
+          sudo apt-get install -y libgtksourceview-4-dev xvfb xauth librsvg2-common shared-mime-info weston xdotool dbus-daemon
       - name: Build and test
         env:
           GDK_BACKEND: x11
@@ -58,3 +58,39 @@ jobs:
         run: |
           make -j2
           xvfb-run -a make check
+      - name: Type into the native Wayland editor
+        run: xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- python3 tests/check-wayland.py ./crumbwriter
+
+  plasma:
+    name: Plasma 6 with Krohnkite
+    runs-on: ubuntu-24.04
+    container: debian:trixie-slim
+    timeout-minutes: 20
+    steps:
+      - name: Install KWin, build tools and virtual display
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates build-essential pkgconf npm libgtksourceview-4-dev librsvg2-common \
+            kwin-x11 plasma-workspace dbus-x11 xvfb xauth x11-utils xterm xdotool wmctrl xclip \
+            shared-mime-info xfonts-base fonts-dejavu-core
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build Krohnkite 0.9.11.0
+        run: |
+          revision=e345c9a4b456745cd1c4100b5e34d46ab063de3d
+          git init --quiet /tmp/krohnkite
+          cd /tmp/krohnkite
+          git fetch --quiet --depth=1 https://codeberg.org/anametologin/Krohnkite.git "$revision" || \
+            git fetch --quiet --depth=1 https://github.com/XelorR/Krohnkite.git "$revision"
+          git checkout --quiet --detach "$revision"
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run tsc
+          make PROJECT_VER=0.9.11.0 PROJECT_REV=e345c9a pkg
+      - name: Check real tiled windows
+        run: |
+          make -j2
+          python3 tests/check-krohnkite.py ./crumbwriter /tmp/krohnkite/pkg

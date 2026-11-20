@@ -1,4 +1,5 @@
 #include "editor.h"
+#include "reveal.h"
 #include "search.h"
 #include <string.h>
 
@@ -38,6 +39,7 @@ setup(Fixture *f, gconstpointer data)
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll),
                                    GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), GTK_WIDGET(f->view));
+    cw_reveal_configure(GTK_TEXT_VIEW(f->view));
     gtk_box_pack_start(GTK_BOX(box), cw_editor_sidebar(f->editor), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(box), scroll, TRUE, TRUE, 0);
     gtk_box_pack_end(f->layout, box, TRUE, TRUE, 0);
@@ -440,6 +442,7 @@ search_cycle_and_number(Fixture *f, gconstpointer data)
     cw_editor_load(f->editor, "Book//Leaf 9: First: Stone.\nLeaf 42: Last: sToNe.\n");
     cw_search_show(f->search, FALSE);
     gtk_entry_set_text(GTK_ENTRY(control(f, "cw-find")), "stone");
+    g_assert_cmpint(selected_line(f), ==, 0);
     cw_search_step(f->search, FALSE);
     gint first = selected_line(f);
     cw_search_step(f->search, FALSE);
@@ -504,7 +507,8 @@ regex_replace_and_undo(Fixture *f, gconstpointer data)
     const gchar *original = "Crumb 1: : word 3.\nCrumb 2: : Word 10.\n";
     cw_editor_load(f->editor, original);
     cw_search_show(f->search, TRUE);
-    gtk_combo_box_set_active(GTK_COMBO_BOX(control(f, "cw-search-mode")), 1);
+    GdkEventKey regex = {.keyval = GDK_KEY_r, .state = GDK_CONTROL_MASK};
+    g_assert_true(cw_search_handle_key(f->search, &regex));
     gtk_entry_set_text(GTK_ENTRY(control(f, "cw-find")), "word ([[:digit:]]+)");
     gtk_entry_set_text(GTK_ENTRY(control(f, "cw-replacement")), "entry \\1");
     GtkWidget *replace_all = control(f, "cw-replace-all");
@@ -522,6 +526,106 @@ regex_replace_and_undo(Fixture *f, gconstpointer data)
     assert_text(f, original);
 }
 
+static GdkEvent *
+pointer_event(Fixture *f, GdkEventType type)
+{
+    GdkWindow *window = gtk_text_view_get_window(GTK_TEXT_VIEW(f->view), GTK_TEXT_WINDOW_TEXT);
+    GdkSeat *seat = gdk_display_get_default_seat(gdk_window_get_display(window));
+    GdkEvent *event = gdk_event_new(type);
+    event->any.window = g_object_ref(window);
+    event->any.send_event = TRUE;
+    gdk_event_set_device(event, gdk_seat_get_pointer(seat));
+    gdk_event_set_source_device(event, gdk_seat_get_pointer(seat));
+    return event;
+}
+
+static void
+touchpad(Fixture *f, guint32 time, gdouble delta, gboolean stop)
+{
+    GdkEvent *event = pointer_event(f, GDK_SCROLL);
+    event->scroll.time = time;
+    event->scroll.direction = GDK_SCROLL_SMOOTH;
+    event->scroll.delta_y = delta;
+    event->scroll.is_stop = stop;
+    gtk_main_do_event(event);
+    gdk_event_free(event);
+}
+
+static void
+touch(Fixture *f, GdkEventType type, guint32 time, gdouble y)
+{
+    GdkEvent *event = pointer_event(f, type);
+    event->touch.time = time;
+    event->touch.x = 60;
+    event->touch.y = y;
+    event->touch.sequence = (GdkEventSequence *)GINT_TO_POINTER(1);
+    event->touch.emulating_pointer = TRUE;
+    event->touch.state = type == GDK_TOUCH_BEGIN ? 0 : GDK_BUTTON1_MASK;
+    gtk_main_do_event(event);
+    gdk_event_free(event);
+}
+
+static void
+instant_document_scroll(void)
+{
+    GtkSettings *settings = gtk_settings_get_default();
+    gboolean original_animations;
+    g_object_get(settings, "gtk-enable-animations", &original_animations, NULL);
+    g_object_set(settings, "gtk-enable-animations", TRUE, NULL);
+    Fixture f = {0};
+    setup(&f, NULL);
+    GString *text = g_string_new(NULL);
+    for (gint i = 1; i <= 400; i++)
+        g_string_append_printf(text, "Crumb %d: A title: A line of text.\n", i);
+    cw_editor_load_at(f.editor, text->str, 0, 0);
+    g_string_free(text, TRUE);
+    settle();
+
+    GtkAdjustment *doc = gtk_scrollable_get_vadjustment(GTK_SCROLLABLE(f.view));
+    GtkWidget *scroll = gtk_widget_get_ancestor(GTK_WIDGET(f.view), GTK_TYPE_SCROLLED_WINDOW);
+    GtkWidget *bar = gtk_scrolled_window_get_vscrollbar(GTK_SCROLLED_WINDOW(scroll));
+    gdouble first_page = gtk_adjustment_get_value(doc) + gtk_adjustment_get_page_increment(doc);
+    g_signal_emit_by_name(f.view, "move-cursor", GTK_MOVEMENT_PAGES, 1, FALSE);
+    g_assert_cmpfloat_with_epsilon(gtk_adjustment_get_value(doc), first_page, 0.01);
+    g_assert_cmpfloat_with_epsilon(gtk_range_get_value(GTK_RANGE(bar)), first_page, 0.01);
+
+    gboolean handled;
+    g_signal_emit_by_name(bar, "change-value", GTK_SCROLL_JUMP, 1800.0, &handled);
+    g_assert_true(handled);
+    g_assert_cmpfloat(gtk_adjustment_get_value(doc), ==, 1800.0);
+    touchpad(&f, 100, .75, FALSE);
+    touchpad(&f, 116, 1.25, FALSE);
+    gdouble panned = 1800.0 + 2 * gtk_adjustment_get_step_increment(doc);
+    g_assert_cmpfloat_with_epsilon(gtk_adjustment_get_value(doc), panned, 0.01);
+    touchpad(&f, 123, 0, TRUE);
+
+    GtkTextIter before = cursor(&f);
+    touch(&f, GDK_TOUCH_BEGIN, 300, 220);
+    touch(&f, GDK_TOUCH_UPDATE, 311, 190);
+    touch(&f, GDK_TOUCH_UPDATE, 321, 155);
+    touch(&f, GDK_TOUCH_END, 329, 155);
+    g_assert_cmpfloat_with_epsilon(gtk_adjustment_get_value(doc), panned + 65, 0.01);
+    GtkTextIter after = cursor(&f);
+    g_assert_true(gtk_text_iter_equal(&before, &after));
+
+    /* One GTK scroll animation normally lasts 200 ms. */
+    gint64 deadline = g_get_monotonic_time() + 300 * G_TIME_SPAN_MILLISECOND;
+    while (g_get_monotonic_time() < deadline) {
+        g_main_context_iteration(NULL, FALSE);
+        g_usleep(1000);
+    }
+    g_assert_cmpfloat_with_epsilon(gtk_adjustment_get_value(doc), panned + 65, 0.01);
+    touch(&f, GDK_TOUCH_BEGIN, 930, 120);
+    touch(&f, GDK_TOUCH_END, 940, 120);
+    after = cursor(&f);
+    g_assert_false(gtk_text_iter_equal(&before, &after));
+    gboolean still_animated;
+    g_object_get(settings, "gtk-enable-animations", &still_animated, NULL);
+    g_assert_true(still_animated);
+    teardown(&f, NULL);
+    g_object_set(settings, "gtk-enable-animations", original_animations, NULL);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -536,6 +640,7 @@ main(int argc, char **argv)
     g_test_add("/editor/navigation/wrapped-lines", Fixture, NULL, setup, visual_line_navigation, teardown);
     g_test_add("/editor/sidebar/recency-and-edits", Fixture, NULL, setup, sidebar_and_history, teardown);
     g_test_add("/editor/navigation/large-document-jumps", Fixture, NULL, setup_search, large_document_jumps, teardown);
+    g_test_add_func("/editor/navigation/instant-document-scroll", instant_document_scroll);
     g_test_add("/search/cycle-and-number", Fixture, NULL, setup_search, search_cycle_and_number, teardown);
     g_test_add("/search/regex-replace-and-undo", Fixture, NULL, setup_search, regex_replace_and_undo, teardown);
     return g_test_run();

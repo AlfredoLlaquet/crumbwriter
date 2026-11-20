@@ -10,3 +10,4 @@ Terminal=false
 Categories=Utility;TextEditor;GTK;
 MimeType=text/plain;
 StartupNotify=true
+StartupWMClass=Crumbwriter

@@ -93,32 +93,6 @@ cw_preferences_font(CwApp *app, GtkCssProvider *provider)
     g_string_free(css, TRUE);
 }
 
-static gchar *
-cursor_key(const gchar *path)
-{
-    return g_compute_checksum_for_string(G_CHECKSUM_SHA256, path, -1);
-}
-
-void
-cw_preferences_store_cursor(CwApp *app, const gchar *path, GtkTextBuffer *buffer)
-{
-    GtkTextIter cursor;
-    gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
-    gint position[] = {gtk_text_iter_get_line(&cursor), gtk_text_iter_get_line_offset(&cursor)};
-    g_autofree gchar *key = cursor_key(path);
-    g_key_file_set_integer_list(app->preferences, "positions", key, position, G_N_ELEMENTS(position));
-}
-
-void
-cw_preferences_read_cursor(CwApp *app, const gchar *path, gint *line, gint *column)
-{
-    g_autofree gchar *key = cursor_key(path);
-    gsize n = 0;
-    g_autofree gint *position = g_key_file_get_integer_list(app->preferences, "positions", key, &n, NULL);
-    *line = n == 2 ? position[0] : -1;
-    *column = n == 2 ? position[1] : 0;
-}
-
 void
 cw_preferences_remember_document(CwApp *app, const gchar *path)
 {
@@ -233,7 +207,9 @@ cw_preferences_show(CwApp *app, GtkWindow *parent)
     app->settings_window = window;
     g_object_add_weak_pointer(G_OBJECT(window), (gpointer *)&app->settings_window);
     gtk_window_set_title(GTK_WINDOW(window), "Crumb Writer Settings");
+    gtk_window_set_role(GTK_WINDOW(window), "settings");
     gtk_window_set_transient_for(GTK_WINDOW(window), parent);
+    gtk_window_set_type_hint(GTK_WINDOW(window), GDK_WINDOW_TYPE_HINT_DIALOG);
     gtk_window_set_destroy_with_parent(GTK_WINDOW(window), TRUE);
     gtk_window_set_resizable(GTK_WINDOW(window), FALSE);
     GtkGrid *grid = GTK_GRID(gtk_grid_new());
@@ -285,5 +261,4 @@ cw_preferences_show(CwApp *app, GtkWindow *parent)
     g_signal_connect_swapped(done, "clicked", G_CALLBACK(gtk_widget_destroy), window);
     g_signal_connect(window, "key-press-event", G_CALLBACK(settings_key), NULL);
     gtk_widget_show_all(window);
-    gtk_window_present(GTK_WINDOW(window));
 }

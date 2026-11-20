@@ -77,6 +77,10 @@ cw_crumb_parse(const gchar *line, gboolean first_line, CwCrumb *out)
     if (!digits)
         return FALSE;
 
+    out->record_start = (gint)g_utf8_pointer_to_offset(line, record);
+    out->header_start = out->record_start + (gint)g_utf8_pointer_to_offset(record, header);
+    out->digits_start = out->header_start + (gint)g_utf8_pointer_to_offset(header, digits);
+    out->header_end = out->digits_start + (gint)(header_end - digits);
     errno = 0;
     guint64 number = g_ascii_strtoull(digits, NULL, 10);
     if (errno == ERANGE || number == 0)
@@ -96,8 +100,6 @@ cw_crumb_parse(const gchar *line, gboolean first_line, CwCrumb *out)
     out->title = g_strndup(title, title_end - title);
 
     /* Walk successive slices instead of decoding the same prefix five times. */
-    out->header_start = (gint)g_utf8_pointer_to_offset(line, header);
-    out->header_end = out->header_start + (gint)g_utf8_pointer_to_offset(header, header_end);
     out->title_start = out->header_end + (gint)g_utf8_pointer_to_offset(header_end, title);
     out->title_end = out->title_start + (gint)g_utf8_pointer_to_offset(title, title_end);
     out->body_start = out->title_end + (gint)g_utf8_pointer_to_offset(title_end, body);

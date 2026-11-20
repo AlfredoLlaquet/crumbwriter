@@ -5,7 +5,7 @@
 
 typedef struct CwTypography CwTypography;
 
-/* Watches committed characters during keyboard events delivered to this view.
+/* Watches text committed by this view's input method or insert-at-cursor action.
  * Programmatic changes to its buffer, including undo and paste, are literal. */
 CwTypography *cw_typography_new(GtkSourceView *view);
 void cw_typography_enable(CwTypography *type, gboolean enabled);

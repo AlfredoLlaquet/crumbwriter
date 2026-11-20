@@ -13,14 +13,14 @@ typedef struct {
 } Sequence;
 
 static void
-check_component(const gchar *key, const gchar *name, guint64 ordinal, gpointer data)
+check_component(const CwGenreComponent *part, gpointer data)
 {
     Sequence *seq = data;
     g_assert_cmpuint(seq->seen, <, seq->count);
     const Expected *item = &seq->items[seq->seen++];
-    g_assert_cmpstr(key, ==, item->key);
-    g_assert_cmpstr(name, ==, item->name);
-    g_assert_true(ordinal == item->ordinal);
+    g_assert_cmpstr(part->key, ==, item->key);
+    g_assert_cmpstr(part->name, ==, item->name);
+    g_assert_true(part->ordinal == item->ordinal);
 }
 
 static void

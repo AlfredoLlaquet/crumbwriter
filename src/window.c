@@ -97,13 +97,6 @@ cancel_timer(CwWindow *w)
     w->save_timer = 0;
 }
 
-static void
-remember_cursor(CwWindow *w)
-{
-    if (w->file)
-        cw_preferences_store_cursor(w->app, cw_file_path(w->file), w->buffer);
-}
-
 static gboolean
 save_draft(CwWindow *w, const gchar *text)
 {
@@ -135,7 +128,6 @@ save_manuscript(CwWindow *w)
     w->save_failed = FALSE;
     cw_draft_remove(&w->draft);
     gtk_text_buffer_set_modified(w->buffer, FALSE);
-    remember_cursor(w);
     hide_notice(w);
     status(w, "Saved");
     return TRUE;
@@ -306,7 +298,6 @@ save_as(CwWindow *w, const gchar *path)
     cw_preferences_remember_document(w->app, cw_file_path(w->file));
     cw_draft_remove(&w->draft);
     gtk_text_buffer_set_modified(w->buffer, FALSE);
-    remember_cursor(w);
     update_title(w);
     file_tooltip(w);
     hide_notice(w);
@@ -365,7 +356,8 @@ static void cmd_open(CwWindow *w) { choose_file(w, FALSE); }
 static void cmd_save_as(CwWindow *w) { choose_file(w, TRUE); }
 static void cmd_window(CwWindow *w) { cw_window_new(w->app); }
 static void cmd_close(CwWindow *w) { gtk_window_close(GTK_WINDOW(w->window)); }
-static void cmd_find(CwWindow *w) { cw_search_show(w->search, FALSE); }
+static void cmd_find(CwWindow *w) { cw_search_find(w->search, FALSE); }
+static void cmd_find_backward(CwWindow *w) { cw_search_find(w->search, TRUE); }
 static void cmd_replace(CwWindow *w) { cw_search_show(w->search, TRUE); }
 static void cmd_next(CwWindow *w) { cw_search_step(w->search, FALSE); }
 static void cmd_previous(CwWindow *w) { cw_search_step(w->search, TRUE); }
@@ -378,7 +370,37 @@ cmd_append(CwWindow *w)
 {
     cw_typography_finish(w->typography);
     cw_editor_append(w->editor);
-    gtk_widget_grab_focus(GTK_WIDGET(w->view));
+}
+
+static void
+cmd_copy_crumb(CwWindow *w)
+{
+    cw_typography_finish(w->typography);
+    cw_editor_copy_crumb(w->editor);
+}
+
+static void
+cmd_delete_crumb(CwWindow *w)
+{
+    cw_typography_finish(w->typography);
+    cw_editor_delete_crumb(w->editor);
+}
+
+static gboolean
+window_key(GtkWidget *window, GdkEventKey *event, CwWindow *w)
+{
+    (void)window;
+    if (cw_search_handle_key(w->search, event))
+        return TRUE;
+    if (event->keyval == GDK_KEY_Escape &&
+        !(event->state & gtk_accelerator_get_default_mod_mask()) &&
+        gtk_text_buffer_get_has_selection(w->buffer)) {
+        GtkTextIter cursor;
+        gtk_text_buffer_get_iter_at_mark(w->buffer, &cursor, gtk_text_buffer_get_insert(w->buffer));
+        gtk_text_buffer_place_cursor(w->buffer, &cursor);
+        return TRUE;
+    }
+    return FALSE;
 }
 
 static void
@@ -432,9 +454,11 @@ static const Command commands[] = {
     {"open", "<Primary>o", cmd_open},             {"save", "<Primary>s", save_command},
     {"save-as", "<Primary><Shift>s", cmd_save_as},{"new-window", "<Primary><Shift>n", cmd_window},
     {"new-crumb", "<Primary>n", cmd_append},      {"close", "<Primary>w", cmd_close},
+    {"copy-crumb", "<Primary>q", cmd_copy_crumb}, {"delete-crumb", "<Primary>y", cmd_delete_crumb},
     {"find", "<Primary>f", cmd_find},             {"replace", "<Primary>h", cmd_replace},
     {"find-next", "F3", cmd_next},                {"find-previous", "<Shift>F3", cmd_previous},
-    {"go-to", "<Primary>g", cmd_number},          {"settings", "<Primary>comma", cmd_settings},
+    {"find-backward", "<Primary>g", cmd_find_backward}, {"go-to", NULL, cmd_number},
+    {"settings", "<Primary>comma", cmd_settings},
     {"history", "F6", cmd_focus},                 {"genres", "F7", cmd_genres},
     {"sidebar", "F9", cmd_sidebar},
     {"menu", "F10", cmd_menu},                    {"undo", "<Primary>z", cmd_undo},
@@ -446,9 +470,7 @@ cw_window_register_shortcuts(GtkApplication *app)
 {
     for (guint i = 0; i < G_N_ELEMENTS(commands); i++) {
         g_autofree gchar *name = g_strconcat("win.", commands[i].name, NULL);
-        const gchar *accels[] = {commands[i].shortcut, NULL, NULL};
-        if (g_str_equal(commands[i].name, "redo"))
-            accels[1] = "<Primary>y";
+        const gchar *accels[] = {commands[i].shortcut, NULL};
         gtk_application_set_accels_for_action(app, name, accels);
     }
 }
@@ -486,7 +508,10 @@ window_menu(void)
     g_autoptr(GMenu) edit = g_menu_new();
     g_menu_append(edit, "Undo", "win.undo");
     g_menu_append(edit, "Redo", "win.redo");
-    g_menu_append(edit, "Find…", "win.find");
+    g_menu_append(edit, "Select and Copy Current Crumb", "win.copy-crumb");
+    g_menu_append(edit, "Delete Current Crumb", "win.delete-crumb");
+    g_menu_append(edit, "Find Forward…", "win.find");
+    g_menu_append(edit, "Find Backward…", "win.find-backward");
     g_menu_append(edit, "Replace…", "win.replace");
     g_menu_append(edit, "Go to Crumb…", "win.go-to");
     g_menu_append_section(menu, NULL, G_MENU_MODEL(edit));
@@ -531,7 +556,7 @@ make_toolbar(CwWindow *w)
     gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(w->menu_button), G_MENU_MODEL(menu));
     gtk_box_pack_end(GTK_BOX(bar), w->menu_button, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(bar), action_button("Find", "edit-find-symbolic",
-                     "win.find", "Find (Ctrl+F)"), FALSE, FALSE, 0);
+                     "win.find", "Find forward (Ctrl+F) or backward (Ctrl+G)"), FALSE, FALSE, 0);
     return bar;
 }
 
@@ -560,7 +585,6 @@ static void
 window_destroyed(GtkWidget *window, CwWindow *w)
 {
     cancel_timer(w);
-    remember_cursor(w);
     cw_app_write_preferences(w->app);
     if (w->chooser)
         gtk_widget_destroy(w->chooser);
@@ -591,12 +615,13 @@ cw_window_apply_preferences(CwWindow *w)
         schedule_save(w);
 }
 
-CwWindow *
-cw_window_new(CwApp *app)
+static CwWindow *
+build_window(CwApp *app)
 {
     CwWindow *w = g_new0(CwWindow, 1);
     w->app = app;
     w->window = gtk_application_window_new(app->gtk);
+    gtk_window_set_role(GTK_WINDOW(w->window), "manuscript");
     gtk_window_set_default_size(GTK_WINDOW(w->window), 1060, 720);
     gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(w->window), FALSE);
     g_object_set_data(G_OBJECT(w->window), "cw-window", w);
@@ -630,16 +655,24 @@ cw_window_new(CwApp *app)
     GtkWidget *scroll = gtk_scrolled_window_new(NULL, NULL);
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), GTK_WIDGET(w->view));
-    w->sidebar = cw_editor_sidebar(w->editor);
-    gtk_paned_pack1(GTK_PANED(panes), scroll, TRUE, FALSE);
-    gtk_paned_pack2(GTK_PANED(panes), w->sidebar, FALSE, FALSE);
+    cw_reveal_configure(GTK_TEXT_VIEW(w->view));
+    /* Keep all sidebar controls reachable in a shallow tile without imposing
+     * their combined minimum height on the manuscript's top-level window. */
+    w->sidebar = gtk_scrolled_window_new(NULL, NULL);
+    gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(w->sidebar), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
+    gtk_scrolled_window_set_propagate_natural_width(GTK_SCROLLED_WINDOW(w->sidebar), TRUE);
+    gtk_container_add(GTK_CONTAINER(w->sidebar), cw_editor_sidebar(w->editor));
+    gtk_paned_pack1(GTK_PANED(panes), scroll, TRUE, TRUE);
+    gtk_paned_pack2(GTK_PANED(panes), w->sidebar, FALSE, TRUE);
     gtk_box_pack_start(GTK_BOX(root), panes, TRUE, TRUE, 0);
     GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     style(footer, "writer-footer");
     w->status = gtk_label_new("Untitled");
     w->save_mode = gtk_label_new(NULL);
+    gtk_label_set_xalign(GTK_LABEL(w->status), 0);
+    gtk_label_set_ellipsize(GTK_LABEL(w->status), PANGO_ELLIPSIZE_END);
     style(w->save_mode, "subtle");
-    gtk_box_pack_start(GTK_BOX(footer), w->status, FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(footer), w->status, TRUE, TRUE, 0);
     gtk_box_pack_end(GTK_BOX(footer), w->save_mode, FALSE, FALSE, 0);
     gtk_box_pack_end(GTK_BOX(root), footer, FALSE, FALSE, 0);
 
@@ -654,13 +687,31 @@ cw_window_new(CwApp *app)
     g_signal_connect_swapped(w->buffer, "notify::can-redo", G_CALLBACK(update_undo_actions), w);
     g_signal_connect_data(w->window, "set-focus", G_CALLBACK(update_undo_actions), w,
                           NULL, G_CONNECT_SWAPPED | G_CONNECT_AFTER);
+    g_signal_connect(w->window, "key-press-event", G_CALLBACK(window_key), w);
     g_signal_connect(w->window, "delete-event", G_CALLBACK(request_close), w);
     g_signal_connect(w->window, "destroy", G_CALLBACK(window_destroyed), w);
-    gtk_widget_show_all(w->window);
+    gtk_widget_show_all(root);
     gtk_widget_hide(w->notice);
     cw_search_hide(w->search);
+    return w;
+}
+
+static void
+show_manuscript(CwWindow *w)
+{
     gtk_widget_grab_focus(GTK_WIDGET(w->view));
-    gtk_window_present(GTK_WINDOW(w->window));
+    if (gtk_widget_get_visible(w->window))
+        gtk_window_present(GTK_WINDOW(w->window));
+    else
+        gtk_widget_show(w->window);
+    cw_reveal_cursor(GTK_TEXT_VIEW(w->view));
+}
+
+CwWindow *
+cw_window_new(CwApp *app)
+{
+    CwWindow *w = build_window(app);
+    show_manuscript(w);
     return w;
 }
 
@@ -672,7 +723,7 @@ empty_or_new_window(CwApp *app)
     if (w && !w->file && !w->draft && !gtk_text_buffer_get_modified(w->buffer) &&
         gtk_text_buffer_get_char_count(w->buffer) == 0)
         return w;
-    return cw_window_new(app);
+    return build_window(app);
 }
 
 void
@@ -681,12 +732,14 @@ cw_window_open(CwApp *app, const gchar *path)
     CwWindow *existing = path ? find_open(app, path) : NULL;
     if (existing) {
         cw_preferences_remember_document(app, cw_file_path(existing->file));
-        gtk_window_present(GTK_WINDOW(existing->window));
+        cw_editor_go_to_end(existing->editor);
+        show_manuscript(existing);
         return;
     }
     CwWindow *w = empty_or_new_window(app);
     if (!path) {
         show_notice(w, "Choose a local manuscript file.", FALSE);
+        show_manuscript(w);
         return;
     }
     g_autoptr(GError) error = NULL;
@@ -694,14 +747,13 @@ cw_window_open(CwApp *app, const gchar *path)
     CwFile *file = cw_file_open(path, cw_preference_enabled(app, "backup"), &text, &error);
     if (!file) {
         show_notice(w, error->message, FALSE);
+        show_manuscript(w);
         return;
     }
     w->loading = TRUE;
     w->file = file;
-    gint line, column;
-    cw_preferences_read_cursor(app, cw_file_path(file), &line, &column);
     cw_search_reset(w->search);
-    cw_editor_load_at(w->editor, text, line, column);
+    cw_editor_load_at(w->editor, text, -1, 0);
     gtk_text_buffer_set_modified(w->buffer, FALSE);
     w->loading = FALSE;
     cw_preferences_remember_document(app, cw_file_path(file));
@@ -709,7 +761,7 @@ cw_window_open(CwApp *app, const gchar *path)
     update_title(w);
     file_tooltip(w);
     status(w, cw_file_backup_path(file) ? "Opened · backup created" : "Opened");
-    gtk_widget_grab_focus(GTK_WIDGET(w->view));
+    show_manuscript(w);
 }
 
 void
@@ -721,7 +773,7 @@ cw_window_recover(CwApp *app, const gchar *draft_path)
         g_warning("Could not read recovery draft %s", draft_path);
         return;
     }
-    CwWindow *w = cw_window_new(app);
+    CwWindow *w = build_window(app);
     w->draft = g_strdup(draft_path);
     w->loading = TRUE;
     cw_editor_load_at(w->editor, text, -1, 0);
@@ -729,4 +781,5 @@ cw_window_recover(CwApp *app, const gchar *draft_path)
     w->loading = FALSE;
     show_notice(w, "Recovered an unsaved manuscript. Ctrl+S saves it under a filename.", FALSE);
     status(w, "Recovered draft");
+    show_manuscript(w);
 }

@@ -5,11 +5,13 @@
 struct CwTypography {
     GtkSourceView *view;
     GtkTextBuffer *buffer;
+    GtkIMContext *input;
+    guint im_commit;
+    gulong commit_hook;
+    guint insert_action;
+    guint key_press;
     gboolean enabled;
-    gboolean in_key;
     gboolean converting;
-    gint typed_at;
-    gunichar typed;
     gint pending_at;
     gunichar pending;
     gint length;
@@ -33,6 +35,12 @@ static gboolean
 word_character(gunichar c)
 {
     return g_unichar_isalnum(c) || g_unichar_ismark(c);
+}
+
+static gboolean
+smart_character(gunichar c)
+{
+    return c == '\'' || c == '"' || c == '-' || c == '.';
 }
 
 static gunichar
@@ -194,11 +202,24 @@ after_departure(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
+static gboolean
+emitting(gpointer object, guint signal)
+{
+    GSignalInvocationHint *hint = object ? g_signal_get_invocation_hint(object) : NULL;
+    return hint && hint->signal_id == signal;
+}
+
+static gboolean
+entering_text(CwTypography *type)
+{
+    return emitting(type->input, type->im_commit) || emitting(type->view, type->insert_action);
+}
+
 static void
 mark_set(GtkTextBuffer *buffer, GtkTextIter *location, GtkTextMark *mark, CwTypography *type)
 {
-    if (type->in_key || type->converting || type->departure ||
-        mark != gtk_text_buffer_get_insert(buffer))
+    if ((!type->length && type->elision_at < 0) || type->converting || type->departure ||
+        mark != gtk_text_buffer_get_insert(buffer) || entering_text(type))
         return;
     gint offset = gtk_text_iter_get_offset(location);
     if ((type->length && offset != type->pending_at + type->length) ||
@@ -208,52 +229,33 @@ mark_set(GtkTextBuffer *buffer, GtkTextIter *location, GtkTextMark *mark, CwTypo
     }
 }
 
+/* GtkTextView owns a private GtkIMMulticontext, with the view as its commit
+ * handler's data. Observe that public GTK signal before the view receives it.
+ * Its emission can happen on a later main-loop turn, on key release, or
+ * after a whole sequence of compose/preedit events. Other views have their
+ * own context, even when they use the same desktop input method. */
 static gboolean
-key_press(GtkWidget *view, GdkEventKey *key, CwTypography *type)
+observe_commit(GSignalInvocationHint *hint, guint count, const GValue *args, gpointer data)
 {
-    if (!type->enabled || type->in_key || !gtk_text_view_get_editable(GTK_TEXT_VIEW(view)))
-        return FALSE;
+    (void)count;
+    CwTypography *type = data;
+    GtkIMContext *context = g_value_get_object(args);
+    if (type->input != context && !g_signal_handler_find(context,
+            G_SIGNAL_MATCH_ID | G_SIGNAL_MATCH_DATA, hint->signal_id, 0, NULL, NULL, type->view))
+        return TRUE;
+    g_set_object(&type->input, context);
     if (type->departure)
         cw_typography_finish(type);
-    GdkModifierType consumed = 0;
-    GdkKeymap *map = gdk_keymap_get_for_display(gtk_widget_get_display(view));
-    gdk_keymap_translate_keyboard_state(map, key->hardware_keycode, key->state, key->group,
-                                        NULL, NULL, NULL, &consumed);
-    GdkModifierType command = gtk_accelerator_get_default_mod_mask() & ~GDK_SHIFT_MASK;
-    if (key->state & command & ~consumed)
-        return FALSE;
-    gunichar c = gdk_keyval_to_unicode(key->keyval);
-    if ((!c || g_unichar_iscntrl(c)) && key->keyval != GDK_KEY_Return &&
-        key->keyval != GDK_KEY_KP_Enter && key->keyval != GDK_KEY_ISO_Enter)
-        return FALSE;
-
-    type->in_key = TRUE;
-    type->typed_at = -1;
-    type->typed = 0;
-    gtk_text_buffer_begin_user_action(type->buffer);
-    return FALSE;  /* GTK's input method, selection and overwrite handling run normally. */
+    return TRUE;
 }
 
 static void
-inserted(GtkTextBuffer *buffer, GtkTextIter *location, gchar *text, gint bytes,
-         CwTypography *type)
+before_insert_action(GtkTextView *view, const gchar *text, CwTypography *type)
 {
-    if (type->converting)
-        return;
-    if (!type->in_key || type->typed || bytes <= 0 || g_utf8_next_char(text) != text + bytes) {
-        forget(type);
-        type->typed_at = -1;
-        type->typed = G_MAXUINT32;   /* Multiple/bulk insertions during this event. */
-        return;
-    }
-    GtkTextIter caret;
-    gtk_text_buffer_get_iter_at_mark(buffer, &caret, gtk_text_buffer_get_insert(buffer));
-    if (!gtk_text_iter_equal(&caret, location)) {
-        forget(type);
-        return;
-    }
-    type->typed = g_utf8_get_char(text);
-    type->typed_at = gtk_text_iter_get_offset(location);
+    (void)view;
+    (void)text;
+    if (type->departure)
+        cw_typography_finish(type);
 }
 
 static void
@@ -264,16 +266,14 @@ deleted(GtkTextBuffer *buffer, GtkTextIter *start, GtkTextIter *end, CwTypograph
     /* Overwrite mode removes the character ahead of the caret before typing. */
     gint at = gtk_text_iter_get_offset(start);
     if (!type->converting &&
-        !(type->in_key && ((type->length && at == type->pending_at + type->length) ||
-                           (type->elision_at >= 0 && at == type->elision_end))))
+        !(entering_text(type) && ((type->length && at == type->pending_at + type->length) ||
+                                 (type->elision_at >= 0 && at == type->elision_end))))
         forget(type);
 }
 
-static void
-interpret_key(CwTypography *type)
+static gint
+interpret_character(CwTypography *type, gint at, gunichar c)
 {
-    gint at = type->typed_at;
-    gunichar c = type->typed;
     if (type->elision_at >= 0 && at != type->elision_end)
         type->elision_at = -1;
     if (type->length && at != type->pending_at + type->length)
@@ -281,32 +281,54 @@ interpret_key(CwTypography *type)
     if (type->length && c == type->pending &&
         ((c == '-' && type->length < 2) || (c == '.' && type->length < 3))) {
         ++type->length;
-        return;
+        return at;
     }
     at += resolve_pending(type);
     if (type->elision_at >= 0) {
         type->elision_end = at + 1;
         resolve_elision(type, !word_character(c));
     }
-    if (c == '\'' || c == '"' || c == '-' || c == '.') {
+    if (smart_character(c)) {
         type->pending_at = at;
         type->pending = c;
         type->length = 1;
     }
+    return at;
 }
 
 static void
-event_after(GtkWidget *view, GdkEvent *event, CwTypography *type)
+after_insert(GtkTextBuffer *buffer, GtkTextIter *location, gchar *text, gint bytes,
+             CwTypography *type)
 {
-    (void)view;
-    if (event->type == GDK_KEY_PRESS && type->in_key) {
-        type->converting = TRUE;
-        if (type->typed_at >= 0)
-            interpret_key(type);
-        gtk_text_buffer_end_user_action(type->buffer);
-        type->in_key = FALSE;
-        type->converting = FALSE;
+    if (type->converting || !type->enabled || bytes <= 0)
+        return;
+    /* GtkTextView commits Return itself if its IM leaves it unconsumed. */
+    gboolean native_newline = bytes == 1 && *text == '\n' &&
+                              emitting(type->view, type->key_press);
+    if (!entering_text(type) && !native_newline) {
+        forget(type);
+        return;
     }
+    if (bytes == 1 && !type->length && type->elision_at < 0 &&
+        !smart_character((guchar)*text))
+        return;
+    GtkTextIter caret;
+    gtk_text_buffer_get_iter_at_mark(buffer, &caret, gtk_text_buffer_get_insert(buffer));
+    if (!gtk_text_iter_equal(&caret, location)) {
+        forget(type);
+        return;
+    }
+
+    /* GtkTextView already groups the entire commit as one undoable user
+     * action. Its default handler inserted all committed Unicode text. Walk
+     * just those characters so a single IM commit can contain several edits.
+     * Restore the caller's iterator after any length-changing conversion. */
+    type->converting = TRUE;
+    gint at = gtk_text_iter_get_offset(location) - (gint)g_utf8_strlen(text, bytes);
+    for (const gchar *p = text; p < text + bytes; p = g_utf8_next_char(p))
+        at = interpret_character(type, at, g_utf8_get_char(p)) + 1;
+    gtk_text_buffer_get_iter_at_offset(buffer, location, at);
+    type->converting = FALSE;
 }
 
 static gboolean
@@ -326,11 +348,14 @@ cw_typography_new(GtkSourceView *view)
     type->buffer = g_object_ref(gtk_text_view_get_buffer(GTK_TEXT_VIEW(view)));
     type->enabled = TRUE;
     type->elision_at = -1;
-    g_signal_connect(view, "key-press-event", G_CALLBACK(key_press), type);
-    g_signal_connect(view, "event-after", G_CALLBACK(event_after), type);
+    type->im_commit = g_signal_lookup("commit", GTK_TYPE_IM_CONTEXT);
+    type->insert_action = g_signal_lookup("insert-at-cursor", GTK_TYPE_TEXT_VIEW);
+    type->key_press = g_signal_lookup("key-press-event", GTK_TYPE_WIDGET);
+    type->commit_hook = g_signal_add_emission_hook(type->im_commit, 0, observe_commit, type, NULL);
+    g_signal_connect(view, "insert-at-cursor", G_CALLBACK(before_insert_action), type);
     g_signal_connect(view, "focus-out-event", G_CALLBACK(focus_out), type);
     g_signal_connect_swapped(view, "paste-clipboard", G_CALLBACK(cw_typography_finish), type);
-    g_signal_connect(type->buffer, "insert-text", G_CALLBACK(inserted), type);
+    g_signal_connect_after(type->buffer, "insert-text", G_CALLBACK(after_insert), type);
     g_signal_connect(type->buffer, "delete-range", G_CALLBACK(deleted), type);
     g_signal_connect(type->buffer, "mark-set", G_CALLBACK(mark_set), type);
     return type;
@@ -350,11 +375,11 @@ cw_typography_free(CwTypography *type)
     if (!type)
         return;
     forget(type);
-    if (type->in_key)
-        gtk_text_buffer_end_user_action(type->buffer);
+    g_signal_remove_emission_hook(type->im_commit, type->commit_hook);
     g_signal_handlers_disconnect_by_data(type->buffer, type);
     g_signal_handlers_disconnect_by_data(type->view, type);
     g_object_unref(type->buffer);
+    g_clear_object(&type->input);
     g_object_unref(type->view);
     g_free(type);
 }

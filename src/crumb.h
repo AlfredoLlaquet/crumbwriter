@@ -8,7 +8,9 @@ typedef struct {
     guint64 number;
     gchar *label;
     gchar *title;
+    gint record_start; /* Immediately after an optional first-line work-title//. */
     gint header_start;
+    gint digits_start;
     gint header_end;
     gint title_start;
     gint title_end;
@@ -24,6 +26,7 @@ typedef struct {
  *
  * A recognizable label, positive number and first colon establish a header.
  * The optional work title before // on the first line is outside the header.
+ * A zero or overflowing header number is invalid but retains its digit range.
  * Clear a previous result before reusing it. An invalid result can be cleared.
  */
 gboolean cw_crumb_parse(const gchar *line, gboolean first_line, CwCrumb *out);
