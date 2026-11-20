@@ -11,3 +11,7 @@
 /tests/test-shortcuts
 /tests/test-virtual
 /tests/test-viewport
+/data/qt-icons.cpp
+/tests/qt/test-*
+!/tests/qt/*.cpp
+__pycache__/

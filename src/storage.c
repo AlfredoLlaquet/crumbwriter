@@ -395,8 +395,24 @@ make_backup(const CwFile *file, GError **error)
 }
 
 /* Opening and Save As both take their baseline from the exact disk bytes. */
+gboolean
+cw_file_stamp_target(const gchar *path, CwTargetStamp *stamp, GError **error)
+{
+    if (stat(path, &stamp->identity) == 0) {
+        stamp->exists = TRUE;
+        return TRUE;
+    }
+    if (errno == ENOENT) {
+        stamp->exists = FALSE;
+        return TRUE;
+    }
+    io_error(error, "Cannot inspect", path, errno);
+    return FALSE;
+}
+
 static CwFile *
-load_target(const gchar *path, gboolean allow_new, gboolean backup, GError **error)
+load_target(const gchar *path, gboolean allow_new, gboolean backup, const CwTargetStamp *stamp,
+            GError **error)
 {
     gboolean exists;
     gchar *resolved = resolve_path(path, allow_new, &exists, error);
@@ -404,13 +420,21 @@ load_target(const gchar *path, gboolean allow_new, gboolean backup, GError **err
         return NULL;
     CwFile *file = g_new0(CwFile, 1);
     file->path = resolved;
+    if (stamp && exists != stamp->exists) {
+        changed_error(error, resolved);
+        cw_file_free(file);
+        return NULL;
+    }
     if (!exists)
         return file;
 
     gint fd = open_regular(file->path, O_RDONLY, &file->identity, error);
     if (fd >= 0) {
-        file->disk_bytes = read_snapshot(fd, file->path, &file->identity,
-                                        &file->disk_length, error);
+        if (stamp && !same_version(&stamp->identity, &file->identity))
+            changed_error(error, resolved);
+        else
+            file->disk_bytes = read_snapshot(fd, file->path, &file->identity,
+                                            &file->disk_length, error);
         close(fd);
     }
     /* Save As may replace a confirmed destination of another format. Its
@@ -430,7 +454,7 @@ cw_file_open(const gchar *path, gboolean backup, gchar **text, GError **error)
 {
     g_return_val_if_fail(path != NULL && text != NULL, NULL);
     *text = NULL;
-    CwFile *file = load_target(path, FALSE, backup, error);
+    CwFile *file = load_target(path, FALSE, backup, NULL, error);
     if (file)
         *text = g_strdup(file->format.text);
     return file;
@@ -469,8 +493,28 @@ lock_original(const CwFile *file, struct stat *current, GError **error)
 }
 
 static gboolean
-commit_bytes(CwFile *file, const TextFormat *format, const gchar *text, GError **error)
+can_write(CwWriteGate *gate, gboolean publish, GError **error)
 {
+    if (!gate || (publish ? g_atomic_int_compare_and_exchange(&gate->state, 0, 2) :
+                            g_atomic_int_get(&gate->state) == 0))
+        return TRUE;
+    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CANCELLED, "Save canceled.");
+    return FALSE;
+}
+
+void
+cw_write_gate_cancel(CwWriteGate *gate)
+{
+    if (gate)
+        g_atomic_int_compare_and_exchange(&gate->state, 0, 1);
+}
+
+static gboolean
+commit_bytes(CwFile *file, const TextFormat *format, const gchar *text, CwWriteGate *gate,
+             GError **error)
+{
+    if (!can_write(gate, FALSE, error))
+        return FALSE;
     gsize size;
     LineEnding preferred = format->usual;
     g_autofree gchar *raw = encode_text(format, text, &size, error);
@@ -486,14 +530,15 @@ commit_bytes(CwFile *file, const TextFormat *format, const gchar *text, GError *
             return FALSE;
         if (size == file->disk_length && !memcmp(raw, file->disk_bytes, size)) {
             close(fd);
-            return TRUE;
+            return can_write(gate, TRUE, error);
         }
     }
 
     mode_t mode = existing ? current.st_mode & 07777 : 0666;
     g_autofree gchar *stage = stage_bytes(file->path, raw, size, mode, existing, &next, error);
     gboolean ok = FALSE;
-    if (stage && (!existing || still_current(file->path, &current, error))) {
+    if (stage && (!existing || still_current(file->path, &current, error)) &&
+        can_write(gate, TRUE, error)) {
         if ((existing ? rename(stage, file->path) : link(stage, file->path)) == 0) {
             ok = TRUE;
         } else {
@@ -523,15 +568,31 @@ commit_bytes(CwFile *file, const TextFormat *format, const gchar *text, GError *
 gboolean
 cw_file_save(CwFile *file, const gchar *text, GError **error)
 {
+    return cw_file_save_guarded(file, text, NULL, error);
+}
+
+gboolean
+cw_file_save_guarded(CwFile *file, const gchar *text, CwWriteGate *gate, GError **error)
+{
     g_return_val_if_fail(file != NULL && text != NULL, FALSE);
-    return commit_bytes(file, &file->format, text, error);
+    return commit_bytes(file, &file->format, text, gate, error);
 }
 
 CwFile *
 cw_file_save_as_like(const CwFile *source, const gchar *path, const gchar *text,
                      gboolean backup, GError **error)
 {
+    return cw_file_save_as_guarded(source, path, text, backup, NULL, NULL, error);
+}
+
+CwFile *
+cw_file_save_as_guarded(const CwFile *source, const gchar *path, const gchar *text,
+                        gboolean backup, const CwTargetStamp *stamp, CwWriteGate *gate,
+                        GError **error)
+{
     g_return_val_if_fail(path != NULL && text != NULL, NULL);
+    if (!can_write(gate, FALSE, error))
+        return NULL;
     /* A Save As back onto the open path must still pass its original conflict
      * check. The caller can keep its original CwFile via cw_file_save(). */
     if (source) {
@@ -545,8 +606,8 @@ cw_file_save_as_like(const CwFile *source, const gchar *path, const gchar *text,
             return NULL;
         }
     }
-    CwFile *file = load_target(path, TRUE, backup, error);
-    if (file && !commit_bytes(file, source ? &source->format : &file->format, text, error)) {
+    CwFile *file = load_target(path, TRUE, backup, stamp, error);
+    if (file && !commit_bytes(file, source ? &source->format : &file->format, text, gate, error)) {
         cw_file_free(file);
         return NULL;
     }

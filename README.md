@@ -1,98 +1,94 @@
 # Crumb Writer
 
-A keyboard-driven C editor for numbered, single-line crumbs on KDE Plasma 6 and FreeBSD 15 or later. The manuscript stays plain UTF-8 text. A proportional font, word wrap, an italic header, and a bold title make each crumb readable on screen.
+Crumb Writer 2.0 is a keyboard-driven C++ and Qt 6 manuscript editor for FreeBSD 15+ and KDE Plasma 6+. Each crumb occupies one physical line in a UTF-8 text file. On screen, the text wraps to the full width of the editor, with an italic header, a bold title, and a proportional body font. The sidebar shows the current crumb, its live word count, recent visits, numbered genres, and the number of new crumbs this session.
 
 Programmed by **ChatGPT** for Alfredo Llaquet-Alsina.
 
-## Build on FreeBSD
+## Build and run on FreeBSD
 
-Install the packages as root.
+Install the dependencies as root. This step also applies when upgrading from version 1.4.
 
-```sh
-pkg install git pkgconf gtk3 gtksourceview4
-```
+~~~sh
+pkg install git pkgconf glib qt6-base
+~~~
 
-Build and run as the desktop account. On first launch, **Ctrl+O** opens an existing manuscript. Later launches without a filename reopen the last manuscript. Every open places the cursor at the end of the final line of content, ready to continue writing.
+For an existing checkout, close the running editor and run these commands in the repository directory as the desktop account.
 
-```sh
+~~~sh
+git pull --ff-only
+make
+./crumbwriter --version
+./crumbwriter
+~~~
+
+For a first installation, start with a new checkout.
+
+~~~sh
 git clone https://github.com/AlfredoLlaquet/crumbwriter.git
 cd crumbwriter
 make
-./crumbwriter
-```
-
-To open a particular manuscript directly, supply its actual path.
-
-```sh
 ./crumbwriter /path/to/Crumbs.txt
-```
+~~~
 
-From the Plasma session, `make check` runs the parser, storage, navigation, search, and typing tests. Optional system installation with `make install` as root adds the launcher to the applications menu. An installation under the desktop account is also available with `make install PREFIX="$HOME/.local"` when `$HOME/.local/bin` is on `PATH`.
+Launching without a filename reopens the last manuscript by default. Opening a file places the caret at the end of its content, before a final newline when present. **Ctrl+O** opens another file. Run `make check` in a graphical session to exercise the parser, storage, and editor controls.
 
-For an existing checkout, close the running application, run `git pull --ff-only`, then `make`. Run `./crumbwriter --version` to identify the build and `./crumbwriter` to launch it. Repeat the original `make install` command to update an installed Plasma launcher.
+To install or update the Plasma launcher, run `make install` as root. A per-account installation uses `make install PREFIX="$HOME/.local"`. These install the application icon, desktop entry, and manual alongside the executable. For the per-account option, put `$HOME/.local/bin` on `PATH`.
 
-On Plasma Wayland, run `make install` once after updating to the Crumbs favicon, even if you normally start `./crumbwriter`. Plasma uses the installed desktop entry and icon to identify the window. The same per-account installation described above works here.
-
-## Writing
-
-In light mode, a very light blue band follows the current crumb across every wrapped line. It stays visible while using Find or the sidebar. Dark mode uses a subdued blue, and switching to another window turns the manuscript gray.
+## Writing and navigation
 
 | Shortcut | Action |
 | --- | --- |
-| Ctrl+N | Append the next crumb and start typing its body |
-| Ctrl+Q | Select the current crumb, copy it to the system clipboard, and leave it selected |
-| Ctrl+Y | Delete the crumb at the caret, including its line separator where needed |
-| Esc | Clear the text selection and close Find or Replace if visible |
-| Tab / Shift+Tab | Move to the next or previous header, title, or body |
-| Ctrl+Up / Ctrl+Down | Move to the previous or next crumb |
-| Up / Down | Move one visual line through wrapped text |
-| Home / End | Beginning / end of the current wrapped visual line |
-| Ctrl+Enter | Center the visual line containing the caret |
-| Alt+Enter | Put the current crumb’s header at the top of the writing area |
-| Ctrl+Home (Begin) / Ctrl+End | Beginning / end of the current crumb |
-| Ctrl+Page Up (RePág, Prior) | Beginning of the file, including any work title |
-| Ctrl+Page Down (AvPág, Next) | End of the file, including any final newline |
-| Ctrl+F / Ctrl+G | Find forward / backward from the manuscript caret |
-| Ctrl+H | Open Find and Replace |
-| F3 / Shift+F3 | Repeat in the opening direction / reverse it for one match, even with the panel closed |
-| Ctrl+F, then Ctrl+N | Jump to a crumb number |
-| F6 / F9 | Focus history or return to the editor / show or hide the sidebar |
-| F7, then arrows and Enter | Pick a genre and append its next numbered crumb |
+| Ctrl+N | Append the next crumb and start its body |
+| Ctrl+1 | Select and copy the header, such as `Crumb 42`, leaving it selected |
+| Ctrl+Q | Select and copy the entire crumb, excluding its ending newline |
+| Ctrl+Y | Delete the current crumb while the manuscript has focus |
+| Tab / Shift+Tab | Next / previous header, title, or body |
+| Ctrl+Up / Ctrl+Down | Previous / next crumb |
+| Up / Down | Previous / next wrapped line, including virtual rows below the file |
+| Home / End | Start / end of the wrapped line |
+| Ctrl+Home / Ctrl+End | Start / end of the current crumb |
+| Ctrl+Page Up / Ctrl+Page Down | Start / end of the entire file |
+| Ctrl+Enter / Alt+Enter | Center the current visual line / place the current crumb at the top |
+| Ctrl+L | Go to a crumb number |
+| Ctrl+Shift+J | Follow a reference under the caret, such as `crumb 200` |
+| F2 / Shift+F2 | Back / forward to the exact caret position after a jump |
+| F4 / Shift+F4 | Next / previous numbering warning, with the expected and actual numbers |
+| F6 / F7 | Focus visit history / genres. Type a fragment and press Enter |
+| F9 | Show or hide the sidebar |
+| Ctrl+B / Alt+B | Add a bookmark / open the separate Bookmarks window |
 | Ctrl+S / Ctrl+Shift+S | Save / Save As |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
-| Ctrl+Shift+N / Ctrl+W | Open a blank document / close the current window |
-| Ctrl+, / F10 | Settings / document menu |
-| F1 | Open searchable keyboard shortcuts |
+| Ctrl+Shift+N / Ctrl+W | Create an untitled window / close the current window when Find is closed |
+| Ctrl+, / F10 / F1 | Settings / document menu / searchable keyboard reference |
 
-The sidebar shows the current crumb’s number, title, official word count, recently visited crumbs, and new crumbs for the session. Click a history entry or select it with the arrow keys and press Enter. Bold red digits flag a crumb number that differs from its physical line number or a genre number that breaks its sequence. Each genre starts at #1 and continues from its previous occurrence. The flags are display formatting. Editing, copying and saving preserve the manuscript’s actual numbers.
+A light blue background follows the current crumb across its wrapped lines. The writing area turns gray when the manuscript window loses focus. The editor follows the desktop appearance by default. Settings also offers Light, Dark, and a choice of font family and size.
 
-Ctrl+Q excludes the ending newline and the optional first-line work title. Ctrl+Y preserves that work title and the file’s final-newline convention. Ctrl+Z restores the deleted crumb in a single step. Navigation and scrolling move the document immediately.
+Typing `Portrait #` in a title continues the most recent earlier Portrait. Activating Portrait in the genre list appends a complete crumb with the next numbered title. Bold red digits flag header numbers that disagree with their physical line and genre numbers that break their sequence.
 
-Down can take the caret into empty rows below the file. Moving there keeps the manuscript, its word count, and its saved bytes intact. Typing or pasting there creates the needed line breaks in the same undoable edit as the text. Ctrl+Enter and Alt+Enter also work at the bottom of the manuscript.
+Smart punctuation writes curly quotes and apostrophes, em dashes, and ellipses into the manuscript as typing supplies context. Paste cleans tabs, repeated spaces, and trailing spaces in one undoable operation. A space typed at the end of a crumb stays available for the next word. Saved files use UTF-8 without a BOM.
 
-**F1** opens the shortcut reference alongside the manuscript. It includes the commands for editing, the sidebar, Find and Replace, and the document window. The same reference appears under **Document menu → Keyboard Shortcuts**.
+## Find and replace
 
-When writing a numbered genre title, type the genre name followed by a space and `#`. If the last earlier `Portrait` was `Portrait #42`, typing `Portrait #` completes `Portrait #43`. The cursor stays after the number.
+**Ctrl+F** starts at the caret and searches forward. **Ctrl+G** starts there and searches backward. In plain-text mode, typing immediately selects and centers the nearest match. Extending the query searches from the original caret. **F3** repeats in the opening direction and **Shift+F3** reverses it for one match.
 
-The sidebar also lists genres alphabetically with the last number used for each. Clicking **Portrait · #42**, for example, appends the next crumb with the title **Portrait #43** and starts the cursor in its body. One Undo removes the entire new crumb.
-
-Smart punctuation turns typed quotes, apostrophes, double hyphens, and three periods into their typographic forms. The editor saves those characters to the manuscript. By default it follows the desktop theme, makes a timestamped sibling backup on open, and saves live at one-second intervals. Settings control appearance, font family, point size, smart punctuation, backup creation, and live saving.
-
-Crumb Writer turns every tab into an ordinary space and collapses consecutive spaces to one. A space typed at the end of a crumb stays ready for the next word, even across a live save. Finished crumbs, saved files and Ctrl+Q copies have no trailing spaces. Nonbreaking spaces and blank lines are preserved.
-
-## Finding a passage
-
-**Ctrl+F** finds the next occurrence from the caret. **Ctrl+G** finds the previous one. With plain text, each keystroke selects the nearest match in that direction and keeps keyboard focus in the query. Extending the query starts again at the original caret. Enter and F3 continue in the direction that opened the search. After Ctrl+G, F3 finds an earlier match and Shift+F3 finds a later one. After Ctrl+F, those directions are reversed. Search is case-insensitive by default, wraps at the document ends, and remembers completed queries with their options.
-
-Every successful search centers the visual line where the match begins, even in the middle of a long wrapped crumb. A search by crumb number centers its header.
+**Ctrl+H** opens Find and Replace. Press it again to switch focus between **Find** and **Replace with**. Replacement is available in plain-text and regular-expression modes. **All…** previews the affected crumbs with before-and-after examples. **Apply all** makes the changes, and one Undo reverses them.
 
 | While Find or Replace is open | Action |
 | --- | --- |
-| Ctrl+P / Ctrl+R / Ctrl+N | Plain text / regular expression / crumb number |
-| Alt+Down | Open and focus recent searches |
+| Ctrl+P / Ctrl+R / Ctrl+N | Plain text / regular expression / crumb-number navigation |
 | Ctrl+M / Ctrl+W / Alt+W | Toggle match case / whole words / wrap |
-| Esc, including from the manuscript | Close search and clear the selection |
+| Alt+Down | Open and focus recent searches |
+| Enter / Shift+Enter in the query | Continue in the opening / opposite direction |
+| Escape, including from the manuscript | Close search and clear the text selection |
 
-Regular expression search prefers the shortest match by default. `Haiku #[0-9]+:` finds a numbered Haiku title through its colon. `“.*”` finds one quoted passage at a time on a line. To match from the first opening quote through the last closing quote on that line, use `(?-U)“.*”`. Parentheses capture text for use in replacements such as `\1`. [PCRE2 syntax reference](https://www.pcre.org/current/doc/html/pcre2syntax.html) · [PCRE2 pattern guide](https://www.pcre.org/current/doc/html/pcre2pattern.html)
+Search starts case-insensitive, with wrap enabled. Regular expressions prefer the shortest match by default. For example, `“.*”` finds one quoted passage on a line, and `(?-U)“.*”` allows a match through the last closing quote. Recent queries include their search options. [PCRE2 syntax](https://www.pcre.org/current/doc/html/pcre2syntax.html) · [Pattern guide](https://www.pcre.org/current/doc/html/pcre2pattern.html)
 
-[CrumbWriter.txt](CrumbWriter.txt) documents the file rules, keyboard controls, design decisions, source structure, and checks. Every change to Crumb Writer includes an update to that manual.
+## Bookmarks and saves
+
+**Ctrl+B** bookmarks the current physical line. Choose a category and give the bookmark a name, or press Enter to use the next number in the last category. **Alt+B** opens the filterable tree or list with each bookmark’s line and current crumb title. A category with one bookmark opens that bookmark directly. A bookmark for line 200 always opens line 200.
+
+A manuscript named `Crumbs.txt` keeps its bookmarks in `Crumbs.txt.bookmarks` in the same directory. **Save As** copies them beside the new manuscript.
+
+Defaults include a timestamped backup beside the manuscript before editing and live saving in the background. Closing with pending changes offers **Save and Close**, **Discard Unsaved Changes**, and **Keep Editing**. Save and Close waits for the latest edit. A failed save keeps the window open.
+
+[CrumbWriter.txt](CrumbWriter.txt) documents the file format, counting rules, keyboard controls, backup and recovery behavior, code structure, and maintenance checks.

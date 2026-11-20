@@ -1,83 +1,87 @@
-# BSD make and GNU make. Override CC, CFLAGS, PREFIX or DESTDIR as usual.
+# FreeBSD base make and GNU make. Qt 6 supplies the desktop controls.
 PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
-GLIB_COMPILE_RESOURCES ?= glib-compile-resources
 CFLAGS ?= -O2
-GTK_CFLAGS != $(PKG_CONFIG) --cflags gtk+-3.0 gtksourceview-4
-GTK_LIBS != $(PKG_CONFIG) --libs gtk+-3.0 gtksourceview-4
+CXXFLAGS ?= -O2
+QT_CFLAGS != $(PKG_CONFIG) --cflags Qt6Widgets Qt6Network
+QT_LIBS != $(PKG_CONFIG) --libs Qt6Widgets Qt6Network
+QT_TOOL_DIR != $(PKG_CONFIG) --variable=libexecdir Qt6Core
+RCC ?= $(QT_TOOL_DIR)/rcc
 CORE_CFLAGS != $(PKG_CONFIG) --cflags gio-2.0
 CORE_LIBS != $(PKG_CONFIG) --libs gio-2.0
+C_FLAGS = -std=c11 -Wall -Wextra -Wpedantic -Isrc $(CORE_CFLAGS) $(CPPFLAGS) $(CFLAGS)
+CXX_FLAGS = -std=c++17 -fPIC -Wall -Wextra -Wpedantic -DQT_NO_KEYWORDS -Isrc -Isrc/qt \
+            $(QT_CFLAGS) $(CORE_CFLAGS) $(CPPFLAGS) $(CXXFLAGS)
+LIBS = $(QT_LIBS) $(CORE_LIBS) $(LDLIBS)
+
+CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/draft.o
+CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/draft.h
+MODEL_OBJECTS = src/qt/crumbmodel.o
+EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o \
+                 src/qt/editorviewport.o src/qt/committedpunctuation.o
+SEARCH_OBJECTS = $(EDITOR_OBJECTS) src/qt/searchpanel.o src/qt/searchengine.o src/qt/searchhistory.o
+BOOKMARK_OBJECTS = src/qt/bookmarks.o src/qt/bookmarkfile.o
+STORE_OBJECTS = src/qt/documentstore.o
+QT_SOURCES != find src/qt -name '*.cpp' ! -name 'main.cpp' | sort
+QT_HEADERS != find src/qt -name '*.h' | sort
+QT_OBJECTS = $(QT_SOURCES:.cpp=.o)
+RESOURCE = data/qt-icons.o
 ICON_FILES = data/icons/*/apps/org.thecrumbs.CrumbWriter.png
-FLAGS = -std=c11 -Wall -Wextra -Wpedantic -Isrc $(CPPFLAGS) $(CFLAGS)
-SEARCH_OBJECTS = src/search.o src/crumb.o src/reveal.o src/editor-spacing.o src/spacing.o
-EDITOR_OBJECTS = src/editor.o src/genres.o src/virtual.o $(SEARCH_OBJECTS)
-OBJECTS = src/main.o src/window.o src/preferences.o src/shortcuts.o src/typography.o \
-          src/storage.o src/draft.o $(EDITOR_OBJECTS) data/crumbwriter-resources.o
-HEADERS = src/app.h src/window.h src/preferences.h src/editor.h src/search.h \
-          src/shortcuts.h src/typography.h src/crumb.h src/storage.h src/draft.h src/genres.h \
-          src/reveal.h src/virtual.h src/editor-spacing.h src/spacing.h
-GUI_TESTS = tests/test-editor tests/test-typography tests/test-genres tests/test-numbering \
-            tests/test-search-controls tests/test-shortcuts tests/test-virtual tests/test-viewport
+APP_OBJECTS = $(QT_OBJECTS) $(CORE_OBJECTS) $(RESOURCE)
+QT_TESTS = tests/qt/test-model tests/qt/test-documentstore tests/qt/test-bookmarks \
+           tests/qt/test-editor tests/qt/test-search tests/qt/test-window tests/qt/test-resize
 
 all: crumbwriter
 
-crumbwriter: $(OBJECTS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) $(GTK_LIBS) $(LDLIBS)
+crumbwriter: src/qt/main.o $(APP_OBJECTS)
+	$(CXX) $(LDFLAGS) -o $@ src/qt/main.o $(APP_OBJECTS) $(LIBS)
 
-$(OBJECTS): $(HEADERS)
-
+.SUFFIXES: .cpp .c .o
 .c.o:
-	$(CC) $(FLAGS) $(GTK_CFLAGS) -c $< -o $@
+	$(CC) $(C_FLAGS) -c $< -o $@
+.cpp.o:
+	$(CXX) $(CXX_FLAGS) -c $< -o $@
 
-data/crumbwriter-resources.c: data/crumbwriter.gresource.xml $(ICON_FILES)
-	$(GLIB_COMPILE_RESOURCES) --sourcedir=data --generate-source --internal --target=$@ data/crumbwriter.gresource.xml
+$(CORE_OBJECTS): $(CORE_HEADERS)
+src/qt/main.o $(QT_OBJECTS): $(QT_HEADERS) $(CORE_HEADERS)
 
-data/crumbwriter-resources.o: data/crumbwriter-resources.c
-	$(CC) $(FLAGS) -Wno-overlength-strings $(CORE_CFLAGS) -c data/crumbwriter-resources.c -o $@
+data/qt-icons.cpp: data/crumbwriter.qrc $(ICON_FILES)
+	$(RCC) --name crumbwriter -o $@ data/crumbwriter.qrc
 
-tests/test-crumb: tests/test-crumb.c src/crumb.c src/crumb.h
-	$(CC) $(FLAGS) $(CORE_CFLAGS) $(LDFLAGS) -o $@ tests/test-crumb.c src/crumb.c $(CORE_LIBS) $(LDLIBS)
+tests/test-crumb: tests/test-crumb.c src/crumb.o
+	$(CC) $(C_FLAGS) $(LDFLAGS) -o $@ tests/test-crumb.c src/crumb.o $(CORE_LIBS) $(LDLIBS)
 
-tests/test-storage: tests/test-storage.c src/storage.c src/storage.h src/spacing.c src/spacing.h
-	$(CC) $(FLAGS) $(CORE_CFLAGS) $(LDFLAGS) -o $@ tests/test-storage.c src/storage.c src/spacing.c $(CORE_LIBS) $(LDLIBS)
+tests/test-storage: tests/test-storage.c src/storage.o src/spacing.o
+	$(CC) $(C_FLAGS) $(LDFLAGS) -o $@ tests/test-storage.c src/storage.o src/spacing.o $(CORE_LIBS) $(LDLIBS)
 
-tests/test-editor: tests/test-editor.c $(EDITOR_OBJECTS)
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-editor.c $(EDITOR_OBJECTS) $(GTK_LIBS) $(LDLIBS)
+TEST_LINK = $(CXX) $(CXX_FLAGS) $(LDFLAGS) -o $@ $@.cpp
+tests/qt/test-model: tests/qt/test-model.cpp $(MODEL_OBJECTS) $(CORE_OBJECTS)
+	$(TEST_LINK) $(MODEL_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
-tests/test-typography: tests/test-typography.c src/typography.o src/editor-spacing.o src/spacing.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-typography.c src/typography.o src/editor-spacing.o src/spacing.o $(GTK_LIBS) $(LDLIBS)
+tests/qt/test-documentstore: tests/qt/test-documentstore.cpp $(STORE_OBJECTS) $(CORE_OBJECTS)
+	$(TEST_LINK) $(STORE_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
-tests/test-genres: tests/test-genres.c src/genres.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-genres.c src/genres.o $(GTK_LIBS) $(LDLIBS)
+tests/qt/test-bookmarks: tests/qt/test-bookmarks.cpp $(BOOKMARK_OBJECTS)
+	$(TEST_LINK) $(BOOKMARK_OBJECTS) $(LIBS)
 
-tests/test-numbering: tests/test-numbering.c $(EDITOR_OBJECTS)
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-numbering.c $(EDITOR_OBJECTS) $(GTK_LIBS) $(LDLIBS)
+tests/qt/test-editor: tests/qt/test-editor.cpp $(EDITOR_OBJECTS) $(CORE_OBJECTS)
+	$(TEST_LINK) $(EDITOR_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
-tests/test-search-controls: tests/test-search-controls.c $(SEARCH_OBJECTS)
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-search-controls.c $(SEARCH_OBJECTS) $(GTK_LIBS) $(LDLIBS)
+tests/qt/test-search: tests/qt/test-search.cpp $(SEARCH_OBJECTS) $(CORE_OBJECTS)
+	$(TEST_LINK) $(SEARCH_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
-tests/test-shortcuts: tests/test-shortcuts.c src/shortcuts.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-shortcuts.c src/shortcuts.o $(GTK_LIBS) $(LDLIBS)
+tests/qt/test-window: tests/qt/test-window.cpp $(APP_OBJECTS)
+	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
 
-tests/test-virtual: tests/test-virtual.c $(EDITOR_OBJECTS) src/typography.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-virtual.c $(EDITOR_OBJECTS) src/typography.o $(GTK_LIBS) $(LDLIBS)
-
-tests/test-viewport: tests/test-viewport.c src/reveal.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-viewport.c src/reveal.o $(GTK_LIBS) $(LDLIBS)
+tests/qt/test-resize: tests/qt/test-resize.cpp $(APP_OBJECTS)
+	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
 
 check-core: tests/test-crumb tests/test-storage
 	./tests/test-crumb
 	./tests/test-storage
 
-check-gui: $(GUI_TESTS)
-	./tests/test-editor
-	./tests/test-typography
-	./tests/test-genres
-	./tests/test-numbering
-	./tests/test-search-controls
-	./tests/test-shortcuts
-	./tests/test-virtual
-	./tests/test-viewport
+check-gui: $(QT_TESTS)
+	@set -e; for test_program in $(QT_TESTS); do echo "$$test_program"; "./$$test_program"; done
 
 check: check-core check-gui
 
@@ -95,6 +99,6 @@ install: crumbwriter
 	install -m 644 CrumbWriter.txt "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 
 clean:
-	rm -f $(OBJECTS) data/crumbwriter-resources.c crumbwriter tests/test-crumb tests/test-storage $(GUI_TESTS)
+	rm -f $(APP_OBJECTS) src/qt/main.o data/qt-icons.cpp crumbwriter tests/test-crumb tests/test-storage $(QT_TESTS)
 
 .PHONY: all check check-core check-gui install clean

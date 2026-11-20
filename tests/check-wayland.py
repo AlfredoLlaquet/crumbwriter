@@ -4,6 +4,7 @@
 import os
 from pathlib import Path
 import re
+import socket
 import subprocess
 import sys
 import tempfile
@@ -11,7 +12,7 @@ import time
 
 
 def check(app, run):
-    env = dict(os.environ, LC_ALL="C.UTF-8", GSETTINGS_BACKEND="memory", NO_AT_BRIDGE="1")
+    env = dict(os.environ, LC_ALL="C.UTF-8")
     for name in ("config", "data", "state", "cache", "runtime"):
         folder = run / name
         folder.mkdir(mode=0o700)
@@ -24,6 +25,7 @@ def check(app, run):
     compositor_log = run / "weston.log"
     client_log = run / "client.log"
     processes = []
+    compositor_fd, client_fd = socket.socketpair()
 
     def wait_for(description, condition):
         deadline = time.monotonic() + 15
@@ -51,22 +53,29 @@ def check(app, run):
         wait_for(f"saved UTF-8 bytes {expected!r}", lambda: manuscript.read_bytes() == expected.encode("utf-8"))
 
     try:
+        # Give the compositor and this one client a private Wayland connection.
+        server_env = dict(env, WAYLAND_SERVER_SOCKET=str(compositor_fd.fileno()))
+        # X11 over TCP cannot use the pixman backend's shared-memory surfaces.
+        renderer = "pixman" if os.environ["DISPLAY"].startswith(":") else "gl"
         with compositor_log.open("w") as log:
-            weston = subprocess.Popen(["weston", "--no-config", "--backend=x11", "--renderer=pixman",
-                                       "--shell=kiosk", "--width=1040", "--height=720", "--idle-time=0",
-                                       "--socket=crumb-test"], env=env, stdout=log, stderr=subprocess.STDOUT)
+            weston = subprocess.Popen(["weston", "--no-config", "--backend=x11", "--renderer=" + renderer,
+                                       "--shell=kiosk", "--width=1040", "--height=720", "--idle-time=0"],
+                                      env=server_env, pass_fds=(compositor_fd.fileno(),),
+                                      stdout=log, stderr=subprocess.STDOUT)
         processes.append(weston)
-        wait_for("Weston's private Wayland socket", (run / "runtime" / "crumb-test").is_socket)
+        compositor_fd.close()
         window = wait_for("Weston's X11 output ID", outer_window)
         keyboard("windowmap", "--sync", window)
         keyboard("windowfocus", "--sync", window)
 
-        client_env = dict(env, GDK_BACKEND="wayland", WAYLAND_DISPLAY="crumb-test",
-                          GTK_IM_MODULE="wayland", WAYLAND_DEBUG="client")
+        client_env = dict(env, QT_QPA_PLATFORM="wayland", WAYLAND_SOCKET=str(client_fd.fileno()),
+                          WAYLAND_DEBUG="client")
         client_env.pop("DISPLAY", None)
         with client_log.open("w") as log:
-            editor = subprocess.Popen([app, manuscript], env=client_env, stdout=log, stderr=subprocess.STDOUT)
+            editor = subprocess.Popen([app, manuscript], env=client_env, pass_fds=(client_fd.fileno(),),
+                                      stdout=log, stderr=subprocess.STDOUT)
         processes.append(editor)
+        client_fd.close()
         wait_for("the editor's first Wayland buffer", lambda: re.search(r"wl_surface[^\s(]*\.attach\(wl_buffer",
                                                                        client_log.read_text(errors="replace")))
         wait_for("the Crumb Writer desktop ID", lambda: re.search(
@@ -108,6 +117,8 @@ def check(app, run):
                 print(f"--- {log.name} ---\n{log.read_text(errors='replace')[-7000:]}", file=sys.stderr)
         raise
     finally:
+        compositor_fd.close()
+        client_fd.close()
         for process in reversed(processes):
             if process.poll() is None:
                 process.terminate()

@@ -22,7 +22,7 @@ def output(*args):
 
 
 def wait_for(description, check):
-    deadline = time.monotonic() + 12
+    deadline = time.monotonic() + 25
     while time.monotonic() < deadline:
         try:
             result = check()
@@ -116,7 +116,7 @@ def session(app, run):
             launch(app, first)
             first_title = 'Alpha.txt — Crumb Writer'
             alpha = wait_for('first document', lambda: windows().get(first_title))
-            launch('xterm', '-title', 'Tile peer', '-e', 'sleep', '100')
+            peer_process = launch('xterm', '-title', 'Tile peer', '-e', 'sleep', '240')
             peer = wait_for('second application', lambda: windows().get('Tile peer'))
             hints = output('xprop', '-id', peer, 'WM_NORMAL_HINTS')
             cell = re.search(r'resize increment: (\d+) by (\d+)', hints)
@@ -146,7 +146,7 @@ def session(app, run):
                 key(alpha, chord)
                 unchanged()
                 expect_paper(alpha, normal_paper, f'main window after {chord}')
-            for chord, name in [('ctrl+comma', 'Settings'), ('F1', 'Help')]:
+            for chord, name in [('ctrl+comma', 'Settings'), ('F1', 'Help'), ('alt+b', 'Bookmarks')]:
                 existing = set(windows().values())
                 key(alpha, chord)
 
@@ -171,6 +171,9 @@ def session(app, run):
 
             key(alpha, 'ctrl+Prior')
             key(alpha, 'ctrl+Down')
+            key(alpha, 'ctrl+1')
+            copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
+            assert copied == b'Crumb 2', f'selected header bytes: {copied!r}'
             key(alpha, 'ctrl+q')
             copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
             assert copied == middle.encode(), f'clipboard bytes: {copied!r}'
@@ -211,6 +214,12 @@ def session(app, run):
             key(beta, 'ctrl+w')
             clients.remove(beta)
             wait_for('closing the extra manuscript retiles the others', lambda: tiles(clients, screen))
+
+            key(alpha, 'ctrl+w')
+            peer_process.terminate()
+            wait_for('closing test documents', lambda: alpha not in windows().values()
+                     and peer not in windows().values())
+            check_live_resize(app, run, launch, screen)
         except BaseException:
             print(log.read_text(errors='replace')[-16000:], file=sys.stderr)
             for title, window in windows().items():
@@ -228,11 +237,38 @@ def session(app, run):
                     proc.kill()
 
 
-def isolated(app, package):
+def check_live_resize(app, run, launch, screen):
+    path = run / 'Resize.txt'
+    first = 'This proportional text wraps across several visual lines. ' * 4
+    manuscript = '\n'.join(f'Crumb {n}: Genre #{n}: {first}End.' for n in range(1, 3372))
+    path.write_text(manuscript, encoding='utf-8')
+    launch(app, path)
+    writer = wait_for('large manuscript at EOF', lambda: windows().get('Resize.txt — Crumb Writer'))
+    wide = wait_for('wide manuscript tile', lambda: tiles([writer], screen))[0]
+
+    peer_proc = launch('xterm', '-title', 'Resize peer', '-e', 'sleep', '120')
+    peer = wait_for('resizing editor with Krohnkite', lambda: windows().get('Resize peer'))
+    narrow = wait_for('two tiles with large manuscript', lambda: tiles([writer, peer], screen))[0]
+    assert narrow[2] < wide[2], (narrow, wide)
+    output('xdotool', 'windowactivate', '--sync', writer)
+    text = 'Typing during a window resize.'
+    with subprocess.Popen(['xdotool', 'type', '--clearmodifiers', '--delay', '45', text]) as typing:
+        time.sleep(.15)
+        peer_proc.terminate()
+        wait_for('retiling to full window width', lambda: rectangle(writer)[2] == wide[2])
+        assert typing.wait(timeout=8) == 0
+    output('xdotool', 'key', '--clearmodifiers', 'ctrl+s')
+    expected = (manuscript + text).encode()
+    wait_for('typing saved at last crumb', lambda: path.read_bytes() == expected)
+    print(f'Krohnkite resized a 3,371-crumb manuscript from {narrow[2]} to {wide[2]} pixels '
+          'during typing. All input reached the final body.', flush=True)
+
+
+def isolated(app, package, existing_display=False):
     with tempfile.TemporaryDirectory(prefix='crumbwriter-kwin-') as tmp:
         run = Path(tmp)
-        env = dict(os.environ, LC_ALL='C.UTF-8', GDK_BACKEND='x11', QT_QPA_PLATFORM='xcb',
-                   KWIN_COMPOSE='N', QT_QUICK_BACKEND='software', NO_AT_BRIDGE='1', GSETTINGS_BACKEND='memory')
+        env = dict(os.environ, QT_QPA_PLATFORM='xcb', KWIN_COMPOSE='N', QT_QUICK_BACKEND='software')
+        env.setdefault('LC_ALL', 'C.UTF-8')
         for kind in ('config', 'data', 'state', 'cache', 'runtime'):
             subdir = run / kind
             subdir.mkdir(mode=0o700)
@@ -242,14 +278,19 @@ def isolated(app, package):
             '[Script-krohnkite]\nlogging=true\nlogNewWindows=true\nlogFilteredWindows=true\n'
             'logUnmanagedWindows=true\n')
         shutil.copytree(package, run/'data'/'kwin'/'scripts'/'krohnkite')
-        subprocess.run(['dbus-run-session', '--', 'xvfb-run', '-a', '-s', '-screen 0 1000x760x24',
-                        sys.executable, __file__, '--session', app, run], env=env, check=True, timeout=120)
+        command = ['dbus-run-session', '--']
+        if not existing_display:
+            command.extend(['xvfb-run', '-a', '-s', '-screen 0 1000x760x24'])
+        subprocess.run([*command, sys.executable, __file__, '--session', app, run],
+                       env=env, check=True, timeout=240)
 
 
 if __name__ == '__main__':
     if len(sys.argv) == 4 and sys.argv[1] == '--session':
         session(Path(sys.argv[2]), Path(sys.argv[3]))
+    elif len(sys.argv) == 4 and sys.argv[1] == '--existing-display':
+        isolated(Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve(), existing_display=True)
     elif len(sys.argv) == 3:
         isolated(Path(sys.argv[1]).resolve(), Path(sys.argv[2]).resolve())
     else:
-        sys.exit('usage: check-krohnkite.py CRUMBWRITER UNPACKED_KROHNKITE_PACKAGE')
+        sys.exit('usage: check-krohnkite.py [--existing-display] CRUMBWRITER UNPACKED_KROHNKITE_PACKAGE')

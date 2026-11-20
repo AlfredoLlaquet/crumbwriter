@@ -7,19 +7,21 @@ permissions:
 
 jobs:
   freebsd:
-    name: FreeBSD 15.1
+    name: FreeBSD 15.1 with Plasma 6 and Krohnkite
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Build desktop test fixture
+        run: sh tests/build-krohnkite.sh .ci-krohnkite
       - uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
         with:
           release: '15.1'
           copyback: false
           prepare: |
-            pkg install -y gtk3 gtksourceview4 pkgconf xorg-vfbserver dejavu librsvg2-rust shared-mime-info
+            pkg install -y qt6-base glib pkgconf xorg-vfbserver dejavu
           run: |
             set -eu
             make -j2
@@ -34,9 +36,23 @@ jobs:
               sleep 1
             done
             test -s "$display_file"
-            export DISPLAY=":$(cat "$display_file")" GDK_BACKEND=x11
-            export LC_ALL=en_US.UTF-8 GSETTINGS_BACKEND=memory NO_AT_BRIDGE=1
+            export DISPLAY=":$(cat "$display_file")" QT_QPA_PLATFORM=xcb
+            export LC_ALL=en_US.UTF-8
             make check
+            pkg install -y dbus python3 xterm xdotool xclip wmctrl xprop xwininfo xauth font-misc-misc
+            python_tag=$(python3 -c 'import sys; print("%d%d" % sys.version_info[:2])')
+            pkg install -y "py${python_tag}-pillow"
+            # Plasma split the X11 window manager into its own package.
+            if pkg rquery '%n' plasma6lts-kwin-x11 | grep -qx plasma6lts-kwin-x11; then
+              pkg install -y plasma6lts-kwin-x11
+            elif pkg rquery '%n' plasma6-kwin-x11 | grep -qx plasma6-kwin-x11; then
+              pkg install -y plasma6-kwin-x11
+            else
+              pkg install -y plasma6-kwin
+            fi
+            command -v kwin_x11
+            dbus-uuidgen --ensure
+            python3 tests/check-krohnkite.py --existing-display ./crumbwriter .ci-krohnkite
 
   linux:
     name: Linux
@@ -49,15 +65,13 @@ jobs:
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtksourceview-4-dev xvfb xauth librsvg2-common shared-mime-info weston xdotool dbus-daemon
+          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon
       - name: Build
         id: build
         run: make -j2
       - name: Test on X11
         env:
-          GDK_BACKEND: x11
-          GSETTINGS_BACKEND: memory
-          NO_AT_BRIDGE: '1'
+          QT_QPA_PLATFORM: xcb
         run: xvfb-run -a make check
       - name: Check the installed icon and type into the native Wayland editor
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -85,24 +99,15 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git ca-certificates build-essential pkgconf npm libgtksourceview-4-dev librsvg2-common \
+            git ca-certificates build-essential pkgconf npm qt6-base-dev qt6-qpa-plugins libglib2.0-dev libxcb-cursor0 \
             kwin-x11 plasma-workspace dbus-x11 xvfb xauth x11-utils xterm xdotool wmctrl xclip \
             shared-mime-info xfonts-base fonts-dejavu-core python3-pil
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build Krohnkite 0.9.11.0
-        run: |
-          revision=e345c9a4b456745cd1c4100b5e34d46ab063de3d
-          git init --quiet /tmp/krohnkite
-          cd /tmp/krohnkite
-          git fetch --quiet --depth=1 https://codeberg.org/anametologin/Krohnkite.git "$revision" || \
-            git fetch --quiet --depth=1 https://github.com/XelorR/Krohnkite.git "$revision"
-          git checkout --quiet --detach "$revision"
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm run tsc
-          make PROJECT_VER=0.9.11.0 PROJECT_REV=e345c9a pkg
+        run: sh tests/build-krohnkite.sh /tmp/krohnkite-package
       - name: Check real tiled windows
         run: |
           make -j2
-          python3 tests/check-krohnkite.py ./crumbwriter /tmp/krohnkite/pkg
+          python3 tests/check-krohnkite.py ./crumbwriter /tmp/krohnkite-package
