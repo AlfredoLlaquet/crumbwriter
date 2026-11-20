@@ -91,6 +91,17 @@ window_focus_changed(GtkWindow *window, GtkWidget *focus, CwWindow *w)
     update_undo_actions(w);
 }
 
+static void
+update_manuscript_appearance(GtkWindow *window, GParamSpec *property, CwWindow *w)
+{
+    (void)property;
+    GtkStyleContext *context = gtk_widget_get_style_context(GTK_WIDGET(w->view));
+    if (gtk_window_is_active(window))
+        gtk_style_context_remove_class(context, "inactive-manuscript");
+    else
+        gtk_style_context_add_class(context, "inactive-manuscript");
+}
+
 static gchar *
 buffer_text(CwWindow *w)
 {
@@ -716,6 +727,8 @@ build_window(CwApp *app)
     g_signal_connect_swapped(w->buffer, "notify::can-undo", G_CALLBACK(update_undo_actions), w);
     g_signal_connect_swapped(w->buffer, "notify::can-redo", G_CALLBACK(update_undo_actions), w);
     g_signal_connect_after(w->window, "set-focus", G_CALLBACK(window_focus_changed), w);
+    g_signal_connect(w->window, "notify::is-active", G_CALLBACK(update_manuscript_appearance), w);
+    update_manuscript_appearance(GTK_WINDOW(w->window), NULL, w);
     g_signal_connect(w->window, "key-press-event", G_CALLBACK(window_key), w);
     g_signal_connect(w->window, "delete-event", G_CALLBACK(request_close), w);
     g_signal_connect(w->window, "destroy", G_CALLBACK(window_destroyed), w);

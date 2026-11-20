@@ -11,6 +11,11 @@ import sys
 import tempfile
 import time
 
+from PIL import ImageGrab
+
+
+INACTIVE_PAPER = (242, 242, 242)
+
 
 def output(*args):
     return subprocess.check_output(args, text=True, timeout=8).strip()
@@ -42,6 +47,30 @@ def rectangle(window):
     info = output('xwininfo', '-id', window)
     fields = ['Absolute upper-left X', 'Absolute upper-left Y', 'Width', 'Height']
     return tuple(int(re.search(field + r':\s*(-?\d+)', info)[1]) for field in fields)
+
+
+def paper_color(window):
+    x, y, width, height = rectangle(window)
+    # A blank patch of the manuscript below the short fixture and above the footer.
+    left, top = x + width // 10, y + height - 54
+    patch = ImageGrab.grab((left, top, left + 5, top + 5), xdisplay=os.environ['DISPLAY']).convert('RGB')
+    return max(patch.getcolors(), key=lambda item: item[0])[1]
+
+
+def expect_paper(window, expected, context):
+    try:
+        wait_for(context, lambda: paper_color(window) == expected)
+    except AssertionError as error:
+        raise AssertionError(f'{context}: rendered {paper_color(window)}, expected {expected}') from error
+
+
+def restored_paper(window):
+    color = paper_color(window)
+    if color != INACTIVE_PAPER:
+        time.sleep(.2)
+        if paper_color(window) == color:
+            return color
+    return None
 
 
 def tiles(clients, screen):
@@ -107,9 +136,16 @@ def session(app, run):
                     else:
                         assert old == new, f'manuscript tile changed: {old} -> {new}'
 
-            for chord in ('ctrl+f', 'Escape', 'ctrl+h', 'Escape'):
+            output('xdotool', 'windowactivate', '--sync', peer)
+            expect_paper(alpha, INACTIVE_PAPER, 'other application active')
+            key(alpha, 'Escape')
+            normal_paper = wait_for('reactivated manuscript returns to its theme color',
+                                    lambda: restored_paper(alpha))
+            for chord in ('F6', 'F7', 'F6', 'ctrl+f', 'e', 'Return', 'alt+Down', 'Escape',
+                          'Escape', 'ctrl+h', 'Escape', 'F10', 'Escape'):
                 key(alpha, chord)
                 unchanged()
+                expect_paper(alpha, normal_paper, f'main window after {chord}')
             for chord, name in [('ctrl+comma', 'Settings'), ('F1', 'Help')]:
                 existing = set(windows().values())
                 key(alpha, chord)
@@ -151,6 +187,11 @@ def session(app, run):
             clients.append(beta)
             initial = wait_for('three adjacent tiles fill the screen', lambda: tiles(clients, screen))
             print('KWin + Krohnkite, three clients:', initial, flush=True)
+            for active, inactive in [(beta, alpha), (alpha, beta)]:
+                output('xdotool', 'windowactivate', '--sync', active)
+                expect_paper(active, normal_paper, 'active manuscript')
+                expect_paper(inactive, INACTIVE_PAPER, 'neighboring manuscript')
+            print('Rendered manuscript colors: active', normal_paper, 'inactive', INACTIVE_PAPER, flush=True)
             short = min((alpha, beta), key=lambda win: rectangle(win)[3])
             assert rectangle(short)[3] < screen[1] * .7, 'the layout must exercise a short editor tile'
             for chord in ('ctrl+f', 'Escape', 'ctrl+h', 'Escape'):

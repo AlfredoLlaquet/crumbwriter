@@ -319,6 +319,12 @@ Adwaita variants. The default writing font is proportional Serif at 14 pt.
 The font family and point size affect the text view without modifying any
 manuscript byte. Toolbar and sidebar keep their desktop UI font.
 
+An inactive manuscript window shows its writing area in very light gray
+(#f2f2f2) with dark body text. Switching back restores the selected theme's
+writing colors. The sidebar, Find and Replace, and their popovers all belong
+to the main window. Moving focus among those controls keeps its active colors.
+Each open manuscript follows its own window's activation.
+
 The manuscript is a resizable normal application window. It first appears
 with its document loaded and delegates position and dimensions to KWin.
 The initial floating-size hint is capped at 1060 by 720 logical pixels and at
@@ -351,6 +357,8 @@ src/main.c         GTK application lifetime, command-line files, startup
 src/app.h          Shared application state. One GKeyFile belongs to CwApp.
 src/window.c       One CwWindow owns one view and its controller objects.
                    The command table maps menu actions and accelerators.
+                   GtkWindow's is-active notification controls the manuscript
+                   color independently of which child holds keyboard focus.
                    Contains the save timer, modeless notices and file chooser.
 src/preferences.c  Configuration, font CSS, theme overrides, last manuscript,
                    and modeless settings. Applies changes to all open windows.
@@ -431,6 +439,8 @@ Use a disposable manuscript for live-save tests. For window changes, run the
 Krohnkite check with two neighboring applications and a short three-window
 tile. Check Find, Replace, Settings and repeated document activation.
 The tiling test compares manuscript geometry exactly and accounts for the
-neighboring terminal's advertised character-cell increments. The Wayland test
-targets the X11 output ID reported by Weston and waits for native GTK keyboard
-focus before delivering input.
+neighboring terminal's advertised character-cell increments. It also samples
+the rendered writing area while focus moves through the sidebar and search,
+to a neighboring application, and between two open manuscripts.
+The Wayland test targets the X11 output ID reported by Weston and waits for
+native GTK keyboard focus before delivering input.
