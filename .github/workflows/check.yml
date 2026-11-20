@@ -19,7 +19,7 @@ jobs:
           release: '15.1'
           copyback: false
           prepare: |
-            pkg install -y gtk3 gtksourceview4 pkgconf xorg-vfbserver dejavu
+            pkg install -y gtk3 gtksourceview4 pkgconf xorg-vfbserver dejavu librsvg2-rust shared-mime-info
           run: |
             set -eu
             make -j2
@@ -49,7 +49,7 @@ jobs:
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtksourceview-4-dev xvfb xauth
+          sudo apt-get install -y libgtksourceview-4-dev xvfb xauth librsvg2-common shared-mime-info
       - name: Build and test
         env:
           GDK_BACKEND: x11

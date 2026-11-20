@@ -7,10 +7,11 @@ GTK_LIBS != $(PKG_CONFIG) --libs gtk+-3.0 gtksourceview-4
 CORE_CFLAGS != $(PKG_CONFIG) --cflags gio-2.0
 CORE_LIBS != $(PKG_CONFIG) --libs gio-2.0
 FLAGS = -std=c11 -Wall -Wextra -Wpedantic -Isrc $(CPPFLAGS) $(CFLAGS)
-OBJECTS = src/main.o src/window.o src/preferences.o src/editor.o src/search.o \
-          src/typography.o src/crumb.o src/storage.o src/draft.o
+EDITOR_OBJECTS = src/editor.o src/search.o src/crumb.o src/genres.o src/reveal.o
+OBJECTS = src/main.o src/window.o src/preferences.o src/typography.o \
+          src/storage.o src/draft.o $(EDITOR_OBJECTS)
 HEADERS = src/app.h src/window.h src/preferences.h src/editor.h src/search.h \
-          src/typography.h src/crumb.h src/storage.h src/draft.h
+          src/typography.h src/crumb.h src/storage.h src/draft.h src/genres.h src/reveal.h
 
 all: crumbwriter
 
@@ -28,19 +29,23 @@ tests/test-crumb: tests/test-crumb.c src/crumb.c src/crumb.h
 tests/test-storage: tests/test-storage.c src/storage.c src/storage.h
 	$(CC) $(FLAGS) $(CORE_CFLAGS) $(LDFLAGS) -o $@ tests/test-storage.c src/storage.c $(CORE_LIBS) $(LDLIBS)
 
-tests/test-editor: tests/test-editor.c src/editor.o src/search.o src/crumb.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-editor.c src/editor.o src/search.o src/crumb.o $(GTK_LIBS) $(LDLIBS)
+tests/test-editor: tests/test-editor.c $(EDITOR_OBJECTS)
+	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-editor.c $(EDITOR_OBJECTS) $(GTK_LIBS) $(LDLIBS)
 
 tests/test-typography: tests/test-typography.c src/typography.o
 	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-typography.c src/typography.o $(GTK_LIBS) $(LDLIBS)
+
+tests/test-genres: tests/test-genres.c src/genres.o
+	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-genres.c src/genres.o $(GTK_LIBS) $(LDLIBS)
 
 check-core: tests/test-crumb tests/test-storage
 	./tests/test-crumb
 	./tests/test-storage
 
-check-gui: tests/test-editor tests/test-typography
+check-gui: tests/test-editor tests/test-typography tests/test-genres
 	./tests/test-editor
 	./tests/test-typography
+	./tests/test-genres
 
 check: check-core check-gui
 
@@ -51,6 +56,6 @@ install: crumbwriter
 	install -m 644 CrumbWriter.txt "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 
 clean:
-	rm -f $(OBJECTS) crumbwriter tests/test-crumb tests/test-storage tests/test-editor tests/test-typography
+	rm -f $(OBJECTS) crumbwriter tests/test-crumb tests/test-storage tests/test-editor tests/test-typography tests/test-genres
 
 .PHONY: all check check-core check-gui install clean

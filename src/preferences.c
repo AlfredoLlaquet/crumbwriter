@@ -16,6 +16,9 @@ cw_preferences_load(CwApp *app)
                                   G_KEY_FILE_NONE, &error) &&
         !g_error_matches(error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
         g_warning("Could not read preferences: %s", error->message);
+    g_autofree gchar *uri = g_key_file_get_string(app->preferences, "session", "last-document", NULL);
+    if (uri)
+        app->last_document = g_filename_from_uri(uri, NULL, NULL);
 }
 
 void
@@ -114,6 +117,22 @@ cw_preferences_read_cursor(CwApp *app, const gchar *path, gint *line, gint *colu
     g_autofree gint *position = g_key_file_get_integer_list(app->preferences, "positions", key, &n, NULL);
     *line = n == 2 ? position[0] : -1;
     *column = n == 2 ? position[1] : 0;
+}
+
+void
+cw_preferences_remember_document(CwApp *app, const gchar *path)
+{
+    /* GTK paths are in the filesystem encoding. A URI also represents names
+     * containing bytes that cannot be stored literally in a UTF-8 GKeyFile. */
+    if (g_strcmp0(path, app->last_document) == 0)
+        return;
+    g_autofree gchar *uri = g_filename_to_uri(path, NULL, NULL);
+    if (!uri)
+        return;
+    g_free(app->last_document);
+    app->last_document = g_strdup(path);
+    g_key_file_set_string(app->preferences, "session", "last-document", uri);
+    cw_app_write_preferences(app);
 }
 
 static void
@@ -259,9 +278,10 @@ cw_preferences_show(CwApp *app, GtkWindow *parent)
     add_toggle(app, grid, 5, "backup", "Make a _backup beside each file before editing");
     add_toggle(app, grid, 6, "live-save", "Save _live while typing");
     add_row(grid, 7, "Save _interval (seconds)", spin_preference(app, "save-delay", 1, 1, 30));
+    add_toggle(app, grid, 8, "reopen-last", "_Reopen the last manuscript at startup");
     GtkWidget *done = gtk_button_new_with_mnemonic("_Done");
     gtk_widget_set_halign(done, GTK_ALIGN_END);
-    gtk_grid_attach(grid, done, 1, 8, 1, 1);
+    gtk_grid_attach(grid, done, 1, 9, 1, 1);
     g_signal_connect_swapped(done, "clicked", G_CALLBACK(gtk_widget_destroy), window);
     g_signal_connect(window, "key-press-event", G_CALLBACK(settings_key), NULL);
     gtk_widget_show_all(window);

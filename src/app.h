@@ -7,6 +7,7 @@ typedef struct {
     GtkApplication *gtk;
     GKeyFile *preferences;
     gchar *preferences_path;
+    gchar *last_document;
     GtkWidget *settings_window;
     gboolean recovered;
 } CwApp;

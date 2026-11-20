@@ -40,8 +40,7 @@ static void
 changed_error(GError **error, const gchar *path)
 {
     g_set_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG,
-                "“%s” changed on disk. The edited text is still open. "
-                "Save As can keep a separate copy.", path);
+                "“%s” changed on disk. The edited text is still open.", path);
 }
 
 static gboolean

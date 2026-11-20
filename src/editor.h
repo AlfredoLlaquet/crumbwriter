@@ -15,6 +15,7 @@ void cw_editor_load(CwEditor *editor, const gchar *text);
 void cw_editor_load_at(CwEditor *editor, const gchar *text, gint line, gint column);
 void cw_editor_append(CwEditor *editor);
 void cw_editor_focus_history(CwEditor *editor);
+void cw_editor_focus_genres(CwEditor *editor);
 void cw_editor_free(CwEditor *editor);
 
 G_END_DECLS

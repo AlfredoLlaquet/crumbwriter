@@ -1,9 +1,26 @@
 #include "editor.h"
+#include "reveal.h"
 
 #include "crumb.h"
+#include "genres.h"
+
+typedef struct {
+    gchar *key;
+    GSequence *occurrences;
+} Genre;
+
+typedef struct {
+    Genre *genre;
+    gchar *name;
+    guint64 ordinal;
+    GSequenceIter *line_position;
+    guint component;          /* One-based order within a compound title. */
+    GSequenceIter *position;
+} Occurrence;
 
 typedef struct {
     CwCrumb crumb;
+    GPtrArray *genres;        /* Occurrences owned by this physical line. */
     guint words;
     GSequenceIter *position;
 } DocumentLine;
@@ -29,11 +46,14 @@ struct _CwEditor {
     GtkWidget *new_crumbs;
     GtkTreeView *history;
     GtkListStore *history_store;
+    CwGenres *genres;
 
     GSequence *lines;          /* One cached record per physical buffer line. */
     GHashTable *numbers;       /* Number -> array of DocumentLine pointers. */
     GHashTable *opening_ids;   /* Set of distinct numbers in the opened file. */
     GHashTable *visits;        /* Number -> stable GtkListStore iterator. */
+    GHashTable *genre_index;   /* Normalized genre name -> Genre. */
+    GHashTable *changed_genres;
     guint new_count;
     gint shown_line;
     gboolean active_number_set;
@@ -41,9 +61,13 @@ struct _CwEditor {
 
     gboolean loading;
     gboolean editing;
+    gboolean hash_key;
+    gboolean typed_hash;
     gint edit_first;
     gint edit_last;
 };
+
+static void append_with_title(CwEditor *editor, const gchar *title);
 
 static guint64 *
 number_key(guint64 number)
@@ -54,11 +78,94 @@ number_key(guint64 number)
 }
 
 static void
+free_occurrence(gpointer data)
+{
+    Occurrence *occurrence = data;
+    g_free(occurrence->name);
+    g_free(occurrence);
+}
+
+static void
 free_line(gpointer data)
 {
     DocumentLine *line = data;
     cw_crumb_clear(&line->crumb);
+    g_clear_pointer(&line->genres, g_ptr_array_unref);
     g_free(line);
+}
+
+static void
+free_genre(gpointer data)
+{
+    Genre *genre = data;
+    g_sequence_free(genre->occurrences);
+    g_free(genre->key);
+    g_free(genre);
+}
+
+static gint
+compare_occurrences(gconstpointer a, gconstpointer b, gpointer data)
+{
+    (void)data;
+    const Occurrence *left = a, *right = b;
+    gint lines = g_sequence_iter_compare(left->line_position, right->line_position);
+    if (lines != 0)
+        return lines;
+    return (left->component > right->component) - (left->component < right->component);
+}
+
+typedef struct {
+    CwEditor *editor;
+    DocumentLine *line;
+} IndexTarget;
+
+static void
+index_genre(const gchar *key, const gchar *name, guint64 ordinal, gpointer data)
+{
+    IndexTarget *target = data;
+    CwEditor *editor = target->editor;
+    DocumentLine *line = target->line;
+    Genre *genre = g_hash_table_lookup(editor->genre_index, key);
+    if (!genre) {
+        genre = g_new0(Genre, 1);
+        genre->key = g_strdup(key);
+        genre->occurrences = g_sequence_new(NULL);
+        g_hash_table_insert(editor->genre_index, genre->key, genre);
+    }
+    if (!line->genres)
+        line->genres = g_ptr_array_new_with_free_func(free_occurrence);
+    Occurrence *occurrence = g_new0(Occurrence, 1);
+    occurrence->genre = genre;
+    occurrence->name = g_strdup(name);
+    occurrence->ordinal = ordinal;
+    occurrence->line_position = line->position;
+    occurrence->component = line->genres->len + 1;
+    occurrence->position = g_sequence_insert_sorted(genre->occurrences, occurrence,
+                                                     compare_occurrences, NULL);
+    g_ptr_array_add(line->genres, occurrence);
+    g_hash_table_add(editor->changed_genres, genre);
+}
+
+/* Publish a genre once per edit even when a replaced range contains many
+ * occurrences. Its latest entry follows physical position, including after undo. */
+static void
+update_genres(CwEditor *editor)
+{
+    GHashTableIter iter;
+    gpointer item;
+    g_hash_table_iter_init(&iter, editor->changed_genres);
+    while (g_hash_table_iter_next(&iter, &item, NULL)) {
+        Genre *genre = item;
+        g_hash_table_iter_remove(&iter);
+        GSequenceIter *end = g_sequence_get_end_iter(genre->occurrences);
+        if (g_sequence_iter_is_begin(end)) {
+            cw_genres_update(editor->genres, genre->key, NULL, 0);
+            g_hash_table_remove(editor->genre_index, genre->key);
+        } else {
+            Occurrence *last = g_sequence_get(g_sequence_iter_prev(end));
+            cw_genres_update(editor->genres, genre->key, last->name, last->ordinal);
+        }
+    }
 }
 
 static GtkTextIter
@@ -139,6 +246,8 @@ index_line(CwEditor *editor, GSequenceIter *before, gint number)
 
     if (cw_crumb_parse(text, number == 0, &line->crumb)) {
         line->words = cw_crumb_words(text, number == 0);
+        IndexTarget target = { editor, line };
+        cw_genre_foreach(line->crumb.title, index_genre, &target);
         index_number(editor, line);
         style_span(editor, editor->header_tag, start,
                    line->crumb.header_start, line->crumb.header_end);
@@ -262,9 +371,11 @@ static void
 before_insert(GtkTextBuffer *buffer, GtkTextIter *location, gchar *text, gint length,
               CwEditor *editor)
 {
-    (void)buffer;
-    (void)text;
-    (void)length;
+    if (editor->hash_key && !editor->loading && length == 1 && text[0] == '#') {
+        GtkTextIter cursor;
+        gtk_text_buffer_get_iter_at_mark(buffer, &cursor, gtk_text_buffer_get_insert(buffer));
+        editor->typed_hash = gtk_text_iter_equal(location, &cursor);
+    }
     edit_started(editor, location, location);
 }
 
@@ -301,6 +412,13 @@ edit_finished(CwEditor *editor)
         if (line->crumb.valid) {
             note_visited_number(editor, changed, line);
             unindex_number(editor, line);
+            if (line->genres) {
+                for (guint i = 0; i < line->genres->len; i++) {
+                    Occurrence *occurrence = g_ptr_array_index(line->genres, i);
+                    g_hash_table_add(editor->changed_genres, occurrence->genre);
+                    g_sequence_remove(occurrence->position);
+                }
+            }
         }
     }
     g_sequence_remove_range(first, after);
@@ -324,6 +442,7 @@ edit_finished(CwEditor *editor)
     while (g_hash_table_iter_next(&visits, &key, NULL))
         refresh_visit(editor, *(guint64 *)key);
     g_hash_table_unref(changed);
+    update_genres(editor);
     editor->editing = FALSE;
     refresh_sidebar(editor, TRUE);
 }
@@ -355,8 +474,7 @@ go_to(CwEditor *editor, gint line, gint column)
     GtkTextIter location;
     gtk_text_buffer_get_iter_at_line_offset(editor->buffer, &location, line, column);
     gtk_text_buffer_place_cursor(editor->buffer, &location);
-    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(editor->view),
-                                       gtk_text_buffer_get_insert(editor->buffer));
+    cw_reveal_cursor(GTK_TEXT_VIEW(editor->view));
 }
 
 /* Select the nearest field strictly before/after the caret, including the
@@ -394,7 +512,14 @@ navigate(CwEditor *editor, gboolean forward, gboolean fields)
 static gboolean
 editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
 {
-    (void)view;
+    /* Leave the key to GTK's input method, including Shift and AltGr layouts.
+     * A command or composition that never inserts # cannot complete a title. */
+    if (event->keyval == GDK_KEY_numbersign && !editor->hash_key &&
+        gtk_text_view_get_editable(GTK_TEXT_VIEW(view))) {
+        editor->hash_key = TRUE;
+        editor->typed_hash = FALSE;
+        gtk_text_buffer_begin_user_action(editor->buffer);
+    }
     GdkModifierType mods = event->state & gtk_accelerator_get_default_mod_mask();
     if (event->keyval == GDK_KEY_Tab || event->keyval == GDK_KEY_ISO_Left_Tab ||
         event->keyval == GDK_KEY_KP_Tab) {
@@ -414,6 +539,48 @@ editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
         }
     }
     return FALSE;
+}
+
+static void
+complete_genre(CwEditor *editor)
+{
+    GtkTextIter cursor;
+    gtk_text_buffer_get_iter_at_mark(editor->buffer, &cursor, gtk_text_buffer_get_insert(editor->buffer));
+    GSequenceIter *it = g_sequence_get_iter_at_pos(editor->lines, gtk_text_iter_get_line(&cursor));
+    DocumentLine *current = g_sequence_get(it);
+    gint column = gtk_text_iter_get_line_offset(&cursor);
+    if (!current->crumb.valid || column <= current->crumb.title_start ||
+        column > current->crumb.title_end)
+        return;
+    const gchar *hash = g_utf8_offset_to_pointer(current->crumb.title,
+                                                 column - current->crumb.title_start - 1);
+    g_autofree gchar *key = cw_genre_key_at(current->crumb.title, hash);
+    Genre *genre = key ? g_hash_table_lookup(editor->genre_index, key) : NULL;
+    if (!genre)
+        return;
+    /* Component zero precedes every numbered component of the current line. */
+    Occurrence here = { .line_position = it };
+    GSequenceIter *next = g_sequence_search(genre->occurrences, &here, compare_occurrences, NULL);
+    if (g_sequence_iter_is_begin(next))
+        return;
+    Occurrence *previous = g_sequence_get(g_sequence_iter_prev(next));
+    if (previous->ordinal < G_MAXUINT64) {
+        gchar digits[32];
+        g_snprintf(digits, sizeof digits, "%" G_GUINT64_FORMAT, previous->ordinal + 1);
+        gtk_text_buffer_insert_at_cursor(editor->buffer, digits, -1);
+    }
+}
+
+static void
+after_key(GtkWidget *view, GdkEvent *event, CwEditor *editor)
+{
+    (void)view;
+    if (event->type == GDK_KEY_PRESS && editor->hash_key) {
+        editor->hash_key = FALSE;
+        if (editor->typed_hash)
+            complete_genre(editor);
+        gtk_text_buffer_end_user_action(editor->buffer);
+    }
 }
 
 static void
@@ -477,6 +644,18 @@ add_metric(GtkWidget *row, const gchar *title, const gchar *name)
     return value;
 }
 
+static void
+genre_activated(const gchar *name, guint64 ordinal, gpointer data)
+{
+    CwEditor *editor = data;
+    if (ordinal == G_MAXUINT64) {
+        gtk_widget_error_bell(GTK_WIDGET(editor->view));
+        return;
+    }
+    g_autofree gchar *title = g_strdup_printf("%s #%" G_GUINT64_FORMAT, name, ordinal + 1);
+    append_with_title(editor, title);
+}
+
 static GtkWidget *
 build_sidebar(CwEditor *editor)
 {
@@ -511,8 +690,12 @@ build_sidebar(CwEditor *editor)
     gtk_box_pack_start(GTK_BOX(content), metrics, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(content), gtk_separator_new(GTK_ORIENTATION_HORIZONTAL),
                        FALSE, FALSE, 0);
-    GtkWidget *heading = sidebar_label("Visit history", "section-label");
-    gtk_box_pack_start(GTK_BOX(content), heading, FALSE, FALSE, 0);
+    GtkWidget *lists = gtk_paned_new(GTK_ORIENTATION_VERTICAL);
+    gtk_box_pack_start(GTK_BOX(content), lists, TRUE, TRUE, 0);
+    GtkWidget *history_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_paned_pack1(GTK_PANED(lists), history_box, TRUE, FALSE);
+    gtk_box_pack_start(GTK_BOX(history_box), sidebar_label("Visit history", "section-label"),
+                       FALSE, FALSE, 0);
 
     editor->history_store = gtk_list_store_new(HISTORY_COLUMNS, G_TYPE_UINT64, G_TYPE_STRING,
                                                 G_TYPE_STRING, G_TYPE_BOOLEAN);
@@ -545,7 +728,18 @@ build_sidebar(CwEditor *editor)
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scroll), GTK_POLICY_NEVER,
                                     GTK_POLICY_AUTOMATIC);
     gtk_container_add(GTK_CONTAINER(scroll), tree);
-    gtk_box_pack_start(GTK_BOX(content), scroll, TRUE, TRUE, 0);
+    gtk_widget_set_size_request(scroll, -1, 48);
+    gtk_box_pack_start(GTK_BOX(history_box), scroll, TRUE, TRUE, 0);
+
+    GtkWidget *genres_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_set_margin_top(genres_box, 8);
+    gtk_paned_pack2(GTK_PANED(lists), genres_box, TRUE, FALSE);
+    gtk_box_pack_start(GTK_BOX(genres_box), sidebar_label("Genres", "section-label"),
+                       FALSE, FALSE, 0);
+    editor->genres = cw_genres_new(genre_activated, editor);
+    GtkWidget *genre_list = cw_genres_widget(editor->genres);
+    gtk_widget_set_size_request(genre_list, -1, 48);
+    gtk_box_pack_start(GTK_BOX(genres_box), genre_list, TRUE, TRUE, 0);
     return sidebar;
 }
 
@@ -560,6 +754,8 @@ cw_editor_new(GtkSourceView *view)
                                             (GDestroyNotify)g_ptr_array_unref);
     editor->opening_ids = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
     editor->visits = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, g_free);
+    editor->genre_index = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, free_genre);
+    editor->changed_genres = g_hash_table_new(g_direct_hash, g_direct_equal);
     editor->sidebar = g_object_ref_sink(build_sidebar(editor));
     editor->header_tag = gtk_text_buffer_create_tag(editor->buffer, "crumb-header",
                                                      "style", PANGO_STYLE_ITALIC, NULL);
@@ -569,6 +765,7 @@ cw_editor_new(GtkSourceView *view)
     editor->loading = TRUE;
     for (gint n = 0; n < gtk_text_buffer_get_line_count(editor->buffer); n++)
         index_line(editor, g_sequence_get_end_iter(editor->lines), n);
+    update_genres(editor);
     editor->loading = FALSE;
     editor->shown_line = -1;
     refresh_sidebar(editor, TRUE);
@@ -579,6 +776,7 @@ cw_editor_new(GtkSourceView *view)
     g_signal_connect(editor->buffer, "delete-range", G_CALLBACK(before_delete), editor);
     g_signal_connect_after(editor->buffer, "delete-range", G_CALLBACK(after_delete), editor);
     g_signal_connect(view, "key-press-event", G_CALLBACK(editor_key), editor);
+    g_signal_connect_after(view, "event-after", G_CALLBACK(after_key), editor);
     return editor;
 }
 
@@ -600,6 +798,9 @@ cw_editor_load_at(CwEditor *editor, const gchar *text, gint line, gint column)
     g_hash_table_remove_all(editor->visits);
     g_hash_table_remove_all(editor->opening_ids);
     g_hash_table_remove_all(editor->numbers);
+    g_hash_table_remove_all(editor->changed_genres);
+    g_hash_table_remove_all(editor->genre_index);
+    cw_genres_clear(editor->genres);
     g_sequence_remove_range(g_sequence_get_begin_iter(editor->lines),
                             g_sequence_get_end_iter(editor->lines));
 
@@ -614,6 +815,7 @@ cw_editor_load_at(CwEditor *editor, const gchar *text, gint line, gint column)
         if (record->crumb.valid)
             last_crumb = n;
     }
+    update_genres(editor);
     if (line < 0 || line >= total) {
         line = last_crumb >= 0 ? last_crumb : total - 1;
         column = G_MAXINT;
@@ -642,8 +844,8 @@ immediately_after_work_title(GtkTextIter position)
            gtk_text_iter_backward_char(&position) && gtk_text_iter_get_char(&position) == '/';
 }
 
-void
-cw_editor_append(CwEditor *editor)
+static void
+append_with_title(CwEditor *editor, const gchar *title)
 {
     const gchar *label = "Crumb";
     guint64 largest = 0;
@@ -675,16 +877,27 @@ cw_editor_append(CwEditor *editor)
     gboolean first = gtk_text_iter_is_start(&here) ||
                      (largest == 0 && immediately_after_work_title(here));
     const gchar *separator = first ? "" : "\n";
-    gchar *snippet = g_strdup_printf("%s%s %" G_GUINT64_FORMAT ": : ",
-                                     separator, label, largest + 1);
+    gchar *snippet = g_strdup_printf("%s%s %" G_GUINT64_FORMAT ": %s: ",
+                                     separator, label, largest + 1, title);
     gtk_widget_grab_focus(GTK_WIDGET(editor->view));
     gtk_text_buffer_begin_user_action(editor->buffer);
     gtk_text_buffer_insert(editor->buffer, &here, snippet, -1);
     gtk_text_buffer_place_cursor(editor->buffer, &here);
     gtk_text_buffer_end_user_action(editor->buffer);
-    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(editor->view),
-                                       gtk_text_buffer_get_insert(editor->buffer));
+    cw_reveal_cursor(GTK_TEXT_VIEW(editor->view));
     g_free(snippet);
+}
+
+void
+cw_editor_append(CwEditor *editor)
+{
+    append_with_title(editor, "");
+}
+
+void
+cw_editor_focus_genres(CwEditor *editor)
+{
+    cw_genres_focus(editor->genres);
 }
 
 void
@@ -705,6 +918,8 @@ cw_editor_free(CwEditor *editor)
 {
     if (!editor)
         return;
+    if (editor->hash_key)
+        gtk_text_buffer_end_user_action(editor->buffer);
     g_signal_handlers_disconnect_by_data(editor->view, editor);
     g_signal_handlers_disconnect_by_data(editor->buffer, editor);
     g_signal_handlers_disconnect_by_data(editor->history, editor);
@@ -712,9 +927,12 @@ cw_editor_free(CwEditor *editor)
     gtk_text_tag_table_remove(tags, editor->header_tag);
     gtk_text_tag_table_remove(tags, editor->title_tag);
     g_hash_table_unref(editor->visits);
+    g_hash_table_unref(editor->changed_genres);
+    g_hash_table_unref(editor->genre_index);
     g_hash_table_unref(editor->numbers);
     g_hash_table_unref(editor->opening_ids);
     g_sequence_free(editor->lines);
+    cw_genres_free(editor->genres);
     g_object_unref(editor->history);
     g_object_unref(editor->history_store);
     g_object_unref(editor->sidebar);

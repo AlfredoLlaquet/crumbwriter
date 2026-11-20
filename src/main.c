@@ -58,7 +58,12 @@ recover_once(CwApp *app)
 static void
 activate(GtkApplication *gtk, CwApp *app)
 {
+    gboolean cold_start = !app->recovered;
     recover_once(app);
+    if (cold_start && app->last_document && cw_preference_enabled(app, "reopen-last")) {
+        cw_window_open(app, app->last_document);
+        return;
+    }
     GtkWindow *current = gtk_application_get_active_window(gtk);
     if (current)
         gtk_window_present(current);
@@ -112,5 +117,6 @@ main(int argc, char **argv)
         gtk_source_finalize();
     }
     g_free(app.preferences_path);
+    g_free(app.last_document);
     return result;
 }

@@ -1,4 +1,5 @@
 #include "window.h"
+#include "reveal.h"
 #include "draft.h"
 #include "editor.h"
 #include "preferences.h"
@@ -65,6 +66,19 @@ update_title(CwWindow *w)
     gboolean modified = gtk_text_buffer_get_modified(w->buffer);
     g_autofree gchar *title = g_strdup_printf("%s%s — Crumb Writer", modified ? "• " : "", name);
     gtk_window_set_title(GTK_WINDOW(w->window), title);
+}
+
+static void
+update_undo_actions(CwWindow *w)
+{
+    GtkWidget *focus = gtk_window_get_focus(GTK_WINDOW(w->window));
+    gboolean document = !focus || !GTK_IS_EDITABLE(focus);
+    GActionMap *map = G_ACTION_MAP(w->window);
+    GtkSourceBuffer *buffer = GTK_SOURCE_BUFFER(w->buffer);
+    g_simple_action_set_enabled(G_SIMPLE_ACTION(g_action_map_lookup_action(map, "undo")),
+                                document && gtk_source_buffer_can_undo(buffer));
+    g_simple_action_set_enabled(G_SIMPLE_ACTION(g_action_map_lookup_action(map, "redo")),
+                                document && gtk_source_buffer_can_redo(buffer));
 }
 
 static gchar *
@@ -159,8 +173,18 @@ buffer_changed(GtkTextBuffer *buffer, CwWindow *w)
     (void)buffer;
     if (w->loading)
         return;
+    if (w->file)
+        cw_preferences_remember_document(w->app, cw_file_path(w->file));
     status(w, w->save_failed ? "Manuscript save paused" : "Unsaved changes");
     schedule_save(w);
+}
+
+static void
+cursor_used(GtkTextBuffer *buffer, GtkTextIter *position, GtkTextMark *mark, CwWindow *w)
+{
+    (void)position;
+    if (!w->loading && w->file && mark == gtk_text_buffer_get_insert(buffer))
+        cw_preferences_remember_document(w->app, cw_file_path(w->file));
 }
 
 static void
@@ -171,6 +195,7 @@ save_command(CwWindow *w)
         choose_file(w, TRUE);
         return;
     }
+    cw_preferences_remember_document(w->app, cw_file_path(w->file));
     gboolean close_after = w->close_pending;
     if (save_manuscript(w) && close_after)
         gtk_widget_destroy(w->window);
@@ -278,6 +303,7 @@ save_as(CwWindow *w, const gchar *path)
     cw_file_free(w->file);
     w->file = file;
     w->save_failed = FALSE;
+    cw_preferences_remember_document(w->app, cw_file_path(w->file));
     cw_draft_remove(&w->draft);
     gtk_text_buffer_set_modified(w->buffer, FALSE);
     remember_cursor(w);
@@ -361,7 +387,7 @@ cmd_undo(CwWindow *w)
     GtkSourceBuffer *buffer = GTK_SOURCE_BUFFER(w->buffer);
     if (gtk_source_buffer_can_undo(buffer))
         gtk_source_buffer_undo(buffer);
-    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(w->view), gtk_text_buffer_get_insert(w->buffer));
+    cw_reveal_cursor(GTK_TEXT_VIEW(w->view));
 }
 
 static void
@@ -370,7 +396,7 @@ cmd_redo(CwWindow *w)
     GtkSourceBuffer *buffer = GTK_SOURCE_BUFFER(w->buffer);
     if (gtk_source_buffer_can_redo(buffer))
         gtk_source_buffer_redo(buffer);
-    gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(w->view), gtk_text_buffer_get_insert(w->buffer));
+    cw_reveal_cursor(GTK_TEXT_VIEW(w->view));
 }
 
 static void
@@ -390,6 +416,13 @@ cmd_focus(CwWindow *w)
         gtk_widget_grab_focus(GTK_WIDGET(w->view));
 }
 
+static void
+cmd_genres(CwWindow *w)
+{
+    gtk_widget_show(w->sidebar);
+    cw_editor_focus_genres(w->editor);
+}
+
 typedef struct {
     const gchar *name, *shortcut;
     void (*run)(CwWindow *);
@@ -402,7 +435,8 @@ static const Command commands[] = {
     {"find", "<Primary>f", cmd_find},             {"replace", "<Primary>h", cmd_replace},
     {"find-next", "F3", cmd_next},                {"find-previous", "<Shift>F3", cmd_previous},
     {"go-to", "<Primary>g", cmd_number},          {"settings", "<Primary>comma", cmd_settings},
-    {"history", "F6", cmd_focus},                 {"sidebar", "F9", cmd_sidebar},
+    {"history", "F6", cmd_focus},                 {"genres", "F7", cmd_genres},
+    {"sidebar", "F9", cmd_sidebar},
     {"menu", "F10", cmd_menu},                    {"undo", "<Primary>z", cmd_undo},
     {"redo", "<Primary><Shift>z", cmd_redo}
 };
@@ -457,6 +491,8 @@ window_menu(void)
     g_menu_append(edit, "Go to Crumb…", "win.go-to");
     g_menu_append_section(menu, NULL, G_MENU_MODEL(edit));
     g_autoptr(GMenu) view = g_menu_new();
+    g_menu_append(view, "Focus Visit History", "win.history");
+    g_menu_append(view, "Choose a Genre", "win.genres");
     g_menu_append(view, "Show or Hide Sidebar", "win.sidebar");
     g_menu_append(view, "Settings…", "win.settings");
     g_menu_append(view, "Close Window", "win.close");
@@ -529,6 +565,7 @@ window_destroyed(GtkWidget *window, CwWindow *w)
     if (w->chooser)
         gtk_widget_destroy(w->chooser);
     g_object_set_data(G_OBJECT(window), "cw-window", NULL);
+    g_signal_handlers_disconnect_by_data(window, w);
     g_signal_handlers_disconnect_by_data(w->buffer, w);
     cw_typography_free(w->typography);
     cw_search_free(w->search);
@@ -609,8 +646,14 @@ cw_window_new(CwApp *app)
     cw_editor_load(w->editor, "");
     cw_window_apply_preferences(w);
     update_title(w);
+    update_undo_actions(w);
     g_signal_connect(w->buffer, "changed", G_CALLBACK(buffer_changed), w);
+    g_signal_connect(w->buffer, "mark-set", G_CALLBACK(cursor_used), w);
     g_signal_connect_swapped(w->buffer, "modified-changed", G_CALLBACK(update_title), w);
+    g_signal_connect_swapped(w->buffer, "notify::can-undo", G_CALLBACK(update_undo_actions), w);
+    g_signal_connect_swapped(w->buffer, "notify::can-redo", G_CALLBACK(update_undo_actions), w);
+    g_signal_connect_data(w->window, "set-focus", G_CALLBACK(update_undo_actions), w,
+                          NULL, G_CONNECT_SWAPPED | G_CONNECT_AFTER);
     g_signal_connect(w->window, "delete-event", G_CALLBACK(request_close), w);
     g_signal_connect(w->window, "destroy", G_CALLBACK(window_destroyed), w);
     gtk_widget_show_all(w->window);
@@ -637,6 +680,7 @@ cw_window_open(CwApp *app, const gchar *path)
 {
     CwWindow *existing = path ? find_open(app, path) : NULL;
     if (existing) {
+        cw_preferences_remember_document(app, cw_file_path(existing->file));
         gtk_window_present(GTK_WINDOW(existing->window));
         return;
     }
@@ -660,6 +704,7 @@ cw_window_open(CwApp *app, const gchar *path)
     cw_editor_load_at(w->editor, text, line, column);
     gtk_text_buffer_set_modified(w->buffer, FALSE);
     w->loading = FALSE;
+    cw_preferences_remember_document(app, cw_file_path(file));
     hide_notice(w);
     update_title(w);
     file_tooltip(w);

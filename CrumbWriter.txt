@@ -19,10 +19,17 @@ the desktop account.
     ./crumbwriter
     ./crumbwriter /path/to/Crumbs.txt
 
-The final two commands are alternative launch methods. Pass several filenames
-to open several windows. Opening the same file again presents its existing
-window. The application uses the desktop session bus for single-instance
-activation. Run make check within a graphical session. Run make check-core
+The final two commands are alternative launch methods. Launching without a
+filename reopens the last manuscript by default. A first launch opens a blank
+document. Opening, navigating or editing a named document makes it the last
+one worked on. Closing a background window preserves that choice. An explicit
+filename takes precedence. Pass several filenames to open several windows.
+Opening the same file again presents its existing window. If the remembered
+file has been moved, startup shows its path and the open error, and Ctrl+O can
+select the new location. Settings can disable automatic reopening.
+
+The application uses the desktop session bus for single-instance activation.
+Run make check within a graphical session. Run make check-core
 without a display for the parser and file tests. make install installs the
 executable, this document and the applications-menu entry under /usr/local.
 The Makefile accepts PREFIX and DESTDIR for user or staged installations.
@@ -71,6 +78,27 @@ Crumb and numbering starts at 1. If only a work title ending in // is present,
 the first header follows that delimiter. The insertion point follows the final
 space in "Crumb N: : ". The entire insertion is one undoable edit. An existing
 final newline stays after the new crumb.
+
+Typing # at the end of a genre name in the title continues that genre's
+sequence. The editor searches earlier crumbs backward for a complete title of
+the form "Genre #N", including genre components inside longer titles. The
+nearest earlier match supplies N+1. A later occurrence
+in the manuscript cannot influence an earlier title. Matching ignores case
+and preserves the spelling just typed. For example, after "Haiku #173",
+typing "Haiku #" supplies 174. With no prior match, the typed # remains.
+The insertion participates in one undo action. A # in the body remains literal.
+
+The side panel lists the manuscript's numbered genres alphabetically and shows
+the last number used for each. A single click appends the next crumb under the
+selected genre. F7 focuses this list. Use the arrow keys to select a genre and
+Enter to append. If the file ends at Crumb 300 and the most recent Portrait is
+Portrait #42, activating Portrait creates "Crumb 301: Portrait #43: " and moves
+the caret to the empty body. The sidebar, history, and session count update
+together. A single Undo removes the new crumb and restores the previous number.
+Multiple genres in one title contribute independently. For example,
+"Void-jolt #12, Negation #17, Onslaught #45" supplies three entries.
+"Fingers (Haiku #157)" contributes to Haiku and "This One Is Very Good, Report
+#9" contributes to Report. These interpretations leave the full title intact.
 
 Tab and Shift+Tab move through starts of headers, titles and bodies, including
 empty fields. Ctrl+Up and Ctrl+Down visit neighboring recognizable crumbs.
@@ -167,7 +195,8 @@ Adwaita variants. The default writing font is proportional Serif at 14 pt.
 The font family and point size affect the text view without modifying any
 manuscript byte. Toolbar and sidebar keep their desktop UI font.
 
-Settings, search history and the most recent cursor coordinates are saved in
+Settings, search history, the last document's local file URI, and the most
+recent cursor coordinates are saved in
 $XDG_CONFIG_HOME/crumbwriter/settings.ini or ~/.config/crumbwriter/settings.ini.
 Positions are keyed by a digest of the resolved file path. Each open document
 has its own buffer, undo stack, visit history, and starting set of crumb numbers.
@@ -185,10 +214,14 @@ src/preferences.c  Configuration, font CSS, theme overrides, cursor records,
 src/crumb.c        Field boundaries, header recognition and official counting.
                    Consumes one UTF-8 line and its first-line flag.
 src/editor.c       Per-line parse cache, header-number lookup, text tags,
-                   sidebar, navigation and append. The ordered line sequence
-                   and numeric index are rebuilt only where edits touch them.
+                   sidebar, navigation, append and genre-number completion.
+                   The ordered line sequence and numeric index are rebuilt
+                   only where edits touch them.
 src/search.c       Search panel, GtkSourceSearchContext, option recall,
                    asynchronous search requests, numeric jumps and replace.
+src/genres.c       Genre-title interpretation and the alphabetized sidebar list.
+src/reveal.c       Keeps long-distance cursor jumps visible while GTK measures
+                   thousands of proportional, word-wrapped paragraphs.
 src/typography.c   Per-view keyboard context and pending punctuation only.
                    Uses GTK's input method and buffer-level undo grouping.
 src/storage.c      Validates and decodes disk bytes, retains newline styles,

@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "search.h"
+#include <string.h>
 
 typedef struct {
     GtkWidget *window;
@@ -105,9 +106,13 @@ key(Fixture *f, guint keyval, GdkModifierType state)
     }
     GdkSeat *seat = gdk_display_get_default_seat(display);
     gdk_event_set_device(event, gdk_seat_get_keyboard(seat));
-    /* Exercise the same key-press signal as the editor's GTK input path. */
-    gboolean handled = FALSE;
-    g_signal_emit_by_name(f->view, "key-press-event", event, &handled);
+    gunichar c = gdk_keyval_to_unicode(keyval);
+    if (c && g_unichar_isprint(c)) {
+        gchar utf8[7];
+        event->key.length = g_unichar_to_utf8(c, utf8);
+        event->key.string = g_strndup(utf8, event->key.length);
+    }
+    gboolean handled = gtk_widget_event(GTK_WIDGET(f->view), event);
     gdk_event_free(event);
     g_assert_true(handled);
     settle();
@@ -234,6 +239,154 @@ assert_sidebar(Fixture *f, const gchar *name, const gchar *value)
     g_assert_cmpstr(gtk_label_get_text(GTK_LABEL(label)), ==, value);
 }
 
+/* Choose the level that actually produces # in this keyboard layout. */
+static void
+type_hash(Fixture *f)
+{
+    GdkKeymap *map = gdk_keymap_get_for_display(gtk_widget_get_display(GTK_WIDGET(f->view)));
+    GdkKeymapKey *entries = NULL;
+    gint count;
+    g_assert_true(gdk_keymap_get_entries_for_keyval(map, GDK_KEY_numbersign, &entries, &count));
+    const GdkModifierType layers[] = { 0, GDK_SHIFT_MASK, GDK_MOD5_MASK,
+                                      GDK_MOD5_MASK | GDK_SHIFT_MASK };
+    for (guint i = 0; i < G_N_ELEMENTS(layers); i++) {
+        guint keyval;
+        if (gdk_keymap_translate_keyboard_state(map, entries[0].keycode, layers[i],
+                                                entries[0].group, &keyval, NULL, NULL, NULL) &&
+            keyval == GDK_KEY_numbersign) {
+            g_free(entries);
+            key(f, keyval, layers[i]);
+            return;
+        }
+    }
+    g_free(entries);
+    g_assert_not_reached();
+}
+
+static void
+complete_genre_number(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *old = "Book//Leaf 1: Décors mécaniques #43: x.\n"
+                       "Leaf 2: de\314\201cors mécaniques #7: y.\n";
+    const gchar *prefix = "Leaf 3: DÉCORS  MÉCANIQUES   ";
+    const gchar *rest = ": \nLeaf 4: Décors mécaniques #99: ";
+    g_autofree gchar *original = g_strconcat(old, prefix, rest, NULL);
+    g_autofree gchar *completed = g_strconcat(old, prefix, "#8", rest, NULL);
+    cw_editor_load_at(f->editor, original, 2, g_utf8_strlen(prefix, -1));
+    type_hash(f);
+    assert_text(f, completed);
+    assert_cursor(f, 2, "Leaf 3: DÉCORS  MÉCANIQUES   #8");
+    gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, original);
+    gtk_source_buffer_redo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, completed);
+}
+
+static void
+literal_genre_hash(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *drafts[] = {
+        "Crumb 1: Haiku #3: /\nCrumb 2: Haiku |55: x",
+        "Crumb 1: Haiku #3: /\nCrumb 2: Haiku | here: x",
+        "Crumb 1: Haiku #3: /\nCrumb 2: Haiku|: x",
+        "Crumb 1: Haiku #3: /\nCrumb 2: T: Haiku |",
+        "Crumb 1: Haiku #3: /\nCrumb 2: Other |: x",
+        "Crumb 1: Haiku #3: /\nCrumb 2: Overflow #18446744073709551616: /\nCrumb 3: Overflow |: ",
+        "Crumb 1: Haiku |: x\nCrumb 2: Haiku #3: /",
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(drafts); i++) {
+        gchar **parts = g_strsplit(drafts[i], "|", 2);
+        g_autofree gchar *original = g_strconcat(parts[0], parts[1], NULL);
+        g_autofree gchar *literal = g_strconcat(parts[0], "#", parts[1], NULL);
+        cw_editor_load(f->editor, original);
+        GtkTextIter it;
+        gtk_text_buffer_get_iter_at_offset(f->buffer, &it, g_utf8_strlen(parts[0], -1));
+        gtk_text_buffer_place_cursor(f->buffer, &it);
+        type_hash(f);
+        assert_text(f, literal);
+        g_strfreev(parts);
+    }
+
+    const gchar *draft = "Crumb 1: Haiku #3: /\nCrumb 2: Haiku ";
+    cw_editor_load_at(f->editor, draft, -1, 0);
+    gtk_text_buffer_insert_at_cursor(f->buffer, "#", 1);
+    assert_text(f, "Crumb 1: Haiku #3: /\nCrumb 2: Haiku #");
+    cw_editor_load_at(f->editor, draft, -1, 0);
+    GtkClipboard *clipboard = gtk_widget_get_clipboard(GTK_WIDGET(f->view), GDK_SELECTION_CLIPBOARD);
+    gtk_clipboard_set_text(clipboard, "#", 1);
+    g_signal_emit_by_name(f->view, "paste-clipboard");
+    const gint64 deadline = g_get_monotonic_time() + 3 * G_TIME_SPAN_SECOND;
+    while (gtk_text_buffer_get_char_count(f->buffer) == (gint)strlen(draft) &&
+           g_get_monotonic_time() < deadline) {
+        settle();
+        g_usleep(1000);
+    }
+    assert_text(f, "Crumb 1: Haiku #3: /\nCrumb 2: Haiku #");
+}
+
+static void
+append_listed_genre(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *original = "Book//Folio 5: Sketch #70: x\n"
+                            "Folio 9: Chord #11: y\nFolio 10: sKeTcH #3: z\n";
+    const gchar *next = "Folio 11: sKeTcH #4: ";
+    g_autofree gchar *expected = g_strconcat(original, next, "\n", NULL);
+    cw_editor_load_at(f->editor, original, 0, 0);
+    GtkTreeView *genres = GTK_TREE_VIEW(find_named_widget(cw_editor_sidebar(f->editor), "crumb-genres"));
+    g_assert_true(GTK_IS_TREE_VIEW(genres));
+    cw_editor_focus_genres(f->editor);
+    g_assert_true(gtk_window_get_focus(GTK_WINDOW(f->window)) == GTK_WIDGET(genres));
+    GtkTreePath *path = gtk_tree_path_new_from_indices(1, -1); /* Chord, then Sketch */
+    gtk_tree_view_row_activated(genres, path, gtk_tree_view_get_column(genres, 0));
+    assert_text(f, expected);
+    assert_cursor(f, 3, next);
+    assert_sidebar(f, "session-crumbs", "1");
+    gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, original);
+
+    /* Removing the latest occurrence rolls the alphabetized entry back to #70. */
+    GtkTextIter start, end;
+    gtk_text_buffer_get_iter_at_line(f->buffer, &start, 2);
+    gtk_text_buffer_get_end_iter(f->buffer, &end);
+    gtk_text_buffer_delete(f->buffer, &start, &end);
+    gtk_tree_view_row_activated(genres, path, gtk_tree_view_get_column(genres, 0));
+    assert_cursor(f, 2, "Folio 10: Sketch #71: ");
+    gtk_tree_path_free(path);
+}
+
+static void
+compound_genres(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *draft =
+        "Book//Crumb 1: Haiku #7, Haiku #5, Echo #3: a\n"
+        "Crumb 2: The Headline, Report #4: x\n"
+        "Crumb 3: Haiku #38, Fingers (HAIKU ), Echo #24: a\n"
+        "Crumb 4: Echo #31, Report , Haiku #77: b\n"
+        "Crumb 5: Report #49, Echo #90: c";
+    cw_editor_load_at(f->editor, draft, 2, strlen("Crumb 3: Haiku #38, Fingers (HAIKU "));
+    type_hash(f);
+    assert_cursor(f, 2, "Crumb 3: Haiku #38, Fingers (HAIKU #6");
+    assert_sidebar(f, "crumb-title", "Haiku #38, Fingers (HAIKU #6), Echo #24");
+
+    GtkTextIter it;
+    gtk_text_buffer_get_iter_at_line_offset(f->buffer, &it, 3, strlen("Crumb 4: Echo #31, Report "));
+    gtk_text_buffer_place_cursor(f->buffer, &it);
+    type_hash(f);
+    assert_cursor(f, 3, "Crumb 4: Echo #31, Report #5");
+    assert_sidebar(f, "crumb-title", "Echo #31, Report #5, Haiku #77");
+
+    GtkTreeView *genres = GTK_TREE_VIEW(find_named_widget(cw_editor_sidebar(f->editor), "crumb-genres"));
+    g_assert_cmpint(gtk_tree_model_iter_n_children(gtk_tree_view_get_model(genres), NULL), ==, 3);
+    GtkTreePath *path = gtk_tree_path_new_from_indices(2, -1); /* Echo, Haiku, Report. */
+    gtk_tree_view_row_activated(genres, path, gtk_tree_view_get_column(genres, 0));
+    assert_cursor(f, 5, "Crumb 6: Report #50: ");
+    gtk_tree_path_free(path);
+}
+
 static void
 sidebar_and_history(Fixture *f, gconstpointer data)
 {
@@ -306,6 +459,45 @@ search_cycle_and_number(Fixture *f, gconstpointer data)
 }
 
 static void
+assert_caret_in_view(Fixture *f, gint line)
+{
+    settle();
+    GtkTextView *view = GTK_TEXT_VIEW(f->view);
+    GdkRectangle visible, caret;
+    GtkTextIter position = cursor(f);
+    g_assert_cmpint(gtk_text_iter_get_line(&position), ==, line);
+    gtk_text_view_get_visible_rect(view, &visible);
+    gtk_text_view_get_iter_location(view, &position, &caret);
+    g_assert_cmpint(caret.y, >=, visible.y);
+    g_assert_cmpint(caret.y + caret.height, <=, visible.y + visible.height);
+}
+
+static void
+large_document_jumps(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    GString *text = g_string_new(NULL);
+    for (gint i = 1; i <= 1800; i++) {
+        g_string_append_printf(text, "Crumb %d: In the garden: ", i);
+        for (gint j = 0; j < 12; j++)
+            g_string_append(text, "The rain falls through the leaves. ");
+        g_string_append_c(text, '\n');
+    }
+    cw_editor_load_at(f->editor, text->str, 1450, 0);
+    g_string_free(text, TRUE);
+    assert_caret_in_view(f, 1450);
+    cw_search_number(f->search);
+    GtkEntry *number = GTK_ENTRY(control(f, "cw-crumb-number"));
+    gtk_entry_set_text(number, "2");
+    g_signal_emit_by_name(number, "activate");
+    assert_caret_in_view(f, 1);
+    cw_search_number(f->search);
+    gtk_entry_set_text(number, "1600");
+    g_signal_emit_by_name(number, "activate");
+    assert_caret_in_view(f, 1599);
+}
+
+static void
 regex_replace_and_undo(Fixture *f, gconstpointer data)
 {
     (void)data;
@@ -334,11 +526,16 @@ int
 main(int argc, char **argv)
 {
     gtk_test_init(&argc, &argv, NULL);
+    g_test_add("/editor/genres/typed-number", Fixture, NULL, setup, complete_genre_number, teardown);
+    g_test_add("/editor/genres/literal-hash", Fixture, NULL, setup, literal_genre_hash, teardown);
+    g_test_add("/editor/genres/append-from-list", Fixture, NULL, setup, append_listed_genre, teardown);
+    g_test_add("/editor/genres/compound-titles", Fixture, NULL, setup, compound_genres, teardown);
     g_test_add("/editor/append/final-lf", Fixture, "\n", setup, append_and_undo, teardown);
     g_test_add("/editor/append/no-final-lf", Fixture, "", setup, append_and_undo, teardown);
     g_test_add("/editor/navigation/fields", Fixture, NULL, setup, field_and_crumb_navigation, teardown);
     g_test_add("/editor/navigation/wrapped-lines", Fixture, NULL, setup, visual_line_navigation, teardown);
     g_test_add("/editor/sidebar/recency-and-edits", Fixture, NULL, setup, sidebar_and_history, teardown);
+    g_test_add("/editor/navigation/large-document-jumps", Fixture, NULL, setup_search, large_document_jumps, teardown);
     g_test_add("/search/cycle-and-number", Fixture, NULL, setup_search, search_cycle_and_number, teardown);
     g_test_add("/search/regex-replace-and-undo", Fixture, NULL, setup_search, regex_replace_and_undo, teardown);
     return g_test_run();

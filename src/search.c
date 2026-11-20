@@ -1,4 +1,5 @@
 #include "search.h"
+#include "reveal.h"
 #include "crumb.h"
 
 enum { TEXT_MODE, REGEX_MODE, NUMBER_MODE };
@@ -357,8 +358,7 @@ go_to_number(CwSearch *s)
         return;
     }
     gtk_text_buffer_place_cursor(s->buffer, &match);
-    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(s->view), gtk_text_buffer_get_insert(s->buffer),
-                                 0.12, FALSE, 0, 0);
+    cw_reveal_cursor(GTK_TEXT_VIEW(s->view));
     cw_search_hide(s);
 }
 
@@ -380,8 +380,7 @@ present_match(CwSearch *s, gboolean backwards, gboolean found, gboolean wrapped,
         return;
     }
     gtk_text_buffer_select_range(s->buffer, start, end);
-    gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(s->view), gtk_text_buffer_get_insert(s->buffer),
-                                 0.12, FALSE, 0, 0);
+    cw_reveal_cursor(GTK_TEXT_VIEW(s->view));
     s->wrapped = wrapped;
     show_status(s);
 }
