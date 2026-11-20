@@ -542,3 +542,135 @@ the rendered writing area while focus moves through the sidebar and search,
 to a neighboring application, and between two open manuscripts.
 The Wayland test targets the X11 output ID reported by Weston and waits for
 native GTK keyboard focus before delivering input.
+
+Responsiveness and keyboard review of version 1.4
+-------------------------------------------------
+The following proposals use release f89d145 as their baseline. Measurements
+used a disposable 3,371-crumb, 1,024,921-byte manuscript on Linux/X11.
+The timings describe that machine. The reference desktop for adoption is
+FreeBSD 15 with Plasma 6 and Krohnkite.
+
+Window resizing and writing width
+
+Xfwm tiled the window from 1050 x 680 to 672 x 990. The writing pane narrowed
+from 849 to 471 pixels. Two trials drew the first manuscript frame in 25-31 ms.
+After that frame, GTK/Pango received layout requests for all 3,371 crumbs.
+The process used 1.83-1.90 CPU seconds for the transition. In two 1.20-second
+right-edge drags, each drag consumed 1.16 CPU seconds with another 0.96-1.03
+after release. Bottom-edge drags consumed about 0.05 each during the drag.
+While typing in the last crumb during repeated window resizes, the slowest
+key-to-manuscript-draw sample was 22 ms for width and 45 ms for width plus
+height. These are software draw events. Display presentation is a separate
+measurement.
+
+Offer a maximum writing-column width, in font-relative units, alongside the
+current fluid width. Center the actual text widget in the available space.
+Once the column reaches its preferred width, spare space goes outside the
+widget. Narrower tiles still use every available pixel and rewrap normally.
+A temporary fixed 440-pixel column fit both tested tiles. The same two tilings
+drew in 20-21 ms, reached only three distinct crumbs for layout, and consumed
+0.01-0.02 CPU seconds. Test a narrower-than-preferred tile as a separate case.
+
+Replacement text widgets for fluid widths
+
+Two disposable prototypes used 14-point proportional serif type, italic
+headers, bold titles and space for the sidebar. The following are text-widget
+measurements. Both candidates still require integration with the editing
+commands, input methods, search, sidebar and recovery behavior.
+
+Scintilla 5.5.2 has a C-callable GTK widget that can share the current window.
+With the whole-document layout cache warm, resizing a live X11 window to the
+same tile geometry and typing ten characters used 0.02-0.03 CPU seconds.
+The test requested the window size directly and observed the last crumb's
+body. The slowest key reached a paint notification in 7.3 ms. The whole
+cache used about 11 MiB more resident memory than the page cache. On a
+synthetic 25,092-crumb file, the last body first appeared in 223-296 ms
+from program entry. The initial cache settled at about 6.2 seconds and
+resident memory reached 169 MiB. The warm resize with typing used 0.14-0.17
+CPU seconds. The standalone FreeBSD port was removed in April 2026.
+A supported build therefore needs a packaging plan, such as a pinned bundled
+version. Check that search preserves the existing regex dialect and convert
+the parser's character positions to Scintilla's UTF-8 byte positions.
+
+Qt 6.8.2 QPlainTextEdit uses a paragraph layout that fits the file's physical
+lines. With the fluid text column and current-crumb highlight, two actual
+Xfwm half-tiles drew in 8-16 ms and consumed 0.04-0.05 CPU seconds including
+ten typed characters apiece. All 20 keys reached a completed manuscript draw
+within 2.9 ms of external injection. In the 25,092-crumb sample, jumping from
+EOF to the previously offscreen crumb 12,547 just after tiling centered and
+drew it in 4.4-5.5 ms. This was direct lookup by paragraph. A fresh Qt
+process opened the large sample at the styled final body in 493-529 ms from
+external launch, using 55 MiB resident after two seconds. Additional process
+CPU after the first paint was below 10 ms during that interval. The startup
+timer included process creation and loading. Both prototypes used warm OS
+file caches. A Qt front end requires C++ UI code, UTF-16 position conversion
+and new editor/search UI integration. The C parser, word counts, spacing,
+storage and drafts can serve either candidate. FreeBSD carries Qt 6 in
+devel/qt6-base.
+
+For a fluid column, Scintilla is the candidate that keeps the GTK window
+and a C application. Qt merits the first FreeBSD trial if a C++ front end
+is acceptable, given its memory and initial layout costs on the larger file.
+Verify open at EOF, repeated window-edge drags, Krohnkite retiling, typing
+during rewrap, full-document search and jumps to previously unseen crumbs
+on FreeBSD. Record peak memory, first manuscript draw, key-to-draw latency
+and CPU use after the drag. A proposed target is a 95th-percentile key delay
+under 50 ms during resize at both manuscript sizes. Exercise accurate word
+counts, visual-line movement, virtual EOF, centering, composed characters
+and emoji, punctuation, selection, grouped undo and exact saved bytes.
+
+Toolkit references
+https://www.scintilla.org/ScintillaDoc.html
+https://lists.freebsd.org/archives/dev-commits-ports-all/2026-April/197562.html
+https://doc.qt.io/qt-6/qplaintextedit.html
+https://cgit.freebsd.org/ports/tree/devel/qt6-base/Makefile
+
+Editing, search and live saving
+
+A body keystroke took about 0.12 ms of synchronous editor work. Pasting 24
+ordinary-length crumbs with 230 triple-space gaps took 20.9 ms and triggered
+255 parses. The clean equivalent took 2.16 ms and 25 parses. In
+editor-spacing.c, normalize a bulk insertion in one pass and reconcile its
+edges with the existing text. In editor.c, refresh each affected crumb once.
+Preserve the provisional separator at the caret and single-step undo.
+
+Inserting a newline after crumb 1 issued 3,372 formatting-tag applications
+and took 13 ms. Inserting it after the last crumb issued two and took under
+0.1 ms. Earlier insertions really do change later line-number warnings. For
+files where this delays input, update visible warnings first, and refresh
+offscreen warnings in small batches that an intervening edit can invalidate.
+
+Go to Crumb Number reparsed 3,371 headers for a first-to-last jump (6.5 ms).
+Expose the existing duplicate-aware number index in editor.c to search.c.
+Choose the matching physical position using the search origin, direction and
+wrap setting. Plain-text preview already has cancellable asynchronous search.
+
+Live saving currently takes its snapshot and writes it on the UI thread. Over
+30 warm, changed saves, snapshot plus verified atomic commit took a median of
+10.4 ms on the sample and 77.9 ms on a synthetic 25,092-crumb file (7.68 MB).
+The latter reached 94.4 ms at the 95th percentile. Capture the snapshot on
+the UI thread. Give each document one background writer and tag each
+immutable snapshot with its edit revision.
+Combine pending saves, keep newer edits dirty, and flush the latest revision
+on close. Retain byte comparison for external changes, same-directory
+backup, atomic replacement, recovery drafts and UTF-8 output without a BOM.
+
+Keyboard changes in priority order
+
+1. Scope the Ctrl+Y accelerator to manuscript focus. With the caret in the
+   Find field and a live match selected, Ctrl+Y deleted the matched crumb in
+   a disposable file. Keep Delete Crumb available when editing with Find
+   still visible. Exercise Find, Replace and both sidebar lists in the test.
+2. Track visited positions with buffer marks. With adjacent headers both
+   numbered 7, choosing Beta from history opened Alpha, the first number 7.
+   Preserve the exact caret after edits. Add Back and Forward for deliberate
+   jumps, with manuscript-only F2 and Shift+F2 as candidate bindings. Record
+   a single return position for a search, even as its live preview changes.
+   A Follow Crumb Reference action could use the same return path for a
+   reference such as "see crumb 200".
+3. Bind the existing Go to Crumb Number action to Ctrl+L in the manuscript.
+   Add F4 and Shift+F4 to move through header and genre numbering warnings,
+   center the offending digits, and show the expected and actual numbers.
+4. Document F6 and F7 type-ahead in the shortcut window. F7, then "onsl",
+   then Enter already creates the next Onslaught and focuses its body. Add
+   word-fragment matching so "dream" can also find "Metal Dream".
