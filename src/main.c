@@ -19,7 +19,7 @@ install_styles(void)
         ".writer-footer { padding: 5px 12px; border-top: 1px solid alpha(currentColor,.16); }"
         ".writer-notice { padding: 6px 10px; background-color: alpha(@theme_selected_bg_color,.12); }"
         "textview.inactive-manuscript, textview.inactive-manuscript > text {"
-        " background-image: none; background-color: #f2f2f2; color: #303030; }"
+        " background-image: none; background-color: #e5e5e5; color: #303030; }"
         ".section-label { font-weight: bold; }"
         ".crumb-number { font-size: 1.6em; font-weight: bold; }"
         ".metric-number { font-size: 1.2em; font-weight: bold; }"

@@ -14,7 +14,7 @@ import time
 from PIL import ImageGrab
 
 
-INACTIVE_PAPER = (242, 242, 242)
+INACTIVE_PAPER = (229, 229, 229)
 
 
 def output(*args):
