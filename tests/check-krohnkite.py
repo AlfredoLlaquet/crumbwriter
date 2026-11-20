@@ -108,9 +108,9 @@ def session(app, run):
                 '--method', 'org.kde.kwin.Scripting.isScriptLoaded', 'krohnkite'))
 
             first, second = run/'Alpha.txt', run/'Beta.txt'
-            middle = 'Crumb 2: Middle: Copy the trailing spaces.  '
+            middle = 'Crumb 2: Middle: Copy this crumb.'
             original = f'Book//Crumb 1: First: An editor window.\n{middle}\nCrumb 3: Last: The end.\n'
-            first.write_text(original)
+            first.write_text(original.replace(middle, 'Crumb 2:\tMiddle: Copy \t this crumb.  '))
             second.write_text('Crumb 1: Second: Another editor window.\n')
             screen = tuple(map(int, output('xdotool', 'getdisplaygeometry').split()))
             launch(app, first)
@@ -181,6 +181,17 @@ def session(app, run):
                 key(alpha, chord)
                 key(alpha, 'ctrl+s')
                 assert first.read_bytes() == contents.encode(), f'wrong saved bytes after {chord}'
+
+            key(alpha, 'ctrl+End')
+            subprocess.run(['xclip', '-selection', 'clipboard', '-in'], input=b'  Pasted\tclean\t \twords.  ',
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=5)
+            key(alpha, 'ctrl+v')
+            key(alpha, 'ctrl+q')
+            copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
+            pasted = middle + ' Pasted clean words.'
+            assert copied == pasted.encode(), f'clipboard after paste: {copied!r}'
+            key(alpha, 'ctrl+s')
+            assert first.read_bytes() == original.replace(middle, pasted).encode()
 
             subprocess.run([app, second], check=True, timeout=8)
             beta = wait_for('additional document', lambda: windows().get('Beta.txt — Crumb Writer'))

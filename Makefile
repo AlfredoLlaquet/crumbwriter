@@ -9,11 +9,13 @@ CORE_CFLAGS != $(PKG_CONFIG) --cflags gio-2.0
 CORE_LIBS != $(PKG_CONFIG) --libs gio-2.0
 ICON_FILES = data/icons/*/apps/org.thecrumbs.CrumbWriter.png
 FLAGS = -std=c11 -Wall -Wextra -Wpedantic -Isrc $(CPPFLAGS) $(CFLAGS)
-EDITOR_OBJECTS = src/editor.o src/search.o src/crumb.o src/genres.o src/reveal.o src/virtual.o
+SEARCH_OBJECTS = src/search.o src/crumb.o src/reveal.o src/editor-spacing.o src/spacing.o
+EDITOR_OBJECTS = src/editor.o src/genres.o src/virtual.o $(SEARCH_OBJECTS)
 OBJECTS = src/main.o src/window.o src/preferences.o src/shortcuts.o src/typography.o \
           src/storage.o src/draft.o $(EDITOR_OBJECTS) data/crumbwriter-resources.o
 HEADERS = src/app.h src/window.h src/preferences.h src/editor.h src/search.h \
-          src/shortcuts.h src/typography.h src/crumb.h src/storage.h src/draft.h src/genres.h src/reveal.h src/virtual.h
+          src/shortcuts.h src/typography.h src/crumb.h src/storage.h src/draft.h src/genres.h \
+          src/reveal.h src/virtual.h src/editor-spacing.h src/spacing.h
 GUI_TESTS = tests/test-editor tests/test-typography tests/test-genres tests/test-numbering \
             tests/test-search-controls tests/test-shortcuts tests/test-virtual tests/test-viewport
 
@@ -36,14 +38,14 @@ data/crumbwriter-resources.o: data/crumbwriter-resources.c
 tests/test-crumb: tests/test-crumb.c src/crumb.c src/crumb.h
 	$(CC) $(FLAGS) $(CORE_CFLAGS) $(LDFLAGS) -o $@ tests/test-crumb.c src/crumb.c $(CORE_LIBS) $(LDLIBS)
 
-tests/test-storage: tests/test-storage.c src/storage.c src/storage.h
-	$(CC) $(FLAGS) $(CORE_CFLAGS) $(LDFLAGS) -o $@ tests/test-storage.c src/storage.c $(CORE_LIBS) $(LDLIBS)
+tests/test-storage: tests/test-storage.c src/storage.c src/storage.h src/spacing.c src/spacing.h
+	$(CC) $(FLAGS) $(CORE_CFLAGS) $(LDFLAGS) -o $@ tests/test-storage.c src/storage.c src/spacing.c $(CORE_LIBS) $(LDLIBS)
 
 tests/test-editor: tests/test-editor.c $(EDITOR_OBJECTS)
 	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-editor.c $(EDITOR_OBJECTS) $(GTK_LIBS) $(LDLIBS)
 
-tests/test-typography: tests/test-typography.c src/typography.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-typography.c src/typography.o $(GTK_LIBS) $(LDLIBS)
+tests/test-typography: tests/test-typography.c src/typography.o src/editor-spacing.o src/spacing.o
+	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-typography.c src/typography.o src/editor-spacing.o src/spacing.o $(GTK_LIBS) $(LDLIBS)
 
 tests/test-genres: tests/test-genres.c src/genres.o
 	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-genres.c src/genres.o $(GTK_LIBS) $(LDLIBS)
@@ -51,8 +53,8 @@ tests/test-genres: tests/test-genres.c src/genres.o
 tests/test-numbering: tests/test-numbering.c $(EDITOR_OBJECTS)
 	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-numbering.c $(EDITOR_OBJECTS) $(GTK_LIBS) $(LDLIBS)
 
-tests/test-search-controls: tests/test-search-controls.c src/search.o src/crumb.o src/reveal.o
-	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-search-controls.c src/search.o src/crumb.o src/reveal.o $(GTK_LIBS) $(LDLIBS)
+tests/test-search-controls: tests/test-search-controls.c $(SEARCH_OBJECTS)
+	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-search-controls.c $(SEARCH_OBJECTS) $(GTK_LIBS) $(LDLIBS)
 
 tests/test-shortcuts: tests/test-shortcuts.c src/shortcuts.o
 	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-shortcuts.c src/shortcuts.o $(GTK_LIBS) $(LDLIBS)

@@ -77,7 +77,7 @@ backup_and_format(Fixture *f, gconstpointer data)
     CwFile *first = cw_file_open(f->path, TRUE, &one, &error);
     g_assert_no_error(error);
     g_assert_nonnull(first);
-    g_assert_cmpstr(one, ==, "Crumb 1: Té: Body\nCrumb 2: : ");
+    g_assert_cmpstr(one, ==, "Crumb 1: Té: Body\nCrumb 2: :");
     CwFile *second = cw_file_open(f->path, TRUE, &two, &error);
     g_assert_no_error(error);
     g_assert_nonnull(second);
@@ -168,6 +168,9 @@ new_and_mixed(Fixture *f, gconstpointer data)
     g_assert_true(cw_file_save(fresh, "a\r\nb", &error));
     g_assert_no_error(error);
     expect_bytes(f->path, "a\nb", 3);
+    g_assert_true(cw_file_save(fresh, "a\r \nb", &error));
+    g_assert_no_error(error);
+    expect_bytes(f->path, "a\n\nb", 4);
     cw_file_free(fresh);
 
     const gchar mixed[] = "alpha\r\nbeta\rgamma\ndelta";
@@ -198,14 +201,64 @@ new_and_mixed(Fixture *f, gconstpointer data)
 }
 
 static void
+manuscript_spacing(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar original[] = "\357\273\277Llibre//  Fulla 1: Vers\t\t#1:  Té\tverd /  cafè\u00a0 \t\r\n"
+                             "Fulla 2:\t : dos\u202f  \r\t  \nFulla 4: : fi\t";
+    const gchar *first = "Llibre// Fulla 1: Vers #1: Té verd / cafè\u00a0";
+    const gchar *second = "Fulla 2: : dos\u202f";
+    const gchar *last = "Fulla 4: : fi";
+    g_autofree gchar *logical = g_strjoin("\n", first, second, "", last, NULL);
+    g_autofree gchar *disk = g_strconcat(first, "\r\n", second, "\r\r\n", last, NULL);
+    put_bytes(f->path, original, sizeof original - 1);
+
+    g_autofree gchar *text = NULL;
+    GError *error = NULL;
+    CwFile *file = cw_file_open(f->path, TRUE, &text, &error);
+    g_assert_no_error(error);
+    g_assert_cmpstr(text, ==, logical);
+    expect_bytes(f->path, original, sizeof original - 1);
+    expect_bytes(cw_file_backup_path(file), original, sizeof original - 1);
+
+    /* The new line adopts CRLF. The original CR survives separately from the
+     * now-empty line's terminator, so reopening still yields four lines. */
+    g_autofree gchar *pasted = g_strconcat("Draft \t  line \t\r\n", text, " \t", NULL);
+    g_autofree gchar *expected = g_strconcat("Draft line\r\n", disk, NULL);
+    g_autofree gchar *path = g_build_filename(f->directory, "copy.txt", NULL);
+    CwFile *copy = cw_file_save_as_like(file, path, pasted, FALSE, &error);
+    g_assert_no_error(error);
+    expect_bytes(path, expected, strlen(expected));
+    expect_bytes(f->path, original, sizeof original - 1);
+    cw_file_free(copy);
+
+    g_assert_true(cw_file_save(file, text, &error));
+    g_assert_no_error(error);
+    expect_bytes(f->path, disk, strlen(disk));
+    expect_bytes(cw_file_backup_path(file), original, sizeof original - 1);
+    cw_file_free(file);
+    g_clear_pointer(&text, g_free);
+    file = cw_file_open(f->path, FALSE, &text, &error);
+    g_assert_no_error(error);
+    g_assert_cmpstr(text, ==, logical);
+    g_assert_true(cw_file_save(file, text, &error));
+    g_assert_no_error(error);
+    expect_bytes(f->path, disk, strlen(disk));
+    cw_file_free(file);
+}
+
+static void
 external_edits(Fixture *f, gconstpointer data)
 {
     (void)data;
-    put_bytes(f->path, "Earl", 4);
+    const gchar original[] = "Earl  Grey";
+    const gchar external[] = "Earl\t Grey";
+    put_bytes(f->path, original, sizeof original - 1);
     g_autofree gchar *text = NULL;
     GError *error = NULL;
     CwFile *file = cw_file_open(f->path, FALSE, &text, &error);
     g_assert_no_error(error);
+    g_assert_cmpstr(text, ==, "Earl Grey");
 
     gint fd = open(f->path, O_RDWR);
     g_assert_cmpint(fd, >=, 0);
@@ -213,19 +266,20 @@ external_edits(Fixture *f, gconstpointer data)
     g_assert_false(cw_file_save(file, "Acorn", &error));
     g_assert_nonnull(error);
     g_clear_error(&error);
-    expect_bytes(f->path, "Earl", 4);
+    expect_bytes(f->path, original, sizeof original - 1);
 
     struct stat st;
     g_assert_cmpint(fstat(fd, &st), ==, 0);
-    g_assert_cmpint(write(fd, "Gold", 4), ==, 4);
-    /* Restore the original mtime to catch size/mtime-only conflict detection. */
+    g_assert_cmpint(write(fd, external, sizeof external - 1), ==, sizeof external - 1);
+    /* Same length, timestamp, inode and normalized text. Only the raw disk
+     * snapshot distinguishes this external edit from the original. */
     struct timespec times[] = { st.st_atim, st.st_mtim };
     g_assert_cmpint(futimens(fd, times), ==, 0);
     g_assert_cmpint(close(fd), ==, 0);
     g_assert_false(cw_file_save(file, "Acorn", &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG);
     g_clear_error(&error);
-    expect_bytes(f->path, "Gold", 4);
+    expect_bytes(f->path, external, sizeof external - 1);
     g_assert_cmpint(g_remove(f->path), ==, 0);
     g_assert_false(cw_file_save(file, "Acorn", &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG);
@@ -302,6 +356,7 @@ main(int argc, char **argv)
     g_test_add("/storage/backup-and-format", Fixture, NULL, setup, backup_and_format, teardown);
     g_test_add("/storage/manuscript-without-bom", Fixture, NULL, setup, manuscript_without_bom, teardown);
     g_test_add("/storage/new-and-mixed", Fixture, NULL, setup, new_and_mixed, teardown);
+    g_test_add("/storage/manuscript-spacing", Fixture, NULL, setup, manuscript_spacing, teardown);
     g_test_add("/storage/external-edits", Fixture, NULL, setup, external_edits, teardown);
     g_test_add("/storage/symlinks", Fixture, NULL, setup, symlinks, teardown);
     g_test_add("/storage/invalid-input", Fixture, NULL, setup, invalid_input, teardown);

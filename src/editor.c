@@ -1,4 +1,6 @@
 #include "editor.h"
+#include "editor-spacing.h"
+#include "spacing.h"
 #include "reveal.h"
 #include "virtual.h"
 
@@ -51,6 +53,7 @@ struct _CwEditor {
     GtkTextTag *title_tag;
     GtkTextTag *warning_tag;
     CwVirtual *virtual_space;
+    CwEditorSpacing *spacing;
 
     GtkWidget *sidebar;
     GtkWidget *current_number;
@@ -520,6 +523,13 @@ virtual_changed(gpointer data)
     refresh_current_crumb(data, TRUE);
 }
 
+static void
+leaving_buffer(gpointer data)
+{
+    CwEditor *editor = data;
+    cw_editor_spacing_depart(editor->spacing);
+}
+
 guint
 cw_editor_virtual_rows(CwEditor *editor)
 {
@@ -710,6 +720,7 @@ cw_editor_copy_crumb(CwEditor *editor)
         cw_reveal_cursor(GTK_TEXT_VIEW(editor->view));
         return FALSE;
     }
+    cw_editor_spacing_depart(editor->spacing);
     GtkTextIter start;
     DocumentLine *line = current_record(editor, &start);
     if (!line)
@@ -1137,7 +1148,8 @@ cw_editor_new(GtkSourceView *view)
     g_signal_connect_after(view, "event-after", G_CALLBACK(after_key), editor);
     /* The ordinary line index must see each insertion before virtual space
      * materializes its leading breaks. Typography then observes the real text. */
-    editor->virtual_space = cw_virtual_new(view, virtual_changed, editor);
+    editor->spacing = cw_editor_spacing_new(editor->buffer);
+    editor->virtual_space = cw_virtual_new(view, leaving_buffer, virtual_changed, editor);
     return editor;
 }
 
@@ -1186,9 +1198,13 @@ cw_editor_load_at(CwEditor *editor, const gchar *text, gint line, gint column)
                             g_sequence_get_end_iter(editor->lines));
 
     GtkSourceBuffer *buffer = GTK_SOURCE_BUFFER(editor->buffer);
+    cw_editor_spacing_reset(editor->spacing);
+    g_autofree gchar *clean = g_strdup(text);
+    gsize clean_length = cw_spacing_normalize(clean);
     gtk_source_buffer_begin_not_undoable_action(buffer);
-    gtk_text_buffer_set_text(editor->buffer, text, -1);
+    gtk_text_buffer_set_text(editor->buffer, clean, (gint)clean_length);
     gtk_source_buffer_end_not_undoable_action(buffer);
+    cw_editor_spacing_reset(editor->spacing);
     gint total = gtk_text_buffer_get_line_count(editor->buffer);
     for (gint n = 0; n < total; n++)
         index_line(editor, g_sequence_get_end_iter(editor->lines), n);
@@ -1306,6 +1322,7 @@ cw_editor_free(CwEditor *editor)
     editor->virtual_space = NULL;
     if (editor->hash_key)
         gtk_text_buffer_end_user_action(editor->buffer);
+    cw_editor_spacing_free(editor->spacing);
     g_signal_handlers_disconnect_by_data(editor->view, editor);
     g_signal_handlers_disconnect_by_data(editor->buffer, editor);
     g_signal_handlers_disconnect_by_data(editor->history, editor);

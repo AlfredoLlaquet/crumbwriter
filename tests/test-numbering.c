@@ -79,7 +79,7 @@ header_digits(Fixture *f, gconstpointer data)
                         "Bocí 18446744073709551616: B: q\n"
                         "Missing numeric header\n";
     cw_editor_load(f->editor, text);
-    assert_warning_markup(f, "Títol//  Bocí 001: Á: x\n"
+    assert_warning_markup(f, "Títol// Bocí 001: Á: x\n"
                              "Bocí |010|: (Éloge #1): y\n"
                              "Bocí |0|: A: z\n"
                              "Bocí |18446744073709551616|: B: q\n"
@@ -150,11 +150,20 @@ copy_crumb(Fixture *f, gconstpointer data)
     GtkTextIter a, b;
     g_assert_true(gtk_text_buffer_get_selection_bounds(f->buffer, &a, &b));
     g_autofree gchar *selection = gtk_text_buffer_get_text(f->buffer, &a, &b, TRUE);
-    g_assert_cmpstr(selection, ==, "  Bocí 1: Èpic: Dos.  ");
+    g_assert_cmpstr(selection, ==, " Bocí 1: Èpic: Dos.");
     GtkClipboard *clip = gtk_widget_get_clipboard(GTK_WIDGET(f->view), GDK_SELECTION_CLIPBOARD);
     g_autofree gchar *copied = gtk_clipboard_wait_for_text(clip);
     g_assert_cmpstr(copied, ==, selection);
     g_assert_false(gtk_text_buffer_get_modified(f->buffer));
+    gtk_text_buffer_place_cursor(f->buffer, &b);
+    g_signal_emit_by_name(f->view, "insert-at-cursor", " ");
+    g_assert_true(cw_editor_copy_crumb(f->editor));
+    g_clear_pointer(&copied, g_free);
+    copied = gtk_clipboard_wait_for_text(clip);
+    g_assert_cmpstr(copied, ==, selection);
+    g_assert_true(gtk_text_buffer_get_selection_bounds(f->buffer, &a, &b));
+    g_autofree gchar *selected_again = gtk_text_buffer_get_text(f->buffer, &a, &b, TRUE);
+    g_assert_cmpstr(selected_again, ==, copied);
     gtk_text_buffer_get_end_iter(f->buffer, &a);
     gtk_text_buffer_place_cursor(f->buffer, &a);
     g_assert_false(cw_editor_copy_crumb(f->editor));
@@ -185,11 +194,11 @@ delete_crumb(Fixture *f, gconstpointer data)
     (void)data;
     const struct { const gchar *text; gint line; const gchar *after; } cases[] = {
         { "Note 1: A: x\nNote 2: B: y\nNote 3: C: z\n", 1, "Note 1: A: x\nNote 3: C: z\n" },
-        { "Title //  Note 1: A: x\nNote 2: B: y\n", 0, "Title //  Note 2: B: y\n" },
+        { "Title // Note 1: A: x\nNote 2: B: y\n", 0, "Title // Note 2: B: y\n" },
         { "Note 1: A: x\nNote 2: B: y\n", 1, "Note 1: A: x\n" },
         { "Note 1: A: x\nNote 2: B: y", 1, "Note 1: A: x" },
-        { "Title //  Note 1: A: x\n", 0, "Title //  \n" },
-        { "Title //  Note 1: A: x", 0, "Title //  " },
+        { "Title // Note 1: A: x\n", 0, "Title //\n" },
+        { "Title // Note 1: A: x", 0, "Title //" },
         { "Note 1: A: x\n", 0, "\n" }, { "Note 1: A: x", 0, "" }
     };
     for (guint i = 0; i < G_N_ELEMENTS(cases); i++) {
@@ -203,10 +212,10 @@ delete_crumb(Fixture *f, gconstpointer data)
         gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
         assert_text(f, cases[i].text);
     }
-    cw_editor_load(f->editor, "Title //  Note 1: A: x\n");
+    cw_editor_load(f->editor, "Title // Note 1: A: x\n");
     g_assert_true(cw_editor_delete_crumb(f->editor));
     cw_editor_append(f->editor);
-    assert_text(f, "Title //  Note 1: : \n");
+    assert_text(f, "Title //Note 1: : \n");
     cw_editor_load(f->editor, "a partial header");
     g_assert_false(cw_editor_delete_crumb(f->editor));
     assert_text(f, "a partial header");

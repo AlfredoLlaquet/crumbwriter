@@ -19,7 +19,7 @@ def check(app, run):
 
     manuscript = run / "Typing.txt"
     first = "Crumb 1: First: Original.\n"
-    second = "Crumb 2: Second: "
+    second = "Crumb 2: Second:"
     manuscript.write_bytes((first + second).encode())
     compositor_log = run / "weston.log"
     client_log = run / "client.log"
@@ -77,14 +77,18 @@ def check(app, run):
                                                             client_log.read_text(errors="replace")))
 
         keyboard("key", "--clearmodifiers", "ctrl+Next")
-        keyboard("type", "--clearmodifiers", "--delay", "14", "I'd say \"Pepe,\" new--s ... next.")
-        typed = "I’d say “Pepe,” new—s … next."
+        keyboard("type", "--clearmodifiers", "--delay", "14", "  I'd say  \"Pepe,\" new--s ... next.  ")
+        typed = " I’d say “Pepe,” new—s … next."
+        wait_for("live save without trailing spaces",
+                 lambda: manuscript.read_bytes() == (first + second + typed).encode())
+        keyboard("type", "--clearmodifiers", "Another word.")
+        typed += " Another word."
         save_and_check(first + second + typed)
-        print("Wayland keyboard converted apostrophe, quotes, dash, and ellipsis.", flush=True)
+        print("Wayland typing converted punctuation and kept one word separator across live save.", flush=True)
 
         keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Prior", "ctrl+Down", "Tab", "Tab", "shift+Tab")
         keyboard("type", "--clearmodifiers", "Verified ")
-        verified = first + "Crumb 2: Verified Second: " + typed
+        verified = first + "Crumb 2: Verified Second:" + typed
         save_and_check(verified)
         print("Wayland Ctrl+Down, Tab, and Shift+Tab reached the intended fields.", flush=True)
 

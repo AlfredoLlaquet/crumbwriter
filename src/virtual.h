@@ -5,7 +5,8 @@
 
 typedef struct CwVirtual CwVirtual;
 
-CwVirtual *cw_virtual_new(GtkSourceView *view, void (*changed)(gpointer), gpointer data);
+CwVirtual *cw_virtual_new(GtkSourceView *view, void (*leaving_buffer)(gpointer),
+                         void (*changed)(gpointer), gpointer data);
 void cw_virtual_free(CwVirtual *space);
 guint cw_virtual_rows(const CwVirtual *space);
 void cw_virtual_clear(CwVirtual *space);

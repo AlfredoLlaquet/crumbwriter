@@ -175,7 +175,7 @@ static void
 preceding_record(Fixture *f, gconstpointer data)
 {
     const gchar *ending = data;
-    g_autofree gchar *text = g_strconcat("Note 1: : A\n  Note 2: Last: ", ending, NULL);
+    g_autofree gchar *text = g_strconcat("Note 1: : A\n Note 2: Last:", ending, NULL);
     cw_editor_load_at(f->editor, text, -1, 0);
     key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
@@ -185,20 +185,20 @@ preceding_record(Fixture *f, gconstpointer data)
     g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 0);
     GtkTextIter at = cursor(f);
     g_assert_cmpint(gtk_text_iter_get_line(&at), ==, 1);
-    g_assert_cmpint(gtk_text_iter_get_line_offset(&at), ==, 2);
+    g_assert_cmpint(gtk_text_iter_get_line_offset(&at), ==, 1);
     key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
     key(f, GDK_KEY_ISO_Left_Tab, GDK_SHIFT_MASK);
     at = cursor(f);
     g_assert_cmpint(gtk_text_iter_get_line(&at), ==, 1);
-    g_assert_cmpint(gtk_text_iter_get_line_offset(&at), ==, 16);
+    g_assert_cmpint(gtk_text_iter_get_line_offset(&at), ==, 14);
 }
 
 static void
 align_retains_selection(Fixture *f, gconstpointer unused)
 {
     (void)unused;
-    GString *text = g_string_new("Note 1: First: a\n  Note 2: Middle: ");
+    GString *text = g_string_new("Note 1: First: a\n Note 2: Middle: ");
     for (gint i = 0; i < 620; i++)
         g_string_append(text, "window ");
     g_string_append(text, "\nNote 3: Last: z\n");
@@ -207,7 +207,7 @@ align_retains_selection(Fixture *f, gconstpointer unused)
     GtkTextIter caret, bound, header;
     gtk_text_buffer_get_iter_at_line_offset(f->buffer, &caret, 1, 3000);
     gtk_text_buffer_get_iter_at_line_offset(f->buffer, &bound, 1, 2990);
-    gtk_text_buffer_get_iter_at_line_offset(f->buffer, &header, 1, 2);
+    gtk_text_buffer_get_iter_at_line_offset(f->buffer, &header, 1, 1);
     gtk_text_buffer_select_range(f->buffer, &caret, &bound);
     key(f, GDK_KEY_Return, GDK_CONTROL_MASK);
     GdkRectangle visible, line;
@@ -241,7 +241,7 @@ capture_method(GSignalInvocationHint *hint, guint count, const GValue *values, g
 static gboolean
 deliver_commit(gpointer data)
 {
-    g_signal_emit_by_name(data, "commit", "Café -- oui...");
+    g_signal_emit_by_name(data, "commit", "Café  --\t\toui...");
     return G_SOURCE_REMOVE;
 }
 
@@ -260,12 +260,16 @@ ime_and_paste(Fixture *f, gconstpointer data)
     g_idle_add(deliver_commit, f->input);
     settle();
     assert_text(f, "Note 1: : Body.\nCafé — oui...");
+    g_signal_emit_by_name(f->input, "commit", "x");
+    assert_text(f, "Note 1: : Body.\nCafé — oui…x");
+    gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, "Note 1: : Body.\nCafé — oui...");
     gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
     assert_text(f, original);
     key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
     key(f, GDK_KEY_Down, 0);
     key(f, GDK_KEY_Down, 0);
-    const gchar *pasted = "Note 2: À: One--two...\nNote 3: : Z. ";
+    const gchar *pasted = "Note 2: À: One--two...  \t\n\t \nNote 3:\t: X\tword   / \t Y\u00a0Z.";
     GtkClipboard *clip = gtk_widget_get_clipboard(GTK_WIDGET(f->view), GDK_SELECTION_CLIPBOARD);
     gtk_clipboard_set_text(clip, pasted, -1);
     g_signal_emit_by_name(f->view, "paste-clipboard");
@@ -274,10 +278,13 @@ ime_and_paste(Fixture *f, gconstpointer data)
         settle();
         g_usleep(1000);
     }
-    g_autofree gchar *expected = g_strconcat(original, "\n\n", pasted, NULL);
+    g_autofree gchar *expected = g_strconcat(original,
+        "\n\nNote 2: À: One--two...\n\nNote 3: : X word / Y\u00a0Z.", NULL);
     assert_text(f, expected);
     gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
     assert_text(f, original);
+    gtk_source_buffer_redo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, expected);
 }
 
 static void

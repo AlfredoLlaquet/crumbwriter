@@ -1,4 +1,5 @@
 #include "search.h"
+#include "editor-spacing.h"
 #include <string.h>
 
 typedef struct {
@@ -371,6 +372,32 @@ centered_matches(Fixture *f, gconstpointer unused)
 }
 
 static void
+search_after_word_separator(Fixture *f, gconstpointer unused)
+{
+    (void)unused;
+    g_autoptr(GString) manuscript = g_string_new("Crumb 1: : needle\n");
+    for (guint i = 2; i < 60; i++)
+        g_string_append_printf(manuscript, "Crumb %u: : Body.\n", i);
+    g_string_append(manuscript, "Crumb 60: : Writing");
+    gtk_text_buffer_set_text(f->buffer, manuscript->str, -1);
+    CwEditorSpacing *spacing = cw_editor_spacing_new(f->buffer);
+    GtkTextIter end;
+    gtk_text_buffer_get_end_iter(f->buffer, &end);
+    gtk_text_buffer_place_cursor(f->buffer, &end);
+    gtk_text_buffer_begin_user_action(f->buffer);
+    gtk_text_buffer_insert_at_cursor(f->buffer, " ", 1);
+    gtk_text_buffer_end_user_action(f->buffer);
+    cw_search_find(f->search, TRUE);
+    query(f, "needle");
+    assert_match(f, "needle", 0);
+    assert_caret_centered(f);
+    g_assert_true(key(f, GDK_KEY_Escape, 0));
+    assert_caret_centered(f);
+    g_assert_cmpint(gtk_text_buffer_get_char_count(f->buffer), ==, (gint)manuscript->len);
+    cw_editor_spacing_free(spacing);
+}
+
+static void
 directions(Fixture *f, gconstpointer unused)
 {
     (void)unused;
@@ -511,6 +538,7 @@ main(int argc, char **argv)
     g_test_add("/search/controls/rapid-preview", Fixture, NULL, setup, rapid_preview, teardown);
     g_test_add("/search/controls/queued-repeat", Fixture, NULL, setup, repeat_while_previewing, teardown);
     g_test_add("/search/controls/centered-matches", Fixture, NULL, setup, centered_matches, teardown);
+    g_test_add("/search/controls/pending-word-separator", Fixture, NULL, setup, search_after_word_separator, teardown);
     g_test_add("/search/controls/cursor-directions", Fixture, NULL, setup, directions, teardown);
     g_test_add("/search/controls/repeat-forward", Fixture, GINT_TO_POINTER(FALSE), setup, repeat_direction, teardown);
     g_test_add("/search/controls/repeat-backward", Fixture, GINT_TO_POINTER(TRUE), setup, repeat_direction, teardown);

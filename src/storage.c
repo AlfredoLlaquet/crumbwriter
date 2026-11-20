@@ -2,6 +2,7 @@
 #define _GNU_SOURCE
 #endif
 #include "storage.h"
+#include "spacing.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -226,6 +227,7 @@ decode_text(const gchar *raw, gsize size, TextFormat *format, GError **error)
         if (counts[i] > counts[format->usual])
             format->usual = (LineEnding)i;
     format->text = g_string_free(normalized, FALSE);
+    cw_spacing_normalize(format->text);
     return TRUE;
 }
 
@@ -248,25 +250,11 @@ encode_text(const TextFormat *format, const gchar *text, gsize *length, GError *
                             "The document contains invalid UTF-8.");
         return NULL;
     }
-    text = skip_signatures(text);
-
-    /* A paste can supply CRLF directly to a text buffer. Normalize it once. */
-    g_autofree gchar *converted = NULL;
-    if (strchr(text, '\r')) {
-        converted = g_strdup(text);
-        gchar *dst = converted;
-        for (const gchar *src = text; *src; ++src) {
-            if (*src == '\r') {
-                *dst++ = '\n';
-                if (src[1] == '\n')
-                    ++src;
-            } else {
-                *dst++ = *src;
-            }
-        }
-        *dst = '\0';
-        text = converted;
-    }
+    /* Compare clean logical lines when matching original separators. The raw
+     * disk snapshot remains available for backups and conflict detection. */
+    g_autofree gchar *clean = g_strdup(skip_signatures(text));
+    gsize text_length = cw_spacing_normalize(clean);
+    text = clean;
 
     guint old_lines = format && format->endings ? format->endings->len : 0;
     guint new_lines = count_lf(text);
@@ -277,7 +265,7 @@ encode_text(const TextFormat *format, const gchar *text, gsize *length, GError *
         while (old[common] && old[common] == text[common])
             ++common;
         const gchar *old_end = old + strlen(old);
-        const gchar *new_end = text + strlen(text);
+        const gchar *new_end = text + text_length;
         while (old_end > old + common && new_end > text + common &&
                old_end[-1] == new_end[-1]) {
             --old_end;
@@ -287,7 +275,7 @@ encode_text(const TextFormat *format, const gchar *text, gsize *length, GError *
         }
     }
 
-    GString *out = g_string_sized_new(strlen(text));
+    GString *out = g_string_sized_new(text_length);
     guint index = 0;
     const gchar *p = text;
     const gchar *next;
@@ -298,6 +286,10 @@ encode_text(const TextFormat *format, const gchar *text, gsize *length, GError *
             ending = format->endings->data[old_lines - (new_lines - index)];
         else if (index < old_lines - suffix_lines)
             ending = format->endings->data[index];
+        /* A bare CR followed immediately by LF would reread as one line
+         * break. Give the empty line a CRLF so both breaks survive. */
+        if (ending == EOL_LF && out->len && out->str[out->len - 1] == '\r')
+            ending = EOL_CRLF;
         if (ending != EOL_LF)
             g_string_append_c(out, '\r');
         if (ending != EOL_CR)

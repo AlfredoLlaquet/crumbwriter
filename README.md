@@ -78,6 +78,8 @@ The sidebar also lists genres alphabetically with the last number used for each.
 
 Smart punctuation turns typed quotes, apostrophes, double hyphens, and three periods into their typographic forms. The editor saves those characters to the manuscript. By default it follows the desktop theme, makes a timestamped sibling backup on open, and saves live at one-second intervals. Settings control appearance, font family, point size, smart punctuation, backup creation, and live saving.
 
+Crumb Writer turns every tab into an ordinary space and collapses consecutive spaces to one. A space typed at the end of a crumb stays ready for the next word, even across a live save. Finished crumbs, saved files and Ctrl+Q copies have no trailing spaces. Nonbreaking spaces and blank lines are preserved.
+
 ## Finding a passage
 
 **Ctrl+F** finds the next occurrence from the caret. **Ctrl+G** finds the previous one. With plain text, each keystroke selects the nearest match in that direction and keeps keyboard focus in the query. Extending the query starts again at the original caret. Enter and F3 continue in the direction that opened the search. After Ctrl+G, F3 finds an earlier match and Shift+F3 finds a later one. After Ctrl+F, those directions are reversed. Search is case-insensitive by default, wraps at the document ends, and remembers completed queries with their options.

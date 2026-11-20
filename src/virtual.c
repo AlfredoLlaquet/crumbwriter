@@ -7,6 +7,7 @@
 struct CwVirtual {
     GtkTextView *view;
     GtkTextBuffer *buffer;
+    void (*leaving_buffer)(gpointer);
     void (*changed)(gpointer);
     gpointer data;
     guint rows;
@@ -28,6 +29,7 @@ set_rows(CwVirtual *space, guint rows)
     if (space->rows == rows)
         return;
     if (rows && !space->rows) {
+        space->leaving_buffer(space->data);
         GtkTextIter end;
         gtk_text_buffer_get_end_iter(space->buffer, &end);
         space->native_visible = gtk_text_view_get_cursor_visible(space->view);
@@ -247,11 +249,13 @@ mouse_press(GtkWidget *widget, GdkEventButton *event, CwVirtual *space)
 }
 
 CwVirtual *
-cw_virtual_new(GtkSourceView *view, void (*changed)(gpointer), gpointer data)
+cw_virtual_new(GtkSourceView *view, void (*leaving_buffer)(gpointer),
+               void (*changed)(gpointer), gpointer data)
 {
     CwVirtual *space = g_new0(CwVirtual, 1);
     space->view = g_object_ref(GTK_TEXT_VIEW(view));
     space->buffer = g_object_ref(gtk_text_view_get_buffer(space->view));
+    space->leaving_buffer = leaving_buffer;
     space->changed = changed;
     space->data = data;
     g_signal_connect_after(view, "draw", G_CALLBACK(draw_caret), space);

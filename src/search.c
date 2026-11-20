@@ -1,4 +1,5 @@
 #include "search.h"
+#include "editor-spacing.h"
 #include "reveal.h"
 #include "crumb.h"
 
@@ -577,6 +578,7 @@ preview_at_cursor(CwSearch *s)
 {
     if (mode(s) != TEXT_MODE || !gtk_widget_get_visible(s->panel))
         return;
+    cw_editor_spacing_finish_input(s->buffer);
     if (!*gtk_entry_get_text(GTK_ENTRY(s->find))) {
         show_preview(s, FALSE, FALSE, NULL, NULL);
         return;
@@ -607,6 +609,7 @@ preview_at_cursor(CwSearch *s)
 void
 cw_search_step(CwSearch *s, gboolean backwards)
 {
+    cw_editor_spacing_finish_input(s->buffer);
     s->pending_direction = 0;
     clear_feedback(s);
     if (mode(s) == NUMBER_MODE) {
@@ -682,14 +685,14 @@ on_replace_one(GtkWidget *widget, CwSearch *s)
         s->replacing = TRUE;
         gtk_text_buffer_begin_user_action(s->buffer);
         gboolean replaced = gtk_source_search_context_replace(s->context, &start, &end, text, -1, &error);
+        if (replaced)
+            gtk_text_buffer_place_cursor(s->buffer, &end);
         gtk_text_buffer_end_user_action(s->buffer);
         s->replacing = FALSE;
         if (error) {
             set_notice(s, error->message);
             return;
         }
-        if (replaced)
-            gtk_text_buffer_place_cursor(s->buffer, &end);
     }
     cw_search_step(s, FALSE);
 }
@@ -835,6 +838,8 @@ begin_at_cursor(CwSearch *s, gboolean backwards)
 {
     cancel_preview(s);
     s->pending_direction = 0;
+    /* Finish a separator before recording any offsets used to center or repeat a match. */
+    cw_editor_spacing_finish_input(s->buffer);
     s->backwards = backwards;
     s->from_anchor = TRUE;
     GtkTextIter cursor;

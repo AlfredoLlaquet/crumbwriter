@@ -141,6 +141,105 @@ append_and_undo(Fixture *f, gconstpointer data)
 }
 
 static void
+spacing_while_writing(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    cw_editor_load_at(f->editor, "Book//Leaf 1: First: one\nLeaf 2: : done", 0, G_MAXINT);
+    key(f, GDK_KEY_space, 0);
+    key(f, GDK_KEY_space, 0);
+    assert_text(f, "Book//Leaf 1: First: one \nLeaf 2: : done");
+    key(f, GDK_KEY_b, 0);
+    key(f, GDK_KEY_space, 0);
+    key(f, GDK_KEY_Down, GDK_CONTROL_MASK);
+    assert_text(f, "Book//Leaf 1: First: one b\nLeaf 2: : done");
+    assert_cursor(f, 1, "");
+
+    cw_editor_append(f->editor);
+    assert_cursor(f, 2, "Leaf 3: : ");
+    key(f, GDK_KEY_space, 0);
+    key(f, GDK_KEY_x, 0);
+    key(f, GDK_KEY_space, 0);
+    key(f, GDK_KEY_Return, 0);
+    assert_text(f, "Book//Leaf 1: First: one b\nLeaf 2: : done\nLeaf 3: : x\n");
+    assert_cursor(f, 3, "");
+
+    const gchar *original = "Leaf 1: : split here";
+    cw_editor_load_at(f->editor, original, 0, strlen("Leaf 1: : split "));
+    key(f, GDK_KEY_Return, 0);
+    assert_text(f, "Leaf 1: : split\nhere");
+    gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, original);
+}
+
+static void
+spacing_after_deletion(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *original = "Leaf 1: : é X z.";
+    cw_editor_load_at(f->editor, "Leaf 1: : é\tX z.", 0, g_utf8_strlen("Leaf 1: : é ", -1));
+    assert_text(f, original);
+    key(f, GDK_KEY_Delete, 0);
+    assert_text(f, "Leaf 1: : é z.");
+    gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, original);
+    g_assert_false(gtk_source_buffer_can_undo(GTK_SOURCE_BUFFER(f->buffer)));
+    gtk_source_buffer_redo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, "Leaf 1: : é z.");
+
+    /* Deliberately backspacing over a space is an ordinary undoable edit. */
+    cw_editor_load_at(f->editor, "Leaf 1: : a", -1, 0);
+    g_signal_emit_by_name(f->view, "insert-at-cursor", "b ");
+    key(f, GDK_KEY_BackSpace, 0);
+    assert_text(f, "Leaf 1: : ab");
+    gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_text(f, "Leaf 1: : ab ");
+    key(f, GDK_KEY_c, 0);
+    assert_text(f, "Leaf 1: : ab c");
+}
+
+static void
+empty_crumb_undo(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *one = "Leaf 1: : A";
+    const gchar *two = "Leaf 1: : A\nLeaf 2: :";
+    const gchar *three = "Leaf 1: : A\nLeaf 2: :\nLeaf 3: :";
+    GtkSourceBuffer *source = GTK_SOURCE_BUFFER(f->buffer);
+    cw_editor_load(f->editor, one);
+    cw_editor_append(f->editor);
+    key(f, GDK_KEY_Up, GDK_CONTROL_MASK);
+    assert_text(f, two);
+    cw_editor_append(f->editor);
+    key(f, GDK_KEY_Up, GDK_CONTROL_MASK);
+    assert_text(f, three);
+    gtk_source_buffer_undo(source);
+    settle();
+    assert_text(f, two);
+    gtk_source_buffer_undo(source);
+    settle();
+    assert_text(f, one);
+    g_assert_false(gtk_source_buffer_can_undo(source));
+
+    gtk_source_buffer_redo(source);
+    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    assert_text(f, two);
+    g_assert_true(gtk_source_buffer_can_redo(source));
+    gtk_source_buffer_redo(source);
+    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    assert_text(f, three);
+
+    /* Undo returns to the earlier crumb's pending word separator. */
+    cw_editor_load_at(f->editor, two, 0, G_MAXINT);
+    key(f, GDK_KEY_space, 0);
+    cw_editor_append(f->editor);
+    gtk_source_buffer_undo(source);
+    settle();
+    assert_cursor(f, 0, "Leaf 1: : A ");
+    key(f, GDK_KEY_b, 0);
+    assert_text(f, "Leaf 1: : A b\nLeaf 2: :");
+}
+
+static void
 field_and_crumb_navigation(Fixture *f, gconstpointer data)
 {
     (void)data;
@@ -272,10 +371,10 @@ current_crumb_paper(Fixture *f, gconstpointer data)
                                               GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
     gtk_text_view_set_left_margin(GTK_TEXT_VIEW(f->view), 24);
     gtk_text_view_set_right_margin(GTK_TEXT_VIEW(f->view), 24);
-    GString *text = g_string_new("Book//Leaf 1: Wrapped: ");
+    GString *text = g_string_new("Book//Leaf 1: Wrapped:");
     for (guint i = 0; i < 30; i++)
-        g_string_append(text, "window seat ");
-    g_string_append(text, "\nUnfinished draft\nLeaf 3: : ");
+        g_string_append(text, " window seat");
+    g_string_append(text, "\nUnfinished draft\nLeaf 3: :");
     cw_editor_load_at(f->editor, text->str, 0, 180);
     assert_crumb_paper(f, 0, FALSE);
 
@@ -320,12 +419,12 @@ static void
 record_and_file_boundaries(Fixture *f, gconstpointer data)
 {
     (void)data;
-    const gchar *first = "Obra//  Bocí 1: Àmbar: A.  ";
-    GString *wrapped = g_string_new("  Bocí 2: Volta: ");
+    const gchar *first = "Obra// Bocí 1: Àmbar: A.";
+    GString *wrapped = g_string_new(" Bocí 2: Volta: ");
     for (guint i = 0; i < 80; i++)
         g_string_append(wrapped, "finestra ");
-    g_string_append(wrapped, "fi.   ");
-    const gchar *last = "Bocí 3: Darrer: Z. ";
+    g_string_append(wrapped, "fi.");
+    const gchar *last = "Bocí 3: Darrer: Z.";
     g_autofree gchar *text = g_strjoin("\n", first, wrapped->str, last, "", NULL);
     cw_editor_load_at(f->editor, text, 1, 250);
     settle();
@@ -337,17 +436,17 @@ record_and_file_boundaries(Fixture *f, gconstpointer data)
     g_assert_cmpint(middle.y, >, top.y);
 
     key(f, GDK_KEY_Home, GDK_CONTROL_MASK);
-    assert_cursor(f, 1, "  ");
+    assert_cursor(f, 1, " ");
     key(f, GDK_KEY_End, GDK_CONTROL_MASK);
     assert_cursor(f, 1, wrapped->str);
     key(f, GDK_KEY_KP_Home, GDK_CONTROL_MASK);
-    assert_cursor(f, 1, "  ");
+    assert_cursor(f, 1, " ");
     key(f, GDK_KEY_KP_End, GDK_CONTROL_MASK);
     assert_cursor(f, 1, wrapped->str);
     key(f, GDK_KEY_Prior, GDK_CONTROL_MASK);
     assert_cursor(f, 0, "");
     key(f, GDK_KEY_Begin, GDK_CONTROL_MASK);
-    assert_cursor(f, 0, "Obra//  ");
+    assert_cursor(f, 0, "Obra// ");
     key(f, GDK_KEY_KP_End, GDK_CONTROL_MASK);
     assert_cursor(f, 0, first);
     key(f, GDK_KEY_Next, GDK_CONTROL_MASK);
@@ -368,7 +467,7 @@ static void
 draft_boundaries(Fixture *f, gconstpointer data)
 {
     (void)data;
-    const gchar *partial = "  esborrany   ";
+    const gchar *partial = " esborrany";
     g_autofree gchar *text = g_strconcat("Bocí 1: : A\n", partial, NULL);
     cw_editor_load_at(f->editor, text, 1, 5);
     key(f, GDK_KEY_Home, GDK_CONTROL_MASK);
@@ -465,14 +564,15 @@ complete_genre_number(Fixture *f, gconstpointer data)
     (void)data;
     const gchar *old = "Book//Leaf 1: Décors mécaniques #43: x.\n"
                        "Leaf 2: de\314\201cors mécaniques #7: y.\n";
-    const gchar *prefix = "Leaf 3: DÉCORS  MÉCANIQUES   ";
-    const gchar *rest = ": \nLeaf 4: Décors mécaniques #99: ";
+    const gchar *prefix = "Leaf 3: DÉCORS MÉCANIQUES ";
+    const gchar *rest = ":\nLeaf 4: Décors mécaniques #99:";
+    g_autofree gchar *loaded = g_strconcat(old, "Leaf 3: DÉCORS  MÉCANIQUES   ", rest, NULL);
     g_autofree gchar *original = g_strconcat(old, prefix, rest, NULL);
     g_autofree gchar *completed = g_strconcat(old, prefix, "#8", rest, NULL);
-    cw_editor_load_at(f->editor, original, 2, g_utf8_strlen(prefix, -1));
+    cw_editor_load_at(f->editor, loaded, 2, g_utf8_strlen(prefix, -1));
     type_hash(f);
     assert_text(f, completed);
-    assert_cursor(f, 2, "Leaf 3: DÉCORS  MÉCANIQUES   #8");
+    assert_cursor(f, 2, "Leaf 3: DÉCORS MÉCANIQUES #8");
     gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
     assert_text(f, original);
     gtk_source_buffer_redo(GTK_SOURCE_BUFFER(f->buffer));
@@ -485,11 +585,11 @@ literal_genre_hash(Fixture *f, gconstpointer data)
     (void)data;
     const gchar *drafts[] = {
         "Crumb 1: Haiku #3: /\nCrumb 2: Haiku |55: x",
-        "Crumb 1: Haiku #3: /\nCrumb 2: Haiku | here: x",
+        "Crumb 1: Haiku #3: /\nCrumb 2: Haiku |here: x",
         "Crumb 1: Haiku #3: /\nCrumb 2: Haiku|: x",
-        "Crumb 1: Haiku #3: /\nCrumb 2: T: Haiku |",
+        "Crumb 1: Haiku #3: /\nCrumb 2: T: Haiku |.",
         "Crumb 1: Haiku #3: /\nCrumb 2: Other |: x",
-        "Crumb 1: Haiku #3: /\nCrumb 2: Overflow #18446744073709551616: /\nCrumb 3: Overflow |: ",
+        "Crumb 1: Haiku #3: /\nCrumb 2: Overflow #18446744073709551616: /\nCrumb 3: Overflow |:",
         "Crumb 1: Haiku |: x\nCrumb 2: Haiku #3: /",
     };
     for (guint i = 0; i < G_N_ELEMENTS(drafts); i++) {
@@ -505,16 +605,18 @@ literal_genre_hash(Fixture *f, gconstpointer data)
         g_strfreev(parts);
     }
 
-    const gchar *draft = "Crumb 1: Haiku #3: /\nCrumb 2: Haiku ";
+    const gchar *draft = "Crumb 1: Haiku #3: /\nCrumb 2: Haiku";
     cw_editor_load_at(f->editor, draft, -1, 0);
+    key(f, GDK_KEY_space, 0);
     gtk_text_buffer_insert_at_cursor(f->buffer, "#", 1);
     assert_text(f, "Crumb 1: Haiku #3: /\nCrumb 2: Haiku #");
     cw_editor_load_at(f->editor, draft, -1, 0);
+    key(f, GDK_KEY_space, 0);
     GtkClipboard *clipboard = gtk_widget_get_clipboard(GTK_WIDGET(f->view), GDK_SELECTION_CLIPBOARD);
     gtk_clipboard_set_text(clipboard, "#", 1);
     g_signal_emit_by_name(f->view, "paste-clipboard");
     const gint64 deadline = g_get_monotonic_time() + 3 * G_TIME_SPAN_SECOND;
-    while (gtk_text_buffer_get_char_count(f->buffer) == (gint)strlen(draft) &&
+    while (gtk_text_buffer_get_char_count(f->buffer) == (gint)strlen(draft) + 1 &&
            g_get_monotonic_time() < deadline) {
         settle();
         g_usleep(1000);
@@ -704,7 +806,7 @@ regex_replace_and_undo(Fixture *f, gconstpointer data)
     GdkEventKey regex = {.keyval = GDK_KEY_r, .state = GDK_CONTROL_MASK};
     g_assert_true(cw_search_handle_key(f->search, &regex));
     gtk_entry_set_text(GTK_ENTRY(control(f, "cw-find")), "word ([[:digit:]]+)");
-    gtk_entry_set_text(GTK_ENTRY(control(f, "cw-replacement")), "entry \\1");
+    gtk_entry_set_text(GTK_ENTRY(control(f, "cw-replacement")), "entry   \\1");
     GtkWidget *replace_all = control(f, "cw-replace-all");
     const gint64 deadline = g_get_monotonic_time() + 3 * G_TIME_SPAN_SECOND;
     while (!gtk_widget_is_sensitive(replace_all) && g_get_monotonic_time() < deadline) {
@@ -830,6 +932,9 @@ main(int argc, char **argv)
     g_test_add("/editor/genres/compound-titles", Fixture, NULL, setup, compound_genres, teardown);
     g_test_add("/editor/append/final-lf", Fixture, "\n", setup, append_and_undo, teardown);
     g_test_add("/editor/append/no-final-lf", Fixture, "", setup, append_and_undo, teardown);
+    g_test_add("/editor/spacing/typing-and-navigation", Fixture, NULL, setup, spacing_while_writing, teardown);
+    g_test_add("/editor/spacing/delete-and-undo", Fixture, NULL, setup, spacing_after_deletion, teardown);
+    g_test_add("/editor/spacing/empty-crumb-undo", Fixture, NULL, setup, empty_crumb_undo, teardown);
     g_test_add("/editor/navigation/fields", Fixture, NULL, setup, field_and_crumb_navigation, teardown);
     g_test_add("/editor/navigation/wrapped-lines", Fixture, NULL, setup, visual_line_navigation, teardown);
     g_test_add("/editor/appearance/current-crumb", Fixture, NULL, setup, current_crumb_paper, teardown);

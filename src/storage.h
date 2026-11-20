@@ -7,10 +7,10 @@ G_BEGIN_DECLS
 
 typedef struct CwFile CwFile;
 
-/* All manuscript writes use UTF-8 without a BOM. The editor receives text with
- * LF line endings and no encoding signature. Its trailing newline, if present,
- * is part of the text. A startup backup preserves every original byte including
- * a BOM in a uniquely named sibling. */
+/* The editor receives clean spacing and LF line endings. All manuscript writes
+ * clean horizontal spacing and use UTF-8 without a BOM. Physical line endings
+ * and any terminal newline survive. A startup backup preserves every original
+ * byte, including a BOM, in a uniquely named sibling. */
 CwFile *cw_file_open(const gchar *path, gboolean backup, gchar **text, GError **error);
 gboolean cw_file_save(CwFile *file, const gchar *text, GError **error);
 CwFile *cw_file_save_as(const gchar *path, const gchar *text, gboolean backup, GError **error);

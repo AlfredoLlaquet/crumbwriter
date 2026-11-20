@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 1.3. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 1.4. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Purpose and platform
 --------------------
@@ -72,7 +72,9 @@ as an encoding signature. Ctrl+S strips it even from an otherwise untouched
 document. A startup backup contains the exact input bytes, including any
 original BOM. The logical buffer uses LF. Storage retains the input line-ending
 convention and the presence or absence of a final newline. A new untitled
-manuscript uses LF.
+manuscript uses LF. In a mixed-ending file, cleaning a whitespace-only line
+can bring a bare CR directly against a separate LF. In that case the writer
+emits CR followed by CRLF so reopening still finds both line breaks.
 
 Field positions and cursor columns count Unicode characters. Byte offsets are
 used for disk I/O. The italic header, bold title and number warnings are text
@@ -141,7 +143,7 @@ Unmodified Up and Down move through visual, wrapped lines. Ordinary text entry,
 selection, cut, copy, paste, undo and redo remain available.
 
     Ctrl+Home / Ctrl+Begin     Start of the current crumb's header
-    Ctrl+End                   End of its body, including any trailing spaces
+    Ctrl+End                   End of its body
     Ctrl+Page Up / Ctrl+Prior  Absolute beginning of the file (RePág)
     Ctrl+Page Down / Ctrl+Next Absolute end of the file (AvPág)
 
@@ -178,8 +180,8 @@ reaches its body. Ctrl+N appends its usual template after the last crumb.
 
 Ctrl+Q selects the entire crumb at the insertion caret, copies it to the system
 clipboard and leaves it selected. The optional first-line work title through
-// and the ending line break are outside that selection. Trailing spaces in
-the crumb are copied. Escape clears the selection at the active end. With Find
+//, trailing spaces or tabs, and the ending line break are outside that
+selection. Escape clears the selection at the active end. With Find
 or Replace visible, the same Escape also closes the panel and returns focus
 to the manuscript.
 
@@ -198,6 +200,27 @@ is the number of distinct headers currently present whose numbers were absent
 when this document opened. Typing, pasting, appending, deleting and undoing all
 update it. Saving leaves this baseline in place.
 
+Spacing
+-------
+Every tab in the manuscript becomes an ordinary ASCII space. Consecutive
+spaces and tabs, in any combination, become one space. The same rule applies
+when deleting a word brings two spaces together. Nonbreaking spaces and other
+Unicode spacing keep their original characters. Newlines and blank lines are
+preserved, including between crumbs. The Tab key still moves among the
+header, title and body.
+
+Typing a space after the last word keeps a separator at the caret so the next
+word can follow, even after a pause for live saving or Ctrl+S. Leaving the
+crumb or starting a search trims its end. Saved manuscripts, recovery drafts
+and Ctrl+Q copies omit trailing spaces and tabs. A new crumb still puts the
+caret one space after the body colon. Saving an empty body ends the line at
+that colon. Undo restores a deliberately deleted separator so writing can
+resume between words.
+
+Typing, pasting and Find and Replace use the same spacing rules. An existing
+file opens with its spacing cleaned in the editor. The startup backup retains
+the original bytes, and the manuscript on disk changes on the next save.
+
 Punctuation
 -----------
 With smart punctuation enabled, the next typed character supplies context.
@@ -213,7 +236,7 @@ GTK input counts as typing, including a composed character or several
 characters delivered together by an input method. The input and its automatic
 correction share an undo action. Moving the caret, leaving
 the editor, explicitly saving or closing resolves terminal pending punctuation.
-Until then live saving records the current visible text. Bulk paste, search
+Until then live saving records the punctuation as it appears. Bulk paste, search
 replacements and text already on disk retain their literal punctuation.
 
 Find and replace
@@ -411,8 +434,19 @@ src/editor.c       Per-line parse cache, number and genre indexes, text tags,
                    background beneath text and selections.
                    A changed genre occurrence can affect its next neighbor.
                    A changed line count shifts subsequent header comparisons.
+src/editor-spacing.c
+                   GTK marks delimit the edited range and track the pending
+                   separator. Cleanup runs before GtkSourceView closes the
+                   native undo group. For a trim caused by navigation, the
+                   controller records its position in the undo history by
+                   counting the characters inserted and deleted. Undo and
+                   Redo pair that trim with its edit across merged keystrokes.
+src/spacing.c      Shared ASCII space and tab rules for text loaded from or
+                   written to disk, including recovery drafts.
 src/search.c       Search panel, cursor-anchored directional previews,
                    GtkSourceSearchContext, history, numeric jumps and replace.
+                   Resolves the pending separator before recording a search
+                   position so an idle trim cannot move a centered result.
                    Successful results use the same visual-line centering as
                    Ctrl+Enter, anchored to the first character of the result.
                    F3 repeats in the opening direction, even after Escape.
@@ -427,6 +461,8 @@ src/virtual.c      Virtual caret rows below EOF and their conversion into
                    actual manuscript lines on text entry.
 src/typography.c   Observes text committed by the manuscript input method,
                    resolves pending punctuation inside the same undo action.
+                   Adjusts a pending quote, dash or ellipsis position when
+                   whitespace earlier in the same input is shortened.
 src/storage.c      Validates and decodes disk bytes, retains newline styles,
                    takes backups, detects conflicts and commits atomic saves.
 src/draft.c        Private crash-recovery files, discovery and cleanup.
@@ -493,6 +529,10 @@ For a storage change, compare input and backup bytes, test an untouched BOM
 file, check CRLF and missing terminal LF, and simulate an external writer.
 For typography, exercise real key events and delayed input-method commits.
 Check the triggering character, what Undo restores, and the bytes saved.
+For spacing changes, pause for a live save between words, then type the next
+word. Check the buffer, the Ctrl+Q clipboard and the saved file separately.
+Test a multiline paste, a deletion that joins two separators, an empty body
+and a backup of a file with mixed line endings and nonbreaking spaces.
 Use a disposable manuscript for live-save tests. For window changes, run the
 Krohnkite check with two neighboring applications and a short three-window
 tile. Check Find, Replace, Settings and repeated document activation.

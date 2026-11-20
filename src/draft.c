@@ -1,4 +1,5 @@
 #include "draft.h"
+#include "spacing.h"
 #include <errno.h>
 #include <glib/gstdio.h>
 
@@ -24,7 +25,9 @@ cw_draft_write(gchar **path, const gchar *text, GError **error)
     }
     while (g_str_has_prefix(text, "\357\273\277"))
         text += 3;
-    return g_file_set_contents_full(*path, text, -1,
+    g_autofree gchar *snapshot = g_strdup(text);
+    gsize length = cw_spacing_normalize(snapshot);
+    return g_file_set_contents_full(*path, snapshot, length,
                G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE, 0600, error);
 }
 

@@ -1,4 +1,5 @@
 #include "typography.h"
+#include "editor-spacing.h"
 
 #include <string.h>
 
@@ -259,12 +260,29 @@ before_insert_action(GtkTextView *view, const gchar *text, CwTypography *type)
 }
 
 static void
+shift_pending(CwTypography *type, gint changed_end, gint delta)
+{
+    /* Spacing cleanup affects only horizontal separators and line breaks.
+     * A punctuation sequence farther along the same IM commit still awaits
+     * its following character after those earlier positions move. */
+    if (type->length && changed_end <= type->pending_at)
+        type->pending_at += delta;
+    if (type->elision_at >= 0 && changed_end <= type->elision_at) {
+        type->elision_at += delta;
+        type->elision_end += delta;
+    }
+}
+
+static void
 deleted(GtkTextBuffer *buffer, GtkTextIter *start, GtkTextIter *end, CwTypography *type)
 {
-    (void)buffer;
-    (void)end;
     /* Overwrite mode removes the character ahead of the caret before typing. */
     gint at = gtk_text_iter_get_offset(start);
+    if (cw_editor_spacing_is_cleaning(buffer)) {
+        gint after = gtk_text_iter_get_offset(end);
+        shift_pending(type, after, at - after);
+        return;
+    }
     if (!type->converting &&
         !(entering_text(type) && ((type->length && at == type->pending_at + type->length) ||
                                  (type->elision_at >= 0 && at == type->elision_end))))
@@ -302,6 +320,11 @@ after_insert(GtkTextBuffer *buffer, GtkTextIter *location, gchar *text, gint byt
 {
     if (type->converting || !type->enabled || bytes <= 0)
         return;
+    if (cw_editor_spacing_is_cleaning(buffer)) {
+        gint count = (gint)g_utf8_strlen(text, bytes);
+        shift_pending(type, gtk_text_iter_get_offset(location) - count, count);
+        return;
+    }
     /* GtkTextView commits Return itself if its IM leaves it unconsumed. */
     gboolean native_newline = bytes == 1 && *text == '\n' &&
                               emitting(type->view, type->key_press);
