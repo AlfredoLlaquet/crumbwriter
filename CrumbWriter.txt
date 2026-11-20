@@ -253,6 +253,11 @@ sed and wc pipeline, taking the first work-title prefix off for an individual
 count. Include adjacent verse separators, an em dash on either side of a slash,
 an empty title and non-ASCII field widths. For a navigation or formatting
 change, check the cursor position, history and tags after an edit and its undo.
+On a freshly opened long manuscript, also check that the destination stays
+inside the visible viewport while GTK measures the wrapped lines above it.
+Repeat after reopening at a saved position, jumping backward, searching and
+activating history. A subsequent manual scroll must leave the view where the
+writer placed it.
 For a storage change, compare input and backup bytes, test an untouched BOM
 file, check CRLF and missing terminal LF, and simulate an external writer.
 For typography, deliver real key events and check both the instant the glyph
