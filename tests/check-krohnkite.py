@@ -89,13 +89,23 @@ def session(app, run):
             alpha = wait_for('first document', lambda: windows().get(first_title))
             launch('xterm', '-title', 'Tile peer', '-e', 'sleep', '100')
             peer = wait_for('second application', lambda: windows().get('Tile peer'))
+            hints = output('xprop', '-id', peer, 'WM_NORMAL_HINTS')
+            cell = re.search(r'resize increment: (\d+) by (\d+)', hints)
+            cell_width, cell_height = map(int, cell.groups())
             clients = [alpha, peer]
             initial = wait_for('two adjacent tiles fill the screen', lambda: tiles(clients, screen))
             print('KWin + Krohnkite, two clients:', initial, flush=True)
 
             def unchanged():
-                actual = [rectangle(client) for client in clients]
-                assert actual == initial, f'tiles changed: {initial} -> {actual}'
+                actual = tiles(clients, screen)
+                assert actual, 'tiles overlap or extend beyond the screen'
+                for client, old, new in zip(clients, initial, actual):
+                    if client == peer:
+                        # KWin may offer the full tile before XTerm rounds to its character grid.
+                        assert old[:2] == new[:2], (old, new)
+                        assert abs(old[2]-new[2]) < cell_width and abs(old[3]-new[3]) < cell_height, (old, new)
+                    else:
+                        assert old == new, f'manuscript tile changed: {old} -> {new}'
 
             for chord in ('ctrl+f', 'Escape', 'ctrl+h', 'Escape'):
                 key(alpha, chord)

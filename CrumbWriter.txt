@@ -406,3 +406,7 @@ Check the triggering character, what Undo restores, and the bytes saved.
 Use a disposable manuscript for live-save tests. For window changes, run the
 Krohnkite check with two neighboring applications and a short three-window
 tile. Check Find, Replace, Settings and repeated document activation.
+The tiling test compares manuscript geometry exactly and accounts for the
+neighboring terminal's advertised character-cell increments. The Wayland test
+targets the X11 output ID reported by Weston and waits for native GTK keyboard
+focus before delivering input.

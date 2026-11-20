@@ -38,9 +38,9 @@ def check(app, run):
         raise AssertionError("Timed out waiting for " + description)
 
     def outer_window():
-        result = subprocess.run(["xdotool", "search", "--onlyvisible", "--name", "^Weston Compositor"],
-                                capture_output=True, text=True, timeout=5)
-        return result.stdout.splitlines()[0] if result.returncode == 0 and result.stdout.strip() else None
+        # The X11 backend reports its output XID even without a window manager.
+        match = re.search(r"x11 output \d+x\d+, window id (\d+)", compositor_log.read_text(errors="replace"))
+        return match[1] if match else None
 
     def keyboard(*args):
         # No --window here: xdotool sends XTEST input to the focused compositor.
@@ -57,9 +57,9 @@ def check(app, run):
                                        "--socket=crumb-test"], env=env, stdout=log, stderr=subprocess.STDOUT)
         processes.append(weston)
         wait_for("Weston's private Wayland socket", (run / "runtime" / "crumb-test").is_socket)
-        window = wait_for("Weston's mapped X11 output", outer_window)
+        window = wait_for("Weston's X11 output ID", outer_window)
+        keyboard("windowmap", "--sync", window)
         keyboard("windowfocus", "--sync", window)
-        keyboard("mousemove", "--window", window, "250", "240")
 
         client_env = dict(env, GDK_BACKEND="wayland", WAYLAND_DISPLAY="crumb-test",
                           GTK_IM_MODULE="wayland", WAYLAND_DEBUG="client")
@@ -67,10 +67,13 @@ def check(app, run):
         with client_log.open("w") as log:
             editor = subprocess.Popen([app, manuscript], env=client_env, stdout=log, stderr=subprocess.STDOUT)
         processes.append(editor)
+        wait_for("the editor's first Wayland buffer", lambda: re.search(r"wl_surface[^\s(]*\.attach\(wl_buffer",
+                                                                       client_log.read_text(errors="replace")))
+        keyboard("mousemove", "--window", window, "250", "240", "click", "1")
         wait_for("Wayland keyboard focus", lambda: re.search(r"\bwl_keyboard[^\s(]*\.enter\(",
                                                             client_log.read_text(errors="replace")))
 
-        keyboard("key", "--clearmodifiers", "ctrl+End")
+        keyboard("key", "--clearmodifiers", "ctrl+Prior")
         keyboard("type", "--clearmodifiers", "--delay", "14", "I'd say \"Pepe,\" new--s ... next.")
         typed = "I’d say “Pepe,” new—s … next."
         save_and_check(first + second + typed)
@@ -78,8 +81,10 @@ def check(app, run):
 
         keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Next", "ctrl+Down", "Tab", "Tab", "shift+Tab")
         keyboard("type", "--clearmodifiers", "Verified ")
-        save_and_check(first + "Crumb 2: Verified Second: " + typed)
+        verified = first + "Crumb 2: Verified Second: " + typed
+        save_and_check(verified)
         print("Wayland Ctrl+Down, Tab, and Shift+Tab reached the intended fields.", flush=True)
+
         keyboard("key", "--clearmodifiers", "ctrl+w")
         if editor.wait(timeout=8) != 0:
             raise AssertionError("Closing the editor failed")
