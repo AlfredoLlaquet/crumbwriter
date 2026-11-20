@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 1.2. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 1.3. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Purpose and platform
 --------------------
@@ -226,6 +226,11 @@ caret, so its own preview cannot cause the next letter to skip a match.
 For example, with the caret between two occurrences of "Dulcinea", Ctrl+G
 followed by typing the name selects the earlier one. From the same caret,
 Ctrl+F selects the later one. Keyboard focus stays in the query.
+Each successful search centers the wrapped screen line containing the start
+of the match. This applies as a plain-text query is typed, when stepping
+through text or regular expressions, and when repeating with the panel closed.
+A crumb-number jump centers the line where the matching header begins. The
+first and last lines can both land in the middle of the writing area.
 An empty query or a refinement with no match returns the caret to its search
 origin after a preview. Escape keeps the caret at a successful match. Moving
 the caret by hand establishes a new origin. An arrow beside Find shows the
@@ -335,10 +340,18 @@ Adwaita variants. The default writing font is proportional Serif at 14 pt.
 The font family and point size affect the text view without modifying any
 manuscript byte. Toolbar and sidebar keep their desktop UI font.
 
+The crumb containing the insertion caret has a very light blue background
+across the full writing width, including every wrapped row and the space to
+the right of a short row. A search selection retains its own color over the
+band. The tint produces #e8f1ff on white paper and a subdued blue over a
+dark theme's own paper color.
+Empty rows, virtual rows below EOF and lines without a recognized crumb header
+use the ordinary paper color.
+
 An inactive manuscript window shows its writing area in light gray
-(#e5e5e5) with dark body text. Switching back restores the selected theme's
-writing colors. The sidebar, Find and Replace, and their popovers all belong
-to the main window. Moving focus among those controls keeps its active colors.
+(#e5e5e5) with dark body text. Switching back restores the theme and the
+current crumb's blue band. The sidebar, Find and Replace, and their popovers
+all belong to the main window and keep the band visible.
 Each open manuscript follows its own window's activation.
 
 The manuscript is a resizable normal application window. It first appears
@@ -394,10 +407,14 @@ src/crumb.c        Field boundaries, header recognition and official counting.
                    Consumes one UTF-8 line and its first-line flag.
 src/editor.c       Per-line parse cache, number and genre indexes, text tags,
                    sidebar, navigation, copy, delete, append and completion.
+                   One GtkSourceMark supplies the current crumb's full-width
+                   background beneath text and selections.
                    A changed genre occurrence can affect its next neighbor.
                    A changed line count shifts subsequent header comparisons.
 src/search.c       Search panel, cursor-anchored directional previews,
                    GtkSourceSearchContext, history, numeric jumps and replace.
+                   Successful results use the same visual-line centering as
+                   Ctrl+Enter, anchored to the first character of the result.
                    F3 repeats in the opening direction, even after Escape.
                    An edit or manual caret movement sets a fresh search origin.
 src/shortcuts.c    Searchable keyboard reference and its per-window lifetime.
@@ -468,6 +485,10 @@ throughout the manuscript.
 For a search change, put the caret between repeated passages. Extend and
 shorten a forward and a backward query, test both wrap settings, and confirm
 that an older asynchronous result cannot move the caret after a newer query.
+Measure the match's screen row against the middle of the text viewport. Check
+both ends of a document and a result on a later wrap of a long crumb. For a
+highlight change, compare the paper across each wrapped row before and after
+moving the caret, and check the rendered result on light and dark paper.
 For a storage change, compare input and backup bytes, test an untouched BOM
 file, check CRLF and missing terminal LF, and simulate an external writer.
 For typography, exercise real key events and delayed input-method commits.

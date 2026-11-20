@@ -119,6 +119,25 @@ assert_caret(Fixture *f, gint line, gint column)
 }
 
 static void
+assert_caret_centered(Fixture *f)
+{
+    /* The search panel changes the paper height when it opens or closes. */
+    gtk_test_widget_wait_for_draw(f->view);
+    settle();
+    GtkTextView *view = GTK_TEXT_VIEW(f->view);
+    GtkTextIter caret;
+    gtk_text_buffer_get_iter_at_mark(f->buffer, &caret, gtk_text_buffer_get_insert(f->buffer));
+    GdkRectangle row, viewport;
+    gtk_text_view_get_iter_location(view, &caret, &row);
+    gtk_text_view_get_visible_rect(view, &viewport);
+    gint expected = (viewport.height - row.height) / 2;
+    if (ABS(row.y - viewport.y - expected) > 1)
+        g_test_message("Line %d at %d pixels, expected %d", gtk_text_iter_get_line(&caret) + 1,
+                       row.y - viewport.y, expected);
+    g_assert_cmpint(ABS(row.y - viewport.y - expected), <=, 1);
+}
+
+static void
 live_find_and_keys(Fixture *f, gconstpointer unused)
 {
     (void)unused;
@@ -301,6 +320,54 @@ repeat_while_previewing(Fixture *f, gconstpointer unused)
         g_usleep(1000);
     }
     assert_match(f, "needle", 6000);
+    assert_caret_centered(f);
+}
+
+static void
+centered_matches(Fixture *f, gconstpointer unused)
+{
+    (void)unused;
+    gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(f->view), GTK_WRAP_WORD_CHAR);
+    g_autoptr(GString) manuscript = g_string_new("Crumb 1: : needle\n");
+    for (guint i = 2; i < 65; i++) {
+        g_string_append_printf(manuscript, "Crumb %u: : ", i);
+        if (i == 32) {
+            for (guint j = 0; j < 100; j++)
+                g_string_append(manuscript, "written words ");
+            g_string_append(manuscript, "needle");
+        }
+        g_string_append_c(manuscript, '\n');
+    }
+    g_string_append(manuscript, "Crumb 65: : needle");
+    gtk_text_buffer_set_text(f->buffer, manuscript->str, -1);
+    place(f, 0, 0);
+    cw_search_find(f->search, FALSE);
+    query(f, "needle");
+    assert_match(f, "needle", 0);
+    assert_caret_centered(f);
+    g_assert_true(key(f, GDK_KEY_F3, 0));
+    assert_match(f, "needle", 31);
+    assert_caret_centered(f);
+    g_assert_true(gtk_window_get_focus(GTK_WINDOW(f->window)) == control(f, "cw-find"));
+    g_assert_true(key(f, GDK_KEY_Escape, 0));
+    g_assert_false(gtk_text_buffer_get_has_selection(f->buffer));
+    assert_caret_centered(f);
+
+    cw_search_find(f->search, TRUE);
+    g_assert_true(key(f, GDK_KEY_r, GDK_CONTROL_MASK));
+    query(f, "needle\\nCrumb");
+    g_signal_emit_by_name(control(f, "cw-find"), "activate");
+    assert_match(f, "needle\nCrumb", 0);
+    assert_caret_centered(f);
+
+    cw_search_number(f->search);
+    GtkWidget *number = control(f, "cw-crumb-number");
+    gtk_entry_set_text(GTK_ENTRY(number), "65");
+    g_signal_emit_by_name(number, "activate");
+    assert_caret(f, 64, 0);
+    g_assert_false(gtk_widget_get_visible(f->panel));
+    g_assert_true(gtk_window_get_focus(GTK_WINDOW(f->window)) == f->view);
+    assert_caret_centered(f);
 }
 
 static void
@@ -443,6 +510,7 @@ main(int argc, char **argv)
     g_test_add("/search/controls/popovers-and-tile", Fixture, NULL, setup, popovers_and_tile, teardown);
     g_test_add("/search/controls/rapid-preview", Fixture, NULL, setup, rapid_preview, teardown);
     g_test_add("/search/controls/queued-repeat", Fixture, NULL, setup, repeat_while_previewing, teardown);
+    g_test_add("/search/controls/centered-matches", Fixture, NULL, setup, centered_matches, teardown);
     g_test_add("/search/controls/cursor-directions", Fixture, NULL, setup, directions, teardown);
     g_test_add("/search/controls/repeat-forward", Fixture, GINT_TO_POINTER(FALSE), setup, repeat_direction, teardown);
     g_test_add("/search/controls/repeat-backward", Fixture, GINT_TO_POINTER(TRUE), setup, repeat_direction, teardown);

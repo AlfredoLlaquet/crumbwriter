@@ -35,6 +35,8 @@ On Plasma Wayland, run `make install` once after updating to the Crumbs favicon,
 
 ## Writing
 
+In light mode, a very light blue band follows the current crumb across every wrapped line. It stays visible while using Find or the sidebar. Dark mode uses a subdued blue, and switching to another window turns the manuscript gray.
+
 | Shortcut | Action |
 | --- | --- |
 | Ctrl+N | Append the next crumb and start typing its body |
@@ -79,6 +81,8 @@ Smart punctuation turns typed quotes, apostrophes, double hyphens, and three per
 ## Finding a passage
 
 **Ctrl+F** finds the next occurrence from the caret. **Ctrl+G** finds the previous one. With plain text, each keystroke selects the nearest match in that direction and keeps keyboard focus in the query. Extending the query starts again at the original caret. Enter and F3 continue in the direction that opened the search. After Ctrl+G, F3 finds an earlier match and Shift+F3 finds a later one. After Ctrl+F, those directions are reversed. Search is case-insensitive by default, wraps at the document ends, and remembers completed queries with their options.
+
+Every successful search centers the visual line where the match begins, even in the middle of a long wrapped crumb. A search by crumb number centers its header.
 
 | While Find or Replace is open | Action |
 | --- | --- |

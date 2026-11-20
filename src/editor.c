@@ -6,6 +6,7 @@
 #include "genres.h"
 
 #define WARNING_SPAN "<span foreground='" CW_NUMBER_WARNING_COLOR "' weight='bold'>"
+#define CURRENT_CRUMB_MARK "current-crumb"
 
 typedef struct {
     gchar *key;
@@ -436,8 +437,33 @@ set_metric(GtkWidget *label, guint value)
     gtk_label_set_text(GTK_LABEL(label), digits);
 }
 
+/* A source mark colors the entire wrapped paragraph beneath text and selection.
+ * It follows edits without changing the manuscript or invalidating its layout. */
 static void
-refresh_sidebar(CwEditor *editor, gboolean force)
+mark_current_crumb(CwEditor *editor, const GtkTextIter *cursor)
+{
+    GtkTextMark *mark = gtk_text_buffer_get_mark(editor->buffer, CURRENT_CRUMB_MARK);
+    if (!cursor) {
+        if (mark)
+            gtk_text_buffer_delete_mark(editor->buffer, mark);
+        return;
+    }
+
+    GtkTextIter start = *cursor;
+    gtk_text_iter_set_line_offset(&start, 0);
+    if (!mark) {
+        gtk_source_buffer_create_source_mark(GTK_SOURCE_BUFFER(editor->buffer),
+                                              CURRENT_CRUMB_MARK, CURRENT_CRUMB_MARK, &start);
+    } else {
+        GtkTextIter old;
+        gtk_text_buffer_get_iter_at_mark(editor->buffer, &old, mark);
+        if (!gtk_text_iter_equal(&old, &start))
+            gtk_text_buffer_move_mark(editor->buffer, mark, &start);
+    }
+}
+
+static void
+refresh_current_crumb(CwEditor *editor, gboolean force)
 {
     if (editor->editing || editor->loading)
         return;
@@ -453,6 +479,7 @@ refresh_sidebar(CwEditor *editor, gboolean force)
     DocumentLine *line = virtual_rows || g_sequence_iter_is_end(position) ? NULL : g_sequence_get(position);
 
     if (line && line->crumb.valid) {
+        mark_current_crumb(editor, &cursor);
         gchar *header = g_strdup_printf("%s %" G_GUINT64_FORMAT,
                                         line->crumb.label, line->crumb.number);
         if (line->header_warning) {
@@ -470,6 +497,7 @@ refresh_sidebar(CwEditor *editor, gboolean force)
         set_metric(editor->words, line->words);
         visit(editor, line);
     } else {
+        mark_current_crumb(editor, NULL);
         gtk_label_set_text(GTK_LABEL(editor->current_number), "—");
         gtk_widget_set_tooltip_text(editor->current_number, NULL);
         if (virtual_rows) {
@@ -489,7 +517,7 @@ refresh_sidebar(CwEditor *editor, gboolean force)
 static void
 virtual_changed(gpointer data)
 {
-    refresh_sidebar(data, TRUE);
+    refresh_current_crumb(data, TRUE);
 }
 
 guint
@@ -510,7 +538,7 @@ cursor_moved(GtkTextBuffer *buffer, GtkTextIter *location, GtkTextMark *mark,
 {
     (void)location;
     if (mark == gtk_text_buffer_get_insert(buffer))
-        refresh_sidebar(editor, FALSE);
+        refresh_current_crumb(editor, FALSE);
 }
 
 static void
@@ -609,7 +637,7 @@ edit_finished(CwEditor *editor)
     g_hash_table_unref(changed);
     update_genres(editor);
     editor->editing = FALSE;
-    refresh_sidebar(editor, TRUE);
+    refresh_current_crumb(editor, TRUE);
 }
 
 static void
@@ -1086,6 +1114,10 @@ cw_editor_new(GtkSourceView *view)
     editor->warning_tag = gtk_text_buffer_create_tag(editor->buffer, "crumb-number-warning",
                                                       "foreground", CW_NUMBER_WARNING_COLOR,
                                                       "weight", PANGO_WEIGHT_BOLD, NULL);
+    GtkSourceMarkAttributes *attributes = gtk_source_mark_attributes_new();
+    gtk_source_view_set_mark_attributes(view, CURRENT_CRUMB_MARK, attributes, 0);
+    g_object_unref(attributes);
+    cw_editor_set_window_active(editor, TRUE);
 
     editor->loading = TRUE;
     for (gint n = 0; n < gtk_text_buffer_get_line_count(editor->buffer); n++)
@@ -1094,7 +1126,7 @@ cw_editor_new(GtkSourceView *view)
     update_genres(editor);
     editor->loading = FALSE;
     editor->shown_line = -1;
-    refresh_sidebar(editor, TRUE);
+    refresh_current_crumb(editor, TRUE);
 
     g_signal_connect(editor->buffer, "mark-set", G_CALLBACK(cursor_moved), editor);
     g_signal_connect(editor->buffer, "insert-text", G_CALLBACK(before_insert), editor);
@@ -1107,6 +1139,23 @@ cw_editor_new(GtkSourceView *view)
      * materializes its leading breaks. Typography then observes the real text. */
     editor->virtual_space = cw_virtual_new(view, virtual_changed, editor);
     return editor;
+}
+
+void
+cw_editor_set_window_active(CwEditor *editor, gboolean active)
+{
+    /* Blend over the desktop's paper color in both light and dark themes. */
+    const GdkRGBA blue = { 0.25, 0.55, 1.0, 0.12 };
+    GtkSourceMarkAttributes *attributes =
+        gtk_source_view_get_mark_attributes(editor->view, CURRENT_CRUMB_MARK, NULL);
+    gtk_source_mark_attributes_set_background(attributes, active ? &blue : NULL);
+    GtkWidget *view = GTK_WIDGET(editor->view);
+    GtkStyleContext *context = gtk_widget_get_style_context(view);
+    if (active)
+        gtk_style_context_remove_class(context, "inactive-manuscript");
+    else
+        gtk_style_context_add_class(context, "inactive-manuscript");
+    gtk_widget_queue_draw(view);
 }
 
 GtkWidget *
@@ -1157,7 +1206,7 @@ cw_editor_load_at(CwEditor *editor, const gchar *text, gint line, gint column)
     go_to(editor, line, column);
     gtk_text_buffer_set_modified(editor->buffer, FALSE);
     editor->loading = FALSE;
-    refresh_sidebar(editor, TRUE);
+    refresh_current_crumb(editor, TRUE);
 }
 
 void
@@ -1260,6 +1309,7 @@ cw_editor_free(CwEditor *editor)
     g_signal_handlers_disconnect_by_data(editor->view, editor);
     g_signal_handlers_disconnect_by_data(editor->buffer, editor);
     g_signal_handlers_disconnect_by_data(editor->history, editor);
+    mark_current_crumb(editor, NULL);
     GtkTextTagTable *tags = gtk_text_buffer_get_tag_table(editor->buffer);
     gtk_text_tag_table_remove(tags, editor->header_tag);
     gtk_text_tag_table_remove(tags, editor->title_tag);

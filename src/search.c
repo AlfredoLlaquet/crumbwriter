@@ -489,8 +489,8 @@ go_to_number(CwSearch *s, gboolean backwards)
         return;
     }
     gtk_text_buffer_place_cursor(s->buffer, &match);
-    cw_reveal_cursor(GTK_TEXT_VIEW(s->view));
     cw_search_hide(s);
+    cw_reveal_center_line(GTK_TEXT_VIEW(s->view), &match, 0);
 }
 
 static void
@@ -515,7 +515,7 @@ present_match(CwSearch *s, gboolean backwards, gboolean found, gboolean wrapped,
     s->selecting = FALSE;
     s->result_end = gtk_text_iter_get_offset(end);
     s->from_anchor = FALSE;
-    cw_reveal_cursor(GTK_TEXT_VIEW(s->view));
+    cw_reveal_center_line(GTK_TEXT_VIEW(s->view), start, 0);
     s->wrapped = wrapped;
     show_status(s);
 }
@@ -755,9 +755,8 @@ cw_search_handle_key(CwSearch *s, GdkEventKey *event)
         if (selected) {
             GtkTextIter cursor;
             gtk_text_buffer_get_iter_at_mark(s->buffer, &cursor, gtk_text_buffer_get_insert(s->buffer));
-            s->selecting = TRUE;
-            gtk_text_buffer_place_cursor(s->buffer, &cursor);
-            s->selecting = FALSE;
+            /* Keep the match centered as closing Find expands the paper. */
+            gtk_text_buffer_move_mark(s->buffer, gtk_text_buffer_get_selection_bound(s->buffer), &cursor);
         }
         return TRUE;
     }

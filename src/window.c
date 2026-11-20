@@ -95,11 +95,7 @@ static void
 update_manuscript_appearance(GtkWindow *window, GParamSpec *property, CwWindow *w)
 {
     (void)property;
-    GtkStyleContext *context = gtk_widget_get_style_context(GTK_WIDGET(w->view));
-    if (gtk_window_is_active(window))
-        gtk_style_context_remove_class(context, "inactive-manuscript");
-    else
-        gtk_style_context_add_class(context, "inactive-manuscript");
+    cw_editor_set_window_active(w->editor, gtk_window_is_active(window));
 }
 
 static gchar *

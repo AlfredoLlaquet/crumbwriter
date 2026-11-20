@@ -195,6 +195,127 @@ visual_line_navigation(Fixture *f, gconstpointer data)
     assert_cursor(f, 0, "");
 }
 
+static guint32
+paper_pixel(cairo_surface_t *image, gint x, gint y)
+{
+    const guchar *row = cairo_image_surface_get_data(image) +
+                        y * cairo_image_surface_get_stride(image);
+    return ((const guint32 *)row)[x] & 0xffffff;
+}
+
+/* Sample both writing margins at the center of every displayed row. This
+ * also checks the empty width beyond the final word of each paragraph. */
+static void
+assert_crumb_paper(Fixture *f, gint active_line, gboolean dark)
+{
+    GtkTextView *view = GTK_TEXT_VIEW(f->view);
+    GtkWidget *widget = GTK_WIDGET(view);
+    gtk_test_widget_wait_for_draw(widget);
+    gint width = gtk_widget_get_allocated_width(widget);
+    gint height = gtk_widget_get_allocated_height(widget);
+    cairo_surface_t *image = cairo_image_surface_create(CAIRO_FORMAT_RGB24, width, height);
+    cairo_t *cr = cairo_create(image);
+    gtk_widget_draw(widget, cr);
+    cairo_destroy(cr);
+    cairo_surface_flush(image);
+    guint32 plain = paper_pixel(image, 6, height - 4);
+    g_assert_cmphex(plain, ==, dark ? 0x242424 : 0xffffff);
+    gint count = gtk_text_buffer_get_line_count(f->buffer);
+    for (gint line = 0; line < count; line++) {
+        GtkTextIter row;
+        gtk_text_buffer_get_iter_at_line(f->buffer, &row, line);
+        gint row_count = 0;
+        do {
+            GdkRectangle rect;
+            gint y;
+            gtk_text_view_get_iter_location(view, &row, &rect);
+            gtk_text_view_buffer_to_window_coords(view, GTK_TEXT_WINDOW_WIDGET, 0,
+                                                  rect.y + rect.height / 2, NULL, &y);
+            g_assert_cmpint(y, >=, 0);
+            g_assert_cmpint(y, <, height);
+            guint32 color = paper_pixel(image, 6, y);
+            g_assert_cmphex(color, ==, paper_pixel(image, width - 7, y));
+            if (line == active_line) {
+                guint red = color >> 16, green = (color >> 8) & 255, blue = color & 255;
+                g_assert_cmphex(color, !=, plain);
+                g_assert_cmpuint(blue, >, green);
+                g_assert_cmpuint(green, >, red);
+                if (dark)
+                    g_assert_cmpuint(blue, <, 150);
+                else
+                    g_assert_cmpuint(red, >=, 210);
+            } else {
+                g_assert_cmphex(color, ==, plain);
+            }
+            row_count++;
+        } while (gtk_text_view_forward_display_line(view, &row) &&
+                 gtk_text_iter_get_line(&row) == line);
+        if (line == 0)
+            g_assert_cmpint(row_count, >=, 3);
+    }
+    cairo_surface_destroy(image);
+}
+
+static void
+current_crumb_paper(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    /* A fixed GTK_THEME in the desktop environment overrides GtkSettings. */
+    GtkWidget *widget = GTK_WIDGET(f->view);
+    gtk_widget_set_name(widget, "paper-test");
+    g_autoptr(GtkCssProvider) palette = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(palette,
+        "#paper-test, #paper-test > text { background-image: none; background-color: #fff; color: #222; }"
+        "#paper-test.dark, #paper-test.dark > text { background-color: #242424; color: #eee; }", -1, NULL);
+    GdkScreen *screen = gtk_widget_get_screen(widget);
+    gtk_style_context_add_provider_for_screen(screen, GTK_STYLE_PROVIDER(palette),
+                                              GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
+    gtk_text_view_set_left_margin(GTK_TEXT_VIEW(f->view), 24);
+    gtk_text_view_set_right_margin(GTK_TEXT_VIEW(f->view), 24);
+    GString *text = g_string_new("Book//Leaf 1: Wrapped: ");
+    for (guint i = 0; i < 30; i++)
+        g_string_append(text, "window seat ");
+    g_string_append(text, "\nUnfinished draft\nLeaf 3: : ");
+    cw_editor_load_at(f->editor, text->str, 0, 180);
+    assert_crumb_paper(f, 0, FALSE);
+
+    cw_editor_focus_history(f->editor);
+    g_assert_true(gtk_widget_is_ancestor(gtk_window_get_focus(GTK_WINDOW(f->window)),
+                                         cw_editor_sidebar(f->editor)));
+    assert_crumb_paper(f, 0, FALSE);
+    gtk_widget_grab_focus(GTK_WIDGET(f->view));
+    GtkTextIter pos;
+    gtk_text_buffer_get_iter_at_line(f->buffer, &pos, 1);
+    gtk_text_buffer_place_cursor(f->buffer, &pos);
+    assert_crumb_paper(f, -1, FALSE);
+    gtk_text_buffer_begin_user_action(f->buffer);
+    gtk_text_buffer_insert_at_cursor(f->buffer, "Leaf 2: : ", -1);
+    gtk_text_buffer_end_user_action(f->buffer);
+    assert_crumb_paper(f, 1, FALSE);
+    gtk_source_buffer_undo(GTK_SOURCE_BUFFER(f->buffer));
+    assert_crumb_paper(f, -1, FALSE);
+    gtk_text_buffer_get_end_iter(f->buffer, &pos);
+    gtk_text_buffer_place_cursor(f->buffer, &pos);
+    assert_crumb_paper(f, 2, FALSE);
+
+    cw_editor_set_window_active(f->editor, FALSE);
+    assert_crumb_paper(f, -1, FALSE);
+    cw_editor_set_window_active(f->editor, TRUE);
+    gtk_style_context_add_class(gtk_widget_get_style_context(widget), "dark");
+    assert_crumb_paper(f, 2, TRUE);
+    key(f, GDK_KEY_Down, 0);
+    g_assert_cmpuint(cw_editor_virtual_rows(f->editor), ==, 1);
+    assert_crumb_paper(f, -1, TRUE);
+    assert_text(f, text->str);
+    g_assert_false(gtk_text_buffer_get_modified(f->buffer));
+    g_assert_false(gtk_source_buffer_can_undo(GTK_SOURCE_BUFFER(f->buffer)));
+    g_string_append_c(text, '\n');
+    cw_editor_load_at(f->editor, text->str, 3, 0);
+    assert_crumb_paper(f, -1, TRUE);
+    g_string_free(text, TRUE);
+    gtk_style_context_remove_provider_for_screen(screen, GTK_STYLE_PROVIDER(palette));
+}
+
 static void
 record_and_file_boundaries(Fixture *f, gconstpointer data)
 {
@@ -711,6 +832,7 @@ main(int argc, char **argv)
     g_test_add("/editor/append/no-final-lf", Fixture, "", setup, append_and_undo, teardown);
     g_test_add("/editor/navigation/fields", Fixture, NULL, setup, field_and_crumb_navigation, teardown);
     g_test_add("/editor/navigation/wrapped-lines", Fixture, NULL, setup, visual_line_navigation, teardown);
+    g_test_add("/editor/appearance/current-crumb", Fixture, NULL, setup, current_crumb_paper, teardown);
     g_test_add("/editor/navigation/record-and-file-boundaries", Fixture, NULL, setup, record_and_file_boundaries, teardown);
     g_test_add("/editor/navigation/draft-boundaries", Fixture, NULL, setup, draft_boundaries, teardown);
     g_test_add("/editor/sidebar/recency-and-edits", Fixture, NULL, setup, sidebar_and_history, teardown);
