@@ -1,5 +1,6 @@
 #include "editor.h"
 #include "reveal.h"
+#include "virtual.h"
 
 #include "crumb.h"
 #include "genres.h"
@@ -48,6 +49,7 @@ struct _CwEditor {
     GtkTextTag *header_tag;
     GtkTextTag *title_tag;
     GtkTextTag *warning_tag;
+    CwVirtual *virtual_space;
 
     GtkWidget *sidebar;
     GtkWidget *current_number;
@@ -447,7 +449,8 @@ refresh_sidebar(CwEditor *editor, gboolean force)
         return;
     editor->shown_line = number;
     GSequenceIter *position = g_sequence_get_iter_at_pos(editor->lines, number);
-    DocumentLine *line = g_sequence_iter_is_end(position) ? NULL : g_sequence_get(position);
+    guint virtual_rows = cw_virtual_rows(editor->virtual_space);
+    DocumentLine *line = virtual_rows || g_sequence_iter_is_end(position) ? NULL : g_sequence_get(position);
 
     if (line && line->crumb.valid) {
         gchar *header = g_strdup_printf("%s %" G_GUINT64_FORMAT,
@@ -469,12 +472,36 @@ refresh_sidebar(CwEditor *editor, gboolean force)
     } else {
         gtk_label_set_text(GTK_LABEL(editor->current_number), "—");
         gtk_widget_set_tooltip_text(editor->current_number, NULL);
-        gtk_label_set_text(GTK_LABEL(editor->current_title), "No crumb at cursor");
+        if (virtual_rows) {
+            guint64 row = (guint64)gtk_text_buffer_get_line_count(editor->buffer) + virtual_rows;
+            g_autofree gchar *label = g_strdup_printf("Blank line %" G_GUINT64_FORMAT, row);
+            gtk_label_set_text(GTK_LABEL(editor->current_title), label);
+        } else {
+            gtk_label_set_text(GTK_LABEL(editor->current_title), "No crumb at cursor");
+        }
         gtk_widget_set_tooltip_text(editor->current_title, NULL);
         gtk_label_set_text(GTK_LABEL(editor->words), "—");
         editor->active_number_set = FALSE;
     }
     set_metric(editor->new_crumbs, editor->new_count);
+}
+
+static void
+virtual_changed(gpointer data)
+{
+    refresh_sidebar(data, TRUE);
+}
+
+guint
+cw_editor_virtual_rows(CwEditor *editor)
+{
+    return cw_virtual_rows(editor->virtual_space);
+}
+
+void
+cw_editor_leave_virtual(CwEditor *editor)
+{
+    cw_virtual_clear(editor->virtual_space);
 }
 
 static void
@@ -631,6 +658,7 @@ document_end(CwEditor *editor)
 void
 cw_editor_go_to_end(CwEditor *editor)
 {
+    cw_editor_leave_virtual(editor);
     GtkTextIter end = document_end(editor);
     gtk_widget_grab_focus(GTK_WIDGET(editor->view));
     gtk_text_buffer_place_cursor(editor->buffer, &end);
@@ -649,6 +677,11 @@ current_record(CwEditor *editor, GtkTextIter *cursor)
 gboolean
 cw_editor_copy_crumb(CwEditor *editor)
 {
+    if (cw_editor_virtual_rows(editor)) {
+        cw_editor_leave_virtual(editor);
+        cw_reveal_cursor(GTK_TEXT_VIEW(editor->view));
+        return FALSE;
+    }
     GtkTextIter start;
     DocumentLine *line = current_record(editor, &start);
     if (!line)
@@ -667,6 +700,11 @@ cw_editor_copy_crumb(CwEditor *editor)
 gboolean
 cw_editor_delete_crumb(CwEditor *editor)
 {
+    if (cw_editor_virtual_rows(editor)) {
+        cw_editor_leave_virtual(editor);
+        cw_reveal_cursor(GTK_TEXT_VIEW(editor->view));
+        return FALSE;
+    }
     GtkTextIter start;
     DocumentLine *line = current_record(editor, &start);
     if (!line || !gtk_text_view_get_editable(GTK_TEXT_VIEW(editor->view)))
@@ -709,6 +747,10 @@ navigate(CwEditor *editor, gboolean forward, gboolean fields)
     gint limit = g_sequence_get_length(editor->lines);
     gint step = forward ? 1 : -1;
     gint n = fields ? current : current + step;
+    if (cw_editor_virtual_rows(editor)) {
+        current = limit;
+        n = forward ? limit : limit - 1;
+    }
     for (; n >= 0 && n < limit; n += step) {
         DocumentLine *line = g_sequence_get(g_sequence_get_iter_at_pos(editor->lines, n));
         if (!line->crumb.valid)
@@ -753,6 +795,25 @@ crumb_edge(CwEditor *editor, gboolean at_end)
 static gboolean
 editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
 {
+    GdkModifierType mods = event->state & gtk_accelerator_get_default_mod_mask();
+    if (event->keyval == GDK_KEY_Return || event->keyval == GDK_KEY_KP_Enter ||
+        event->keyval == GDK_KEY_ISO_Enter) {
+        guint rows = cw_editor_virtual_rows(editor);
+        GtkTextIter base;
+        if (mods == GDK_CONTROL_MASK) {
+            gtk_text_buffer_get_iter_at_mark(editor->buffer, &base, gtk_text_buffer_get_insert(editor->buffer));
+            cw_reveal_center_line(GTK_TEXT_VIEW(view), &base, rows);
+            return TRUE;
+        }
+        if (mods == GDK_MOD1_MASK) {
+            if (rows)
+                gtk_text_buffer_get_end_iter(editor->buffer, &base);
+            else
+                base = crumb_edge(editor, FALSE);
+            cw_reveal_top_line(GTK_TEXT_VIEW(view), &base, rows);
+            return TRUE;
+        }
+    }
     /* Leave the key to GTK's input method, including Shift and AltGr layouts.
      * A command or composition that never inserts # cannot complete a title. */
     if (event->keyval == GDK_KEY_numbersign && !editor->hash_key &&
@@ -761,7 +822,6 @@ editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
         editor->typed_hash = FALSE;
         gtk_text_buffer_begin_user_action(editor->buffer);
     }
-    GdkModifierType mods = event->state & gtk_accelerator_get_default_mod_mask();
     if (event->keyval == GDK_KEY_Tab || event->keyval == GDK_KEY_ISO_Left_Tab ||
         event->keyval == GDK_KEY_KP_Tab) {
         if (mods == 0 || mods == GDK_SHIFT_MASK) {
@@ -770,7 +830,7 @@ editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
         }
     }
     if (mods != GDK_CONTROL_MASK)
-        return FALSE;
+        return cw_virtual_key(editor->virtual_space, event);
     GtkTextIter target;
     switch (event->keyval) {
     case GDK_KEY_Up: case GDK_KEY_KP_Up:
@@ -793,7 +853,7 @@ editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
         gtk_text_buffer_get_end_iter(editor->buffer, &target);
         break;
     default:
-        return FALSE;
+        return cw_virtual_key(editor->virtual_space, event);
     }
     gtk_text_buffer_place_cursor(editor->buffer, &target);
     cw_reveal_cursor(GTK_TEXT_VIEW(editor->view));
@@ -1043,6 +1103,9 @@ cw_editor_new(GtkSourceView *view)
     g_signal_connect_after(editor->buffer, "delete-range", G_CALLBACK(after_delete), editor);
     g_signal_connect(view, "key-press-event", G_CALLBACK(editor_key), editor);
     g_signal_connect_after(view, "event-after", G_CALLBACK(after_key), editor);
+    /* The ordinary line index must see each insertion before virtual space
+     * materializes its leading breaks. Typography then observes the real text. */
+    editor->virtual_space = cw_virtual_new(view, virtual_changed, editor);
     return editor;
 }
 
@@ -1056,6 +1119,7 @@ void
 cw_editor_load_at(CwEditor *editor, const gchar *text, gint line, gint column)
 {
     editor->loading = TRUE;
+    cw_editor_leave_virtual(editor);
     editor->editing = FALSE;
     editor->new_count = 0;
     editor->active_number_set = FALSE;
@@ -1117,6 +1181,7 @@ immediately_after_work_title(GtkTextIter position)
 static void
 append_with_title(CwEditor *editor, const gchar *title)
 {
+    cw_editor_leave_virtual(editor);
     const gchar *label = editor->fallback_label ? editor->fallback_label : "Crumb";
     guint64 largest = 0;
     GSequenceIter *end = g_sequence_get_end_iter(editor->lines);
@@ -1188,6 +1253,8 @@ cw_editor_free(CwEditor *editor)
 {
     if (!editor)
         return;
+    cw_virtual_free(editor->virtual_space);
+    editor->virtual_space = NULL;
     if (editor->hash_key)
         gtk_text_buffer_end_user_action(editor->buffer);
     g_signal_handlers_disconnect_by_data(editor->view, editor);

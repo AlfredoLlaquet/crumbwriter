@@ -82,6 +82,15 @@ update_undo_actions(CwWindow *w)
                                 document && gtk_source_buffer_can_redo(buffer));
 }
 
+static void
+window_focus_changed(GtkWindow *window, GtkWidget *focus, CwWindow *w)
+{
+    (void)window;
+    if (focus && gtk_widget_is_ancestor(focus, cw_search_widget(w->search)))
+        cw_editor_leave_virtual(w->editor);
+    update_undo_actions(w);
+}
+
 static gchar *
 buffer_text(CwWindow *w)
 {
@@ -706,8 +715,7 @@ build_window(CwApp *app)
     g_signal_connect_swapped(w->buffer, "modified-changed", G_CALLBACK(update_title), w);
     g_signal_connect_swapped(w->buffer, "notify::can-undo", G_CALLBACK(update_undo_actions), w);
     g_signal_connect_swapped(w->buffer, "notify::can-redo", G_CALLBACK(update_undo_actions), w);
-    g_signal_connect_data(w->window, "set-focus", G_CALLBACK(update_undo_actions), w,
-                          NULL, G_CONNECT_SWAPPED | G_CONNECT_AFTER);
+    g_signal_connect_after(w->window, "set-focus", G_CALLBACK(window_focus_changed), w);
     g_signal_connect(w->window, "key-press-event", G_CALLBACK(window_key), w);
     g_signal_connect(w->window, "delete-event", G_CALLBACK(request_close), w);
     g_signal_connect(w->window, "destroy", G_CALLBACK(window_destroyed), w);

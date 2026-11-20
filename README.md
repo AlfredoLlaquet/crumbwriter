@@ -42,6 +42,9 @@ For an existing checkout, close the running application, run `git pull --ff-only
 | Tab / Shift+Tab | Move to the next or previous header, title, or body |
 | Ctrl+Up / Ctrl+Down | Move to the previous or next crumb |
 | Up / Down | Move one visual line through wrapped text |
+| Home / End | Beginning / end of the current wrapped visual line |
+| Ctrl+Enter | Center the visual line containing the caret |
+| Alt+Enter | Put the current crumb’s header at the top of the writing area |
 | Ctrl+Home (Begin) / Ctrl+End | Beginning / end of the current crumb |
 | Ctrl+Page Down (Next) | Beginning of the file, including any work title |
 | Ctrl+Page Up (Prior) | End of the file, including any final newline |
@@ -60,6 +63,8 @@ For an existing checkout, close the running application, run `git pull --ff-only
 The sidebar shows the current crumb’s number, title, official word count, recently visited crumbs, and new crumbs for the session. Click a history entry or select it with the arrow keys and press Enter. Bold red digits flag a crumb number that differs from its physical line number or a genre number that breaks its sequence. Each genre starts at #1 and continues from its previous occurrence. The flags are display formatting. Editing, copying and saving preserve the manuscript’s actual numbers.
 
 Ctrl+Q excludes the ending newline and the optional first-line work title. Ctrl+Y preserves that work title and the file’s final-newline convention. Ctrl+Z restores the deleted crumb in a single step. Navigation and scrolling move the document immediately.
+
+Down can take the caret into empty rows below the file. Moving there keeps the manuscript, its word count, and its saved bytes intact. Typing or pasting there creates the needed line breaks in the same undoable edit as the text. Ctrl+Enter and Alt+Enter also work at the bottom of the manuscript.
 
 **F1** opens the shortcut reference alongside the manuscript. It includes the commands for editing, the sidebar, Find and Replace, and the document window. The same reference appears under **Document menu → Keyboard Shortcuts**.
 

@@ -8,3 +8,5 @@
 /tests/test-numbering
 /tests/test-search-controls
 /tests/test-shortcuts
+/tests/test-virtual
+/tests/test-viewport

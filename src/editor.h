@@ -15,6 +15,8 @@ void cw_editor_load(CwEditor *editor, const gchar *text);
 void cw_editor_load_at(CwEditor *editor, const gchar *text, gint line, gint column);
 void cw_editor_append(CwEditor *editor);
 void cw_editor_go_to_end(CwEditor *editor);
+guint cw_editor_virtual_rows(CwEditor *editor);
+void cw_editor_leave_virtual(CwEditor *editor);
 gboolean cw_editor_copy_crumb(CwEditor *editor);
 gboolean cw_editor_delete_crumb(CwEditor *editor);
 void cw_editor_focus_history(CwEditor *editor);

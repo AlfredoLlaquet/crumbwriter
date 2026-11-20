@@ -145,6 +145,24 @@ The searchable reference groups commands by context, including the bindings
 that change when Find or Replace is open. The reference is modeless, so it can
 stay beside the manuscript while typing. Escape closes it.
 
+Ctrl+Enter centers the wrapped visual line containing the caret. Alt+Enter
+places the first visual line of the current crumb at the top of the writing
+area and keeps the caret in its original position within the crumb. Both
+commands can position the last crumb this way. On an incomplete line or a
+virtual row, Alt+Enter puts that line or row at the top. Plain Home and End
+move within one wrapped visual line.
+
+Down can move the caret onto empty rows below the end of the file. Clicking
+an empty row places the caret at its start. Up moves back toward the manuscript
+and Escape returns to its physical end. The sidebar shows the potential line
+number, for example "Blank line 42". Moving through virtual space leaves word
+counts, session counts and saved bytes unchanged. Typing
+or pasting there inserts just the needed line breaks and the entered text in
+one undoable edit. An existing final LF already starts an actual empty line.
+Copy Crumb and Delete Crumb on a virtual row return to EOF and leave the
+last actual crumb intact. Ctrl+Up reaches the last real crumb, and Shift+Tab
+reaches its body. Ctrl+N appends its usual template after the last crumb.
+
 Ctrl+Q selects the entire crumb at the insertion caret, copies it to the system
 clipboard and leaves it selected. The optional first-line work title through
 // and the ending line break are outside that selection. Trailing spaces in
@@ -347,7 +365,10 @@ src/search.c       Search panel, cursor-anchored directional previews,
 src/shortcuts.c    Searchable keyboard reference and its per-window lifetime.
 src/genres.c       Genre-title interpretation and the alphabetized sidebar list.
 src/reveal.c       Immediate document scrolling and caret visibility while
-                   GTK measures proportional, word-wrapped paragraphs.
+                   GTK measures proportional, word-wrapped paragraphs. Aligns
+                   the chosen visual line or header inside the viewport.
+src/virtual.c      Virtual caret rows below EOF and their conversion into
+                   actual manuscript lines on text entry.
 src/typography.c   Observes text committed by the manuscript input method,
                    resolves pending punctuation inside the same undo action.
 src/storage.c      Validates and decodes disk bytes, retains newline styles,
@@ -396,6 +417,9 @@ inside the visible viewport while GTK measures the wrapped lines above it.
 Repeat after reopening at the end, jumping backward, searching and
 activating history. A subsequent manual scroll must leave the view where the
 writer placed it.
+For viewport changes, check both alignment commands on one-line files and
+on a long, wrapped final crumb. Move below EOF, save before entering text,
+then type or paste and undo. Compare the actual bytes at each step.
 For a search change, put the caret between repeated passages. Extend and
 shorten a forward and a backward query, test both wrap settings, and confirm
 that an older asynchronous result cannot move the caret after a newer query.

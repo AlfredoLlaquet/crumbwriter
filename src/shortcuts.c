@@ -35,6 +35,11 @@ static const Shortcut editing[] = {
 
 static const Shortcut navigation[] = {
     {"Up / Down", "Move one wrapped visual line up or down"},
+    {"Down", "Move through virtual lines below the end of the file"},
+    {"Home", "Go to the start of the current wrapped visual line"},
+    {"End", "Go to the end of the current wrapped visual line"},
+    {"Ctrl+Enter", "Center the current visual line vertically"},
+    {"Alt+Enter", "Place the current crumb at the top of the viewport"},
     {"Ctrl+Up", "Go to the previous crumb"},
     {"Ctrl+Down", "Go to the next crumb"},
     {"Tab", "Go to the start of the next header, title, or body"},

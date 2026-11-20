@@ -85,6 +85,12 @@ def check(app, run):
         save_and_check(verified)
         print("Wayland Ctrl+Down, Tab, and Shift+Tab reached the intended fields.", flush=True)
 
+        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Prior", "Down", "Down", "ctrl+Return")
+        keyboard("type", "--clearmodifiers", "V")
+        save_and_check(verified + "\n\nV")
+        keyboard("key", "--clearmodifiers", "ctrl+z")
+        save_and_check(verified)
+        print("Wayland virtual typing materialized two newlines and one undo restored the original bytes.", flush=True)
         keyboard("key", "--clearmodifiers", "ctrl+w")
         if editor.wait(timeout=8) != 0:
             raise AssertionError("Closing the editor failed")

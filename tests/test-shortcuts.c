@@ -149,6 +149,9 @@ search_reference(Fixture *f, gconstpointer unused)
         {"Ctrl+Begin", "start of the current crumb"}, {"Ctrl+End", "end of the current crumb"},
         {"Control+Next", "start of the file, including the work title"},
         {"Ctrl+PageUp", "physical end of the file"}, {"Ctrl+Prior", "physical end of the file"},
+        {"Home", "start of the current wrapped visual line"}, {"End", "end of the current wrapped visual line"},
+        {"Ctrl+Enter", "Center the current visual line"}, {"Alt+Enter", "current crumb at the top"},
+        {"Down", "virtual lines below the end of the file"},
         {"whole-word", "Ctrl+W"}, {"Ctrl+W", "Close the document window"},
         {"Ctrl+G", "Find backward from the manuscript caret"}, {"F1", "Open Keyboard Shortcuts"}
     };
