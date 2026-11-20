@@ -196,6 +196,79 @@ visual_line_navigation(Fixture *f, gconstpointer data)
 }
 
 static void
+record_and_file_boundaries(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *first = "Obra//  Bocí 1: Àmbar: A.  ";
+    GString *wrapped = g_string_new("  Bocí 2: Volta: ");
+    for (guint i = 0; i < 80; i++)
+        g_string_append(wrapped, "finestra ");
+    g_string_append(wrapped, "fi.   ");
+    const gchar *last = "Bocí 3: Darrer: Z. ";
+    g_autofree gchar *text = g_strjoin("\n", first, wrapped->str, last, "", NULL);
+    cw_editor_load_at(f->editor, text, 1, 250);
+    settle();
+    GtkTextIter start, inside = cursor(f);
+    gtk_text_buffer_get_iter_at_line(f->buffer, &start, 1);
+    GdkRectangle top, middle;
+    gtk_text_view_get_iter_location(GTK_TEXT_VIEW(f->view), &start, &top);
+    gtk_text_view_get_iter_location(GTK_TEXT_VIEW(f->view), &inside, &middle);
+    g_assert_cmpint(middle.y, >, top.y);
+
+    key(f, GDK_KEY_Home, GDK_CONTROL_MASK);
+    assert_cursor(f, 1, "  ");
+    key(f, GDK_KEY_End, GDK_CONTROL_MASK);
+    assert_cursor(f, 1, wrapped->str);
+    key(f, GDK_KEY_KP_Home, GDK_CONTROL_MASK);
+    assert_cursor(f, 1, "  ");
+    key(f, GDK_KEY_KP_End, GDK_CONTROL_MASK);
+    assert_cursor(f, 1, wrapped->str);
+    key(f, GDK_KEY_Next, GDK_CONTROL_MASK);
+    assert_cursor(f, 0, "");
+    key(f, GDK_KEY_Begin, GDK_CONTROL_MASK);
+    assert_cursor(f, 0, "Obra//  ");
+    key(f, GDK_KEY_KP_End, GDK_CONTROL_MASK);
+    assert_cursor(f, 0, first);
+    key(f, GDK_KEY_Prior, GDK_CONTROL_MASK);
+    assert_cursor(f, 3, "");
+    key(f, GDK_KEY_End, GDK_CONTROL_MASK);
+    assert_cursor(f, 2, last);
+    key(f, GDK_KEY_KP_Prior, GDK_CONTROL_MASK);
+    assert_cursor(f, 3, "");
+    key(f, GDK_KEY_KP_Begin, GDK_CONTROL_MASK);
+    assert_cursor(f, 2, "");
+    key(f, GDK_KEY_KP_Next, GDK_CONTROL_MASK);
+    assert_cursor(f, 0, "");
+    g_string_free(wrapped, TRUE);
+    assert_text(f, text);
+}
+
+static void
+draft_boundaries(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    const gchar *partial = "  esborrany   ";
+    g_autofree gchar *text = g_strconcat("Bocí 1: : A\n", partial, NULL);
+    cw_editor_load_at(f->editor, text, 1, 5);
+    key(f, GDK_KEY_Home, GDK_CONTROL_MASK);
+    assert_cursor(f, 1, "");
+    key(f, GDK_KEY_End, GDK_CONTROL_MASK);
+    assert_cursor(f, 1, partial);
+    key(f, GDK_KEY_Page_Down, GDK_CONTROL_MASK);
+    assert_cursor(f, 0, "");
+    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    assert_cursor(f, 1, partial);
+    cw_editor_load(f->editor, "Bocí 1: : A\n\n");
+    key(f, GDK_KEY_Page_Up, GDK_CONTROL_MASK);
+    assert_cursor(f, 2, "");
+    key(f, GDK_KEY_End, GDK_CONTROL_MASK);
+    assert_cursor(f, 0, "Bocí 1: : A");
+    cw_editor_load(f->editor, "");
+    key(f, GDK_KEY_End, GDK_CONTROL_MASK);
+    assert_cursor(f, 0, "");
+}
+
+static void
 settings_changed(gpointer data)
 {
     (void)data;
@@ -638,6 +711,8 @@ main(int argc, char **argv)
     g_test_add("/editor/append/no-final-lf", Fixture, "", setup, append_and_undo, teardown);
     g_test_add("/editor/navigation/fields", Fixture, NULL, setup, field_and_crumb_navigation, teardown);
     g_test_add("/editor/navigation/wrapped-lines", Fixture, NULL, setup, visual_line_navigation, teardown);
+    g_test_add("/editor/navigation/record-and-file-boundaries", Fixture, NULL, setup, record_and_file_boundaries, teardown);
+    g_test_add("/editor/navigation/draft-boundaries", Fixture, NULL, setup, draft_boundaries, teardown);
     g_test_add("/editor/sidebar/recency-and-edits", Fixture, NULL, setup, sidebar_and_history, teardown);
     g_test_add("/editor/navigation/large-document-jumps", Fixture, NULL, setup_search, large_document_jumps, teardown);
     g_test_add_func("/editor/navigation/instant-document-scroll", instant_document_scroll);

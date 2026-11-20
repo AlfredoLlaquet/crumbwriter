@@ -4,6 +4,7 @@
 #include "editor.h"
 #include "preferences.h"
 #include "search.h"
+#include "shortcuts.h"
 #include "storage.h"
 #include "typography.h"
 #include <glib/gstdio.h>
@@ -363,6 +364,7 @@ static void cmd_next(CwWindow *w) { cw_search_step(w->search, FALSE); }
 static void cmd_previous(CwWindow *w) { cw_search_step(w->search, TRUE); }
 static void cmd_number(CwWindow *w) { cw_search_number(w->search); }
 static void cmd_settings(CwWindow *w) { cw_preferences_show(w->app, GTK_WINDOW(w->window)); }
+static void cmd_shortcuts(CwWindow *w) { cw_shortcuts_show(GTK_WINDOW(w->window)); }
 static void cmd_menu(CwWindow *w) { gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(w->menu_button), TRUE); }
 
 static void
@@ -460,7 +462,7 @@ static const Command commands[] = {
     {"find-backward", "<Primary>g", cmd_find_backward}, {"go-to", NULL, cmd_number},
     {"settings", "<Primary>comma", cmd_settings},
     {"history", "F6", cmd_focus},                 {"genres", "F7", cmd_genres},
-    {"sidebar", "F9", cmd_sidebar},
+    {"sidebar", "F9", cmd_sidebar},               {"shortcuts", "F1", cmd_shortcuts},
     {"menu", "F10", cmd_menu},                    {"undo", "<Primary>z", cmd_undo},
     {"redo", "<Primary><Shift>z", cmd_redo}
 };
@@ -520,6 +522,7 @@ window_menu(void)
     g_menu_append(view, "Choose a Genre", "win.genres");
     g_menu_append(view, "Show or Hide Sidebar", "win.sidebar");
     g_menu_append(view, "Settings…", "win.settings");
+    g_menu_append(view, "Keyboard Shortcuts…", "win.shortcuts");
     g_menu_append(view, "Close Window", "win.close");
     g_menu_append_section(menu, NULL, G_MENU_MODEL(view));
     return menu;
@@ -550,7 +553,7 @@ make_toolbar(CwWindow *w)
     gtk_button_set_image(GTK_BUTTON(w->menu_button),
                          gtk_image_new_from_icon_name("open-menu-symbolic", GTK_ICON_SIZE_BUTTON));
     gtk_button_set_relief(GTK_BUTTON(w->menu_button), GTK_RELIEF_NONE);
-    gtk_widget_set_tooltip_text(w->menu_button, "Document menu (F10)");
+    gtk_widget_set_tooltip_text(w->menu_button, "Document menu (F10) · Keyboard shortcuts (F1)");
     atk_object_set_name(gtk_widget_get_accessible(w->menu_button), "Document menu");
     g_autoptr(GMenu) menu = window_menu();
     gtk_menu_button_set_menu_model(GTK_MENU_BUTTON(w->menu_button), G_MENU_MODEL(menu));
@@ -615,6 +618,24 @@ cw_window_apply_preferences(CwWindow *w)
         schedule_save(w);
 }
 
+static void
+set_initial_size(GtkWindow *window)
+{
+    GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(window));
+    gint width = 1060, height = 720;
+    /* KWin can maximize a new client whose request fills a work area. The
+     * compositor chooses the output, so leave frame room on every candidate. */
+    for (gint i = 0; i < gdk_display_get_n_monitors(display); i++) {
+        GdkRectangle area;
+        gdk_monitor_get_workarea(gdk_display_get_monitor(display, i), &area);
+        if (area.width > 0 && area.height > 0) {
+            width = MIN(width, area.width * 4 / 5);
+            height = MIN(height, area.height * 4 / 5);
+        }
+    }
+    gtk_window_set_default_size(window, width, height);
+}
+
 static CwWindow *
 build_window(CwApp *app)
 {
@@ -622,7 +643,7 @@ build_window(CwApp *app)
     w->app = app;
     w->window = gtk_application_window_new(app->gtk);
     gtk_window_set_role(GTK_WINDOW(w->window), "manuscript");
-    gtk_window_set_default_size(GTK_WINDOW(w->window), 1060, 720);
+    set_initial_size(GTK_WINDOW(w->window));
     gtk_application_window_set_show_menubar(GTK_APPLICATION_WINDOW(w->window), FALSE);
     g_object_set_data(G_OBJECT(w->window), "cw-window", w);
     install_commands(w);
@@ -667,7 +688,7 @@ build_window(CwApp *app)
     gtk_box_pack_start(GTK_BOX(root), panes, TRUE, TRUE, 0);
     GtkWidget *footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
     style(footer, "writer-footer");
-    w->status = gtk_label_new("Untitled");
+    w->status = gtk_label_new("Untitled · F1 for keyboard shortcuts");
     w->save_mode = gtk_label_new(NULL);
     gtk_label_set_xalign(GTK_LABEL(w->status), 0);
     gtk_label_set_ellipsize(GTK_LABEL(w->status), PANGO_ELLIPSIZE_END);

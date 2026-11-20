@@ -216,9 +216,18 @@ popovers_and_tile(Fixture *f, gconstpointer unused)
     g_assert_cmpint(minimum.width, <=, 400);
     GtkWidget *mode = control(f, "cw-search-mode");
     gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(mode), TRUE);
-    settle();
     GtkWidget *popup = GTK_WIDGET(gtk_menu_button_get_popover(GTK_MENU_BUTTON(mode)));
     const gchar *choices[] = {"cw-mode-plain", "cw-mode-regex", "cw-mode-number"};
+    GtkWidget *last = find_named(popup, choices[G_N_ELEMENTS(choices) - 1]);
+    g_assert_nonnull(last);
+    /* Mapping precedes the first frame-clock layout on some displays. GTK
+     * reports a 1-pixel placeholder until the popover has allocated its rows. */
+    gint64 deadline = g_get_monotonic_time() + 3 * G_TIME_SPAN_SECOND;
+    while (gtk_widget_get_allocated_height(last) <= 1 && g_get_monotonic_time() < deadline) {
+        settle();
+        g_usleep(1000);
+    }
+    g_assert_cmpint(gtk_widget_get_allocated_height(last), >, 1);
     gint previous_bottom = -1;
     for (guint i = 0; i < G_N_ELEMENTS(choices); i++) {
         GtkWidget *item = find_named(popup, choices[i]);

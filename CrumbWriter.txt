@@ -127,6 +127,24 @@ empty fields. Ctrl+Up and Ctrl+Down visit neighboring recognizable crumbs.
 Unmodified Up and Down move through visual, wrapped lines. Ordinary text entry,
 selection, cut, copy, paste, undo and redo remain available.
 
+    Ctrl+Home / Ctrl+Begin     Start of the current crumb's header
+    Ctrl+End                   End of its body, including any trailing spaces
+    Ctrl+Page Down / Ctrl+Next Absolute beginning of the file
+    Ctrl+Page Up / Ctrl+Prior  Absolute end of the file
+
+These shortcuts work anywhere in the manuscript, including the middle of a
+wrapped line. Ctrl+Home on line 1 skips the optional work title before //.
+On an incomplete line, Home and End with Ctrl use its physical boundaries.
+Ctrl+End stops before the current crumb's line break. Ctrl+Page Up reaches
+the actual end of the buffer, after its final newline when one is present.
+Opening a manuscript still lands at the writing position before that newline.
+The corresponding keypad navigation keys work with Num Lock off.
+
+F1 opens Keyboard Shortcuts, also available from the F10 document menu.
+The searchable reference groups commands by context, including the bindings
+that change when Find or Replace is open. The reference is modeless, so it can
+stay beside the manuscript while typing. Escape closes it.
+
 Ctrl+Q selects the entire crumb at the insertion caret, copies it to the system
 clipboard and leaves it selected. The optional first-line work title through
 // and the ending line break are outside that selection. Trailing spaces in
@@ -285,6 +303,10 @@ manuscript byte. Toolbar and sidebar keep their desktop UI font.
 
 The manuscript is a resizable normal application window. It first appears
 with its document loaded and delegates position and dimensions to KWin.
+The initial floating-size hint is capped at 1060 by 720 logical pixels and at
+80 percent of each connected display's work area. This leaves room for window
+decorations so KWin can place the editor in an ordinary Krohnkite tile even
+on a small screen. The application sets this hint only before the first map.
 The split pane can shrink and the sidebar can scroll in a shallow tile. Find
 and Replace open inside the manuscript and Settings is a modeless transient
 dialog. F9 gives the manuscript the entire width of a narrow tile.
@@ -322,6 +344,7 @@ src/editor.c       Per-line parse cache, number and genre indexes, text tags,
                    A changed line count shifts subsequent header comparisons.
 src/search.c       Search panel, cursor-anchored directional previews,
                    GtkSourceSearchContext, history, numeric jumps and replace.
+src/shortcuts.c    Searchable keyboard reference and its per-window lifetime.
 src/genres.c       Genre-title interpretation and the alphabetized sidebar list.
 src/reveal.c       Immediate document scrolling and caret visibility while
                    GTK measures proportional, word-wrapped paragraphs.
@@ -355,7 +378,8 @@ Maintenance checks
 ------------------
 Update CrumbWriter.txt in the same change as every Crumb Writer modification.
 Keep behavior, keyboard commands, build instructions, design decisions,
-module responsibilities and verification steps current.
+module responsibilities and verification steps current. When a binding changes,
+update the in-app F1 reference and README shortcut table too.
 
 Run make and make check after changing a module. make accepts both BSD and GNU
 make. The FreeBSD job runs native cc and base make inside the VM. The Linux job

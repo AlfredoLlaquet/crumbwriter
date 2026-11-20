@@ -50,15 +50,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libgtksourceview-4-dev xvfb xauth librsvg2-common shared-mime-info weston xdotool dbus-daemon
-      - name: Build and test
+      - name: Build
+        id: build
+        run: make -j2
+      - name: Test on X11
         env:
           GDK_BACKEND: x11
           GSETTINGS_BACKEND: memory
           NO_AT_BRIDGE: '1'
-        run: |
-          make -j2
-          xvfb-run -a make check
+        run: xvfb-run -a make check
       - name: Type into the native Wayland editor
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- python3 tests/check-wayland.py ./crumbwriter
 
   plasma:

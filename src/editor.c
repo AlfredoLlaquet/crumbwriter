@@ -728,6 +728,28 @@ navigate(CwEditor *editor, gboolean forward, gboolean fields)
     }
 }
 
+static GtkTextIter
+crumb_edge(CwEditor *editor, gboolean at_end)
+{
+    GtkTextIter cursor;
+    gtk_text_buffer_get_iter_at_mark(editor->buffer, &cursor, gtk_text_buffer_get_insert(editor->buffer));
+    if (gtk_text_iter_is_end(&cursor) && gtk_text_iter_starts_line(&cursor)) {
+        /* From the empty position after a terminal delimiter, return to the
+         * last content line, including an unfinished draft. */
+        while (gtk_text_iter_starts_line(&cursor) && !gtk_text_iter_is_start(&cursor)) {
+            gtk_text_iter_backward_line(&cursor);
+            cursor = line_end(cursor);
+        }
+    }
+    if (at_end)
+        return line_end(cursor);
+    gint n = gtk_text_iter_get_line(&cursor);
+    DocumentLine *line = g_sequence_get(g_sequence_get_iter_at_pos(editor->lines, n));
+    /* Unrecognized lines have header_start zero. */
+    gtk_text_iter_set_line_offset(&cursor, line->crumb.header_start);
+    return cursor;
+}
+
 static gboolean
 editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
 {
@@ -747,17 +769,35 @@ editor_key(GtkWidget *view, GdkEventKey *event, CwEditor *editor)
             return TRUE;
         }
     }
-    if (mods == GDK_CONTROL_MASK) {
-        if (event->keyval == GDK_KEY_Up || event->keyval == GDK_KEY_KP_Up) {
-            navigate(editor, FALSE, FALSE);
-            return TRUE;
-        }
-        if (event->keyval == GDK_KEY_Down || event->keyval == GDK_KEY_KP_Down) {
-            navigate(editor, TRUE, FALSE);
-            return TRUE;
-        }
+    if (mods != GDK_CONTROL_MASK)
+        return FALSE;
+    GtkTextIter target;
+    switch (event->keyval) {
+    case GDK_KEY_Up: case GDK_KEY_KP_Up:
+        navigate(editor, FALSE, FALSE);
+        return TRUE;
+    case GDK_KEY_Down: case GDK_KEY_KP_Down:
+        navigate(editor, TRUE, FALSE);
+        return TRUE;
+    case GDK_KEY_Home: case GDK_KEY_Begin:
+    case GDK_KEY_KP_Home: case GDK_KEY_KP_Begin:
+        target = crumb_edge(editor, FALSE);
+        break;
+    case GDK_KEY_End: case GDK_KEY_KP_End:
+        target = crumb_edge(editor, TRUE);
+        break;
+    case GDK_KEY_Page_Down: case GDK_KEY_KP_Page_Down: /* Next */
+        gtk_text_buffer_get_start_iter(editor->buffer, &target);
+        break;
+    case GDK_KEY_Page_Up: case GDK_KEY_KP_Page_Up: /* Prior */
+        gtk_text_buffer_get_end_iter(editor->buffer, &target);
+        break;
+    default:
+        return FALSE;
     }
-    return FALSE;
+    gtk_text_buffer_place_cursor(editor->buffer, &target);
+    cw_reveal_cursor(GTK_TEXT_VIEW(editor->view));
+    return TRUE;
 }
 
 static void

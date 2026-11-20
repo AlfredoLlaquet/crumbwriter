@@ -42,6 +42,9 @@ For an existing checkout, close the running application, run `git pull --ff-only
 | Tab / Shift+Tab | Move to the next or previous header, title, or body |
 | Ctrl+Up / Ctrl+Down | Move to the previous or next crumb |
 | Up / Down | Move one visual line through wrapped text |
+| Ctrl+Home (Begin) / Ctrl+End | Beginning / end of the current crumb |
+| Ctrl+Page Down (Next) | Beginning of the file, including any work title |
+| Ctrl+Page Up (Prior) | End of the file, including any final newline |
 | Ctrl+F / Ctrl+G | Find forward / backward from the manuscript caret |
 | Ctrl+H | Open Find and Replace |
 | F3 / Shift+F3 | Next or previous match, including with the search panel closed |
@@ -52,10 +55,13 @@ For an existing checkout, close the running application, run `git pull --ff-only
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+Shift+N / Ctrl+W | Open a blank document / close the current window |
 | Ctrl+, / F10 | Settings / document menu |
+| F1 | Open searchable keyboard shortcuts |
 
 The sidebar shows the current crumb’s number, title, official word count, recently visited crumbs, and new crumbs for the session. Click a history entry or select it with the arrow keys and press Enter. Bold red digits flag a crumb number that differs from its physical line number or a genre number that breaks its sequence. Each genre starts at #1 and continues from its previous occurrence. The flags are display formatting. Editing, copying and saving preserve the manuscript’s actual numbers.
 
 Ctrl+Q excludes the ending newline and the optional first-line work title. Ctrl+Y preserves that work title and the file’s final-newline convention. Ctrl+Z restores the deleted crumb in a single step. Navigation and scrolling move the document immediately.
+
+**F1** opens the shortcut reference alongside the manuscript. It includes the commands for editing, the sidebar, Find and Replace, and the document window. The same reference appears under **Document menu → Keyboard Shortcuts**.
 
 When writing a numbered genre title, type the genre name followed by a space and `#`. If the last earlier `Portrait` was `Portrait #42`, typing `Portrait #` completes `Portrait #43`. The cursor stays after the number.
 

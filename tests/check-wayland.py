@@ -76,7 +76,7 @@ def check(app, run):
         save_and_check(first + second + typed)
         print("Wayland keyboard converted apostrophe, quotes, dash, and ellipsis.", flush=True)
 
-        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Home", "ctrl+Down", "Tab", "Tab", "shift+Tab")
+        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Next", "ctrl+Down", "Tab", "Tab", "shift+Tab")
         keyboard("type", "--clearmodifiers", "Verified ")
         save_and_check(first + "Crumb 2: Verified Second: " + typed)
         print("Wayland Ctrl+Down, Tab, and Shift+Tab reached the intended fields.", flush=True)

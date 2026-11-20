@@ -8,10 +8,10 @@ CORE_CFLAGS != $(PKG_CONFIG) --cflags gio-2.0
 CORE_LIBS != $(PKG_CONFIG) --libs gio-2.0
 FLAGS = -std=c11 -Wall -Wextra -Wpedantic -Isrc $(CPPFLAGS) $(CFLAGS)
 EDITOR_OBJECTS = src/editor.o src/search.o src/crumb.o src/genres.o src/reveal.o
-OBJECTS = src/main.o src/window.o src/preferences.o src/typography.o \
+OBJECTS = src/main.o src/window.o src/preferences.o src/shortcuts.o src/typography.o \
           src/storage.o src/draft.o $(EDITOR_OBJECTS)
 HEADERS = src/app.h src/window.h src/preferences.h src/editor.h src/search.h \
-          src/typography.h src/crumb.h src/storage.h src/draft.h src/genres.h src/reveal.h
+          src/shortcuts.h src/typography.h src/crumb.h src/storage.h src/draft.h src/genres.h src/reveal.h
 
 all: crumbwriter
 
@@ -44,16 +44,20 @@ tests/test-numbering: tests/test-numbering.c $(EDITOR_OBJECTS)
 tests/test-search-controls: tests/test-search-controls.c src/search.o src/crumb.o src/reveal.o
 	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-search-controls.c src/search.o src/crumb.o src/reveal.o $(GTK_LIBS) $(LDLIBS)
 
+tests/test-shortcuts: tests/test-shortcuts.c src/shortcuts.o
+	$(CC) $(FLAGS) $(GTK_CFLAGS) $(LDFLAGS) -o $@ tests/test-shortcuts.c src/shortcuts.o $(GTK_LIBS) $(LDLIBS)
+
 check-core: tests/test-crumb tests/test-storage
 	./tests/test-crumb
 	./tests/test-storage
 
-check-gui: tests/test-editor tests/test-typography tests/test-genres tests/test-numbering tests/test-search-controls
+check-gui: tests/test-editor tests/test-typography tests/test-genres tests/test-numbering tests/test-search-controls tests/test-shortcuts
 	./tests/test-editor
 	./tests/test-typography
 	./tests/test-genres
 	./tests/test-numbering
 	./tests/test-search-controls
+	./tests/test-shortcuts
 
 check: check-core check-gui
 
@@ -64,6 +68,6 @@ install: crumbwriter
 	install -m 644 CrumbWriter.txt "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 
 clean:
-	rm -f $(OBJECTS) crumbwriter tests/test-crumb tests/test-storage tests/test-editor tests/test-typography tests/test-genres tests/test-numbering tests/test-search-controls
+	rm -f $(OBJECTS) crumbwriter tests/test-crumb tests/test-storage tests/test-editor tests/test-typography tests/test-genres tests/test-numbering tests/test-search-controls tests/test-shortcuts
 
 .PHONY: all check check-core check-gui install clean

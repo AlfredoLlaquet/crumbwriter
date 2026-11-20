@@ -100,20 +100,30 @@ def session(app, run):
             for chord in ('ctrl+f', 'Escape', 'ctrl+h', 'Escape'):
                 key(alpha, chord)
                 unchanged()
-            key(alpha, 'ctrl+comma')
-            settings = wait_for('modeless settings', lambda: windows().get('Crumb Writer Settings'))
-            props = output('xprop', '-id', settings, 'WM_TRANSIENT_FOR', '_NET_WM_WINDOW_TYPE')
-            assert 'DIALOG' in props and hex(int(alpha, 16)) in props, props
-            unchanged()
-            key(settings, 'Escape')
-            wait_for('settings closed', lambda: 'Crumb Writer Settings' not in windows())
+            for chord, name in [('ctrl+comma', 'Settings'), ('F1', 'Help')]:
+                existing = set(windows().values())
+                key(alpha, chord)
+
+                def new_transient():
+                    for candidate in set(windows().values()) - existing:
+                        parent = output('xprop', '-id', candidate, 'WM_TRANSIENT_FOR')
+                        if hex(int(alpha, 16)) in parent:
+                            return candidate
+                    return None
+
+                dialog = wait_for(f'{name} is transient for the manuscript', new_transient)
+                props = output('xprop', '-id', dialog, '_NET_WM_WINDOW_TYPE', '_NET_WM_STATE')
+                assert '_NET_WM_WINDOW_TYPE_DIALOG' in props and '_NET_WM_STATE_MODAL' not in props, props
+                unchanged()
+                key(dialog, 'Escape')
+                wait_for(f'{name} closed', lambda: dialog not in windows().values())
 
             expected = windows()
             subprocess.run([app, first], check=True, timeout=8)
             assert windows() == expected, 'reopening the same file created another window'
             unchanged()
 
-            key(alpha, 'ctrl+Home')
+            key(alpha, 'ctrl+Next')
             key(alpha, 'ctrl+Down')
             key(alpha, 'ctrl+q')
             copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
@@ -140,7 +150,10 @@ def session(app, run):
             clients.remove(beta)
             wait_for('closing the extra manuscript retiles the others', lambda: tiles(clients, screen))
         except BaseException:
-            print(log.read_text(errors='replace')[-8000:], file=sys.stderr)
+            print(log.read_text(errors='replace')[-16000:], file=sys.stderr)
+            for title, window in windows().items():
+                print(title, rectangle(window), output('xprop', '-id', window, '_NET_WM_STATE',
+                      '_NET_WM_WINDOW_TYPE', 'WM_NORMAL_HINTS'), file=sys.stderr)
             raise
         finally:
             for proc in reversed(procs):
@@ -162,7 +175,10 @@ def isolated(app, package):
             subdir = run / kind
             subdir.mkdir(mode=0o700)
             env['XDG_' + kind.upper() + ('_DIR' if kind == 'runtime' else '_HOME')] = str(subdir)
-        (run/'config'/'kwinrc').write_text('[Plugins]\nkrohnkiteEnabled=true\n[Compositing]\nEnabled=false\n')
+        (run/'config'/'kwinrc').write_text(
+            '[Plugins]\nkrohnkiteEnabled=true\n[Compositing]\nEnabled=false\n'
+            '[Script-krohnkite]\nlogging=true\nlogNewWindows=true\nlogFilteredWindows=true\n'
+            'logUnmanagedWindows=true\n')
         shutil.copytree(package, run/'data'/'kwin'/'scripts'/'krohnkite')
         subprocess.run(['dbus-run-session', '--', 'xvfb-run', '-a', '-s', '-screen 0 1000x760x24',
                         sys.executable, __file__, '--session', app, run], env=env, check=True, timeout=120)
