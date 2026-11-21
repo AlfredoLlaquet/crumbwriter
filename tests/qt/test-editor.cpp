@@ -504,28 +504,37 @@ void geometry(ManuscriptEditor &ed)
     press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
     require(ed.virtualRows()==0 && ed.textCursor().blockNumber()==1 &&
             ed.textCursor().positionInBlock()==10, "Shift+Tab from virtual space reaches last body");
-    ed.loadText(QStringLiteral("Crumb 1: Short: paragraph\nCrumb 2: B: next"));
+    ed.loadText(QStringLiteral("Crumb 1: A: ") + QStringLiteral("An ordinary wrapped sentence. ").repeated(3)
+                + QStringLiteral("End.\nCrumb 2: B: next"));
     auto paper = ed.palette();
     paper.setColor(QPalette::Base, Qt::white);
     ed.setPaperPalette(paper);
     ed.jumpTo(0,false);
     settle();
     const auto white = ed.viewport()->grab().toImage();
-    const auto band = white.pixelColor(white.width()-3, ed.cursorRect().center().y());
+    auto marginColor = [](const QImage &frame, int logicalY) {
+        const int pixelY = qFloor((logicalY + 0.5) * frame.devicePixelRatio());
+        return frame.pixelColor(frame.width()-3, pixelY);
+    };
+    const auto band = marginColor(white, ed.cursorRect().center().y());
     require(band.blue()==255 && band.red()>=229 && band.red()<=234 && band.green()>=239 && band.green()<=244,
             "current crumb tint extends to the writing margin");
-    const QRect firstRow = ed.cursorRect(QTextCursor(ed.document()->firstBlock()));
-    const QRect secondRow = ed.cursorRect(QTextCursor(ed.document()->firstBlock().next()));
-    const int gap = secondRow.top() - (firstRow.top() + firstRow.height());
-    require(gap >= 2 && qAbs(gap - qRound(firstRow.height()/4.0)) <= 2,
+    QTextCursor lastLine(ed.document()->firstBlock());
+    lastLine.movePosition(QTextCursor::EndOfBlock);
+    const QRect lastRow = ed.cursorRect(lastLine);
+    require(lastRow.top() > ed.cursorRect().top() && marginColor(white, lastRow.center().y()) == band,
+            "the current-crumb band covers the last wrapped row too");
+    const QRect nextCrumb = ed.cursorRect(QTextCursor(lastLine.block().next()));
+    const int gap = nextCrumb.top() - (lastRow.top() + lastRow.height());
+    require(gap >= 2 && qAbs(gap - qRound(lastRow.height()/4.0)) <= 2,
             "neighboring crumbs have approximately one quarter of a line of extra space");
-    require(ed.cursorForPosition(secondRow.center()).blockNumber() == 1,
+    require(ed.cursorForPosition(nextCrumb.center()).blockNumber() == 1,
             "mouse hit testing follows the extra paragraph spacing");
-    require(white.pixelColor(white.width()-3, firstRow.bottom()+1+gap/2) == Qt::white,
+    require(marginColor(white, lastRow.bottom()+1+gap/2) == Qt::white,
             "the current-crumb band ends before the gap");
     ed.setPaperActive(false);
     settle();
-    require(ed.viewport()->grab().toImage().pixelColor(white.width()-3, ed.cursorRect().center().y())
+    require(marginColor(ed.viewport()->grab().toImage(), ed.cursorRect().center().y())
             == QColor(229,229,229), "inactive window has gray paper");
     ed.setPaperActive(true);
 }

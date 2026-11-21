@@ -12,9 +12,9 @@ RCC ?= $(QT_TOOL_DIR)/rcc
 CORE_CFLAGS != $(PKG_CONFIG) --cflags gio-2.0
 CORE_LIBS != $(PKG_CONFIG) --libs gio-2.0
 C_FLAGS = -std=c11 -Wall -Wextra -Wpedantic -Isrc $(CORE_CFLAGS) $(CPPFLAGS) $(CFLAGS)
-CXX_FLAGS = -std=c++17 -fPIC -Wall -Wextra -Wpedantic -DQT_NO_KEYWORDS -Isrc -Isrc/qt \
+CXX_FLAGS = -std=c++17 -fPIC -pthread -Wall -Wextra -Wpedantic -DQT_NO_KEYWORDS -Isrc -Isrc/qt \
             $(QT_CFLAGS) $(HUNSPELL_CFLAGS) $(CORE_CFLAGS) $(CPPFLAGS) $(CXXFLAGS)
-LIBS = $(QT_LIBS) $(HUNSPELL_LIBS) $(CORE_LIBS) $(LDLIBS)
+LIBS = $(QT_LIBS) $(HUNSPELL_LIBS) $(CORE_LIBS) -pthread $(LDLIBS)
 
 CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/draft.o
 CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/draft.h

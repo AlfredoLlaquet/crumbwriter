@@ -517,6 +517,10 @@ adapter keeps file bytes, clipboard text and search positions consistent.
     data/crumbwriter.qrc, data/icons/      Embedded and installed icons
     Makefile, .github/workflows/check.yml  Build, install, test and platform CI
 
+The first spelling request loads the US dictionary on a background thread.
+The build passes -pthread to the C++ compiler and linker so FreeBSD can
+start that thread. All editor windows share the loaded dictionary.
+
 Each manuscript has one QPlainTextEdit with a QSyntaxHighlighter. It follows
 the widget width. A Qt plain-text layout computes visible paragraphs at the
 current width. The background band is painted over visible wrapped rows.
@@ -562,11 +566,16 @@ The same Makefile supports FreeBSD base make and GNU make.
 
 With both side panels visible, the 2.1 Linux X11 test using Qt 6.8.2
 changed the manuscript width between 613 and 383 pixels while typing.
-In two runs of 20 samples per manuscript, the 95th-percentile time from
-resize and key input to completed paint ranged from 3.7 to 5.9 ms with
-3,371 crumbs and from 5.7 to 7.1 ms with 25,092 crumbs. The native Wayland
-check also backspaced through a final word, waited for autosave, typed a
-replacement and verified the saved separator and replacement text.
+Four runs on the release commit used 20 resizes and keystrokes per
+manuscript. The 95th-percentile times to completed paint were 3.8, 4.3,
+4.6 and 19.6 ms for 3,371 crumbs, and 5.8, 6.0, 7.5 and 35.9 ms for
+25,092 crumbs. The native Wayland check also backspaced through a final
+word, waited for autosave, typed a replacement and verified the saved
+separator and replacement text.
+
+The spacing test measures from the last wrapped row of one crumb to the
+first row of the next. It checks the blue band and the paper in the gap at
+the screen's device scale, including on fractional-scale displays.
 
 The 2.0 release built on FreeBSD 15.1 with Qt 6.11.3. In the native
 Plasma 6/Krohnkite test, the window widened from 640 to 1280 pixels while
