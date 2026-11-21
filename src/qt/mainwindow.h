@@ -8,6 +8,7 @@
 
 class Bookmarks;
 class DocumentStore;
+class QDialog;
 class QFileDialog;
 class QLabel;
 class QMenu;
@@ -53,6 +54,7 @@ private:
     void followReference();
     void connectWritingTools();
     void showStatistics();
+    void showAbout();
     void focusSynonyms(bool recurring);
     bool companionsPending() const;
     enum class CompanionAction { Open, SaveAs, Flush };
@@ -77,6 +79,7 @@ private:
     QPointer<QFileDialog> chooser_;
     QPointer<QMessageBox> closeDialog_;
     QPointer<StatisticsDialog> statistics_;
+    QPointer<QDialog> about_;
     JumpHistory trail_;
     bool loading_ = false;
     bool allowClose_ = false;

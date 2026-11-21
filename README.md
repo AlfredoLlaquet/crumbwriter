@@ -1,6 +1,6 @@
 # Crumb Writer
 
-Crumb Writer 2.1 is a keyboard-driven C++ and Qt 6 manuscript editor for FreeBSD 15+ and KDE Plasma 6+. Each crumb occupies one physical line in a UTF-8 text file. On screen, text wraps to the full editor width with an italic header, a bold title, and a small gap between crumbs. The left panel holds Characters and Recurring. The right panel shows the current crumb and its live word count, recent visits, numbered genres, and new crumbs written today.
+Crumb Writer 2.2 is a keyboard-driven C++ and Qt 6 manuscript editor for FreeBSD 15+ and KDE Plasma 6+. Each crumb occupies one physical line in a UTF-8 text file. On screen, text wraps to the full editor width with an italic header, a bold title, and a small gap between crumbs. The left panel holds Characters and Recurring. The right panel shows the current crumb and its live word count, recently visited titles, numbered genres, and new crumbs written today.
 
 Programmed by **ChatGPT** for Alfredo Llaquet-Alsina.
 
@@ -8,7 +8,7 @@ Programmed by **ChatGPT** for Alfredo Llaquet-Alsina.
 
 ### Upgrade an existing checkout
 
-On a FreeBSD computer that already builds 2.0, install the spelling engine and American English dictionary as root.
+A FreeBSD computer that already builds 2.1 has all the dependencies for 2.2. For an upgrade from 2.0, install the spelling engine and American English dictionary as root.
 
 ~~~sh
 pkg install hunspell en-hunspell
@@ -23,7 +23,7 @@ make
 ./crumbwriter
 ~~~
 
-The version check should print `Crumb Writer 2.1`. The last command starts that copy and reopens the last manuscript by default.
+The version check should print `Crumb Writer 2.2`. The last command starts that copy and reopens the last manuscript by default.
 
 ### First installation
 
@@ -64,6 +64,8 @@ If you launch from Plasma’s application menu, repeat the installation from the
 | Home / End | Start / end of the wrapped line |
 | Ctrl+Home / Ctrl+End | Start / end of the current crumb |
 | Ctrl+Page Up / Ctrl+Page Down | Start of the file / end of the last crumb |
+| Ctrl+Shift with Up, Down, Home, End, Page Up, or Page Down | Select to the corresponding crumb or file destination. Keep Shift held to extend or shrink from the same starting point |
+| Ctrl+Space | Select by a vi movement typed in the manuscript |
 | Ctrl+Enter / Alt+Enter | Center the current visual line / place the current crumb at the top |
 | Ctrl+L | Go to a crumb number |
 | Ctrl+P / Ctrl+R | Start plain-text / regular-expression Find from the caret |
@@ -78,15 +80,39 @@ If you launch from Plasma’s application menu, repeat the installation from the
 | Ctrl+Shift+D / Ctrl+Shift+I | Manuscript dictionary / live statistics |
 | Ctrl+B / Alt+B | Add a bookmark / open the separate Bookmarks window |
 | Ctrl+S / Ctrl+Shift+S | Save / Save As |
-| Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+| Ctrl+Z / Ctrl+Shift+Z | Undo / redo a run of typing, Backspaces, or forward Deletes |
 | Ctrl+Shift+N / Alt+W | Create an untitled window / close the current window from the manuscript |
 | Ctrl+, / F10 / F1 | Settings / document menu / searchable keyboard reference |
+| F10, then A | About Crumb Writer. Enter opens the focused repository link |
 
 A light blue background follows the current crumb across its wrapped lines. The writing area turns gray when the manuscript window loses focus. The editor follows the desktop appearance by default. Settings also offers Light, Dark, and a choice of font family and size.
 
 Typing `Portrait #` in a title continues the most recent earlier Portrait. Activating Portrait in the genre list appends a complete crumb with the next numbered title. Bold red digits flag header numbers that disagree with their physical line and genre numbers that break their sequence.
 
 Smart punctuation writes curly quotes and apostrophes, em dashes, and ellipses into the manuscript as typing supplies context. Paste cleans tabs, repeated spaces, and trailing spaces in one undoable operation. Backspacing over the last word leaves its preceding space at the caret for the replacement word, even through an autosave. Saved files omit trailing spaces and use UTF-8 without a BOM.
+
+Consecutive typing forms one undo step, including spaces, pauses, automatic punctuation, and live saves. Consecutive Backspaces and consecutive forward Deletes each form their own step. Moving the caret, pressing Enter, pasting, or switching between typing and deletion starts another step.
+
+Visit history displays each crumb’s title. Two crumbs with the same title have separate entries, and an empty title appears as *Untitled*. Each entry returns to the last caret position in that crumb.
+
+### Select by a vi movement
+
+Press **Ctrl+Space** in the manuscript, then type a command. The bottom bar shows what has been typed. For example, type `2t-` to select from the caret up to the second hyphen, even several crumbs away. The second hyphen stays outside the selection. The movement takes effect as soon as its last character is typed.
+
+| After Ctrl+Space | Selection destination |
+| --- | --- |
+| `j` / `k` | Next / previous crumb, at the same character column when it fits |
+| `gj` / `gk` | Next / previous wrapped row, at the same horizontal position when it fits |
+| `h` / `l` | One character left / right |
+| `w` / `b` / `e` | Start of the next word / start of a word going backward / through the end of a word |
+| `W` / `B` / `E` | Same word movements, treating each run of non-whitespace as a word |
+| `0` / `^` / `$` | Beginning / first nonblank / end of the physical line |
+| `gg` / `G` / `42G` | First line / last line / physical line 42 |
+| `f-` / `t-` | Through the next hyphen / up to it. `F` and `T` search backward |
+| `;` / `,` | Repeat the last character find in its original / opposite direction |
+| `q` followed by a phrase, then Enter | Forward through the whole phrase, ignoring case. `Q` searches backward |
+
+Backspace corrects a pending command. Escape cancels it. A missing match leaves the original selection in place so the command can be corrected.
 
 ## Find and replace
 
@@ -106,7 +132,7 @@ Search starts case-insensitive, with wrap enabled. Regular expressions prefer th
 
 ## Characters, Recurring, and spelling
 
-Use **Alt+1** for Characters or **Alt+2** for Recurring. Type any alias to filter. **Insert** adds a group, **F2** edits it, and **Delete** removes it after confirmation. **Enter** lists occurrences of every synonym. Open a result to select its passage in the manuscript. **Ctrl+Enter** inserts the first synonym at the manuscript caret.
+Use **Alt+1** for Characters or **Alt+2** for Recurring. Type any alias to filter. **Insert** opens Add with the selected manuscript text suggested as one synonym. The suggestion is selected for editing or replacement. With an empty selection, the field opens blank. **Enter** saves the group. **F2** edits a group, and **Delete** removes it after confirmation. In the list, **Enter** finds every synonym and **Ctrl+Enter** inserts the first synonym at the manuscript caret.
 
 Each group occupies one line in `Crumbs.txt.characters` or `Crumbs.txt.recurring`. The first alias determines the alphabetical order. For example, `"Fox, Captain", Red Fox, Captain Fox` has three aliases. Double quotes protect a comma inside an alias.
 
@@ -114,7 +140,7 @@ American English spelling is enabled by default. **F8** opens a correction with 
 
 ## Statistics and daily count
 
-**Ctrl+Shift+I** shows the number of recognized crumbs, the official whole-file word total including the first-line work title, and the average words per crumb to two decimal places. **Ctrl+C** in this window copies all three figures. **New today** remembers each manuscript’s count across sessions and resets on a new local date. Adding three crumbs and deleting one leaves two. Undo restores the third.
+**Ctrl+Shift+I** shows the number of recognized crumbs, the official whole-file word total including the first-line work title, and the average words per crumb to two decimal places. The figures share a right-aligned column and use the desktop locale’s number separators. **Ctrl+C** copies all three figures. **New today** remembers each manuscript’s count across sessions and resets on a new local date. Adding three crumbs and deleting one leaves two. Undo restores the third.
 
 ## Bookmarks and saves
 

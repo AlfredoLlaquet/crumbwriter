@@ -72,9 +72,13 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     status_->setTextFormat(Qt::PlainText);
     status_->setObjectName("documentStatus");
     status_->setMargin(5);
+    status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     layout->addWidget(status_);
 
     store_ = new DocumentStore(this);
+    editor_->onViPrompt = [this](const QString &prompt) {
+        status_->setText(prompt.isEmpty() ? store_->status() : prompt);
+    };
     store_->setSnapshotProvider([this] { return editor_->manuscriptText(); });
     store_->captureMetadata = [this] { return editor_->model().dailySnapshot(); };
     store_->onPublished = [this](const QString &path, const QByteArray &metadata) {
@@ -141,6 +145,7 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
 MainWindow::~MainWindow()
 {
     qApp->removeEventFilter(this);
+    editor_->onViPrompt = {};
     editor_->model().onDailyCountError = {};
     store_->onChanged = {};
     store_->onError = {};
@@ -227,7 +232,7 @@ void MainWindow::documentStateChanged()
     const bool pending = store_->isDirty() || companionsPending();
     const QString title = (pending ? QString("• ") : QString()) + name + " — Crumb Writer";
     if (title != windowTitle()) setWindowTitle(title);
-    status_->setText(store_->status());
+    if (!editor_->viSelectionActive()) status_->setText(store_->status());
     status_->setToolTip(store_->backupPath().isEmpty() ? store_->path()
                        : store_->path() + "\nStartup backup: " + store_->backupPath());
 }

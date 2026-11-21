@@ -20,6 +20,7 @@ public:
     QStringList allAliases() const;
 
     std::function<void()> onChanged;
+    std::function<QString()> manuscriptSelection;
     std::function<void(const QString &)> insertSynonym;
     std::function<void(int, int)> jumpToMatch;
     std::function<void()> returnToEditor;

@@ -117,6 +117,15 @@ def check(app, run):
         save_and_check(verified)
         print("Wayland Tab and Shift+Tab crossed crumbs through titles and bodies.", flush=True)
 
+        keyboard("key", "--clearmodifiers", "ctrl+Prior", "ctrl+space")
+        keyboard("type", "--clearmodifiers", "qvErIfIeD")
+        keyboard("key", "--clearmodifiers", "Return")
+        keyboard("type", "--clearmodifiers", "owls")
+        save_and_check("owls" + verified.split("Verified", 1)[1])
+        keyboard("key", "--clearmodifiers", "ctrl+z")
+        save_and_check(verified)
+        print("Wayland phrase selection crossed crumbs. One undo restored the passage after four typed letters.", flush=True)
+
         keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Next", "Down", "Down", "ctrl+Return")
         keyboard("type", "--clearmodifiers", "V")
         save_and_check(verified + "\n\nV")

@@ -1,6 +1,7 @@
 #include "manuscripteditor.h"
 #include "committedpunctuation.h"
 #include "manuscripttext.h"
+#include "viselection.h"
 
 #include <QtCore/QScopedValueRollback>
 #include <QtCore/QSet>
@@ -96,6 +97,7 @@ private:
 ManuscriptEditor::ManuscriptEditor(QWidget *parent)
     : QPlainTextEdit(parent),
       punctuation_(std::make_unique<CommittedPunctuation>()),
+      vi_(std::make_unique<ViSelection>(*this)),
       paper_(palette())
 {
     auto *manuscript = new QTextDocument(this);
@@ -116,6 +118,8 @@ ManuscriptEditor::ManuscriptEditor(QWidget *parent)
     connect(this, &QPlainTextEdit::cursorPositionChanged, this, [this]{ onCursorMoved(); });
     model_->observe(this, [this](const CrumbChange &change) {
         if (change.textChanged && !editing_ && !replaying_) {
+            editRun_ = EditRun::None;
+            vi_->cancel();
             punctuation_->reset();
             clearVirtual();
         }
@@ -161,6 +165,8 @@ QTextCursor ManuscriptEditor::writingEnd() const
 void ManuscriptEditor::loadText(const QString &text)
 {
     QScopedValueRollback<bool> guard(editing_, true);
+    editRun_ = EditRun::None;
+    vi_->reset();
     pendingSpace_ = {};
     punctuation_->reset();
     clearVirtual();
@@ -196,11 +202,14 @@ void ManuscriptEditor::setSmartPunctuation(bool enabled)
 
 void ManuscriptEditor::finishTyping()
 {
-    if (editing_ || !punctuation_->pending())
-        return;
+    if (editing_) return;
+    const auto previous = editRun_;
+    editRun_ = EditRun::None;
+    if (!punctuation_->pending()) return;
     QScopedValueRollback<bool> guard(editing_, true);
     auto c = textCursor();
-    c.beginEditBlock();
+    if (previous == EditRun::Typing) c.joinPreviousEditBlock();
+    else c.beginEditBlock();
     punctuation_->finish(document());
     c.endEditBlock();
 }
@@ -215,6 +224,7 @@ void ManuscriptEditor::prepareSearch()
 void ManuscriptEditor::onCursorMoved()
 {
     if (!editing_ && !replaying_) {
+        vi_->cancel();
         finishTyping();
         if (!pendingSpace_.isNull() && textCursor().position() != pendingSpace_.position())
             trimPending();
@@ -366,7 +376,39 @@ QTextBlock ManuscriptEditor::crumbEdgeBlock() const
     return block;
 }
 
-void ManuscriptEditor::navigate(bool backward, bool fields)
+void ManuscriptEditor::moveTo(int position, bool extend)
+{
+    selectRange(extend ? textCursor().anchor() : position, position, false);
+}
+
+bool ManuscriptEditor::moveByControlKey(int key, bool extend)
+{
+    switch (key) {
+    case Qt::Key_Up: case Qt::Key_Down:
+        navigate(key == Qt::Key_Up, false, extend);
+        return true;
+    case Qt::Key_Home: case Qt::Key_End: {
+        const auto block = crumbEdgeBlock();
+        const int column = key == Qt::Key_Home ? model_->record(block.blockNumber()).headerStart
+                                               : block.length() - 1;
+        moveTo(block.position() + column, extend);
+        return true;
+    }
+    case Qt::Key_PageUp:
+        moveTo(0, extend);
+        return true;
+    case Qt::Key_PageDown: {
+        const int last = model_->neighbor(blockCount(), true);
+        auto end = last >= 0 ? QTextCursor(document()->findBlockByNumber(last)) : writingEnd();
+        end.movePosition(QTextCursor::EndOfBlock);
+        moveTo(end.position(), extend);
+        return true;
+    }
+    default: return false;
+    }
+}
+
+void ManuscriptEditor::navigate(bool backward, bool fields, bool extend)
 {
     const bool virt = rows_ != 0;
     const int line = virt ? blockCount() : textCursor().blockNumber();
@@ -379,7 +421,7 @@ void ManuscriptEditor::navigate(bool backward, bool fields)
             for (int stop : stops) {
                 if (backward ? stop >= column : stop <= column)
                     continue;
-                jumpTo(textCursor().block().position() + stop, false);
+                moveTo(textCursor().block().position() + stop, extend);
                 return;
             }
         }
@@ -389,11 +431,22 @@ void ManuscriptEditor::navigate(bool backward, bool fields)
         return;
     const auto &r = model_->record(neighbor);
     const int stop = fields ? (backward ? r.bodyStart : r.titleStart) : r.headerStart;
-    jumpTo(document()->findBlockByNumber(neighbor).position() + stop, false);
+    moveTo(document()->findBlockByNumber(neighbor).position() + stop, extend);
 }
 
 void ManuscriptEditor::focusOutEvent(QFocusEvent *e)
 {
+    vi_->cancel();
     finishTyping();
     QPlainTextEdit::focusOutEvent(e);
+}
+
+void ManuscriptEditor::startViSelection()
+{
+    vi_->start();
+}
+
+bool ManuscriptEditor::viSelectionActive() const
+{
+    return vi_->active();
 }

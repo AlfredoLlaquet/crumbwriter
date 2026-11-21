@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 2.1. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 2.2. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Build, update and launch
 ------------------------
@@ -15,11 +15,11 @@ program. The qt6-base package supplies Qt Widgets, Qt Network and the rcc
 tool that embeds the application icon. The Makefile locates them through
 pkg-config, supplied by pkgconf.
 
-Upgrading from 2.0 or 1.4
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Upgrading an existing checkout
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Version 2.1 uses Hunspell with the American English dictionary. On a
-FreeBSD computer that already builds version 2.0, install these as root.
+A FreeBSD computer that builds 2.1 already has the packages for 2.2.
+For an upgrade from 2.0, install the spelling engine and US dictionary as root.
 
     pkg install hunspell en-hunspell
 
@@ -34,7 +34,7 @@ The ordinary make command rebuilds it in place.
     ./crumbwriter --version
     ./crumbwriter
 
-The version check should print "Crumb Writer 2.1". The last command runs
+The version check should print "Crumb Writer 2.2". The last command runs
 the copy built in this directory. A Plasma launcher uses the installed
 copy. Repeat the installation described below to update that copy as well.
 
@@ -137,8 +137,12 @@ Ctrl+Shift+I opens modeless Manuscript Statistics. Crumbs counts recognized
 records. Total words uses the whole-file command above, including the work
 title and words on unfinished lines. The average is total words divided by
 the crumb count, rounded to two decimal places. An empty manuscript displays
-zero for all three figures. The figures update during editing, and Ctrl+C or
-the Copy button copies all three together.
+zero for all three figures. A padded two-column layout aligns all three
+figures at their right edge and lets long labels wrap in a narrow tile.
+Numbers use the desktop locale's grouping and decimal symbols, with US
+English formatting for the C locale. Four-digit totals always show the
+thousands separator, including 3.425 on a Spanish desktop. The figures update during editing.
+Ctrl+C or the Copy button copies all three with their labels and separators.
 
 Appearance and editing
 ----------------------
@@ -195,10 +199,18 @@ pending punctuation. A paste or search replacement keeps its literal
 punctuation. Settings can disable smart punctuation. Curly punctuation
 belongs to the saved UTF-8 text.
 
-The visit list records crumbs in order of last visit and shows their numbers
-and titles. A visit points to the actual crumb and caret, so duplicate header
-numbers can have different destinations. Click an entry or press F6 from the
-manuscript, type a title fragment, and press Enter. Pressing F6 again in the
+Ctrl+Z undoes a continuous run of typing, including spaces, pauses, smart
+punctuation and completed input-method text. Consecutive Backspaces form
+one step, and consecutive forward Deletes form another. Switching operation,
+moving the caret, entering a line break, pasting, or explicitly saving ends
+the typing run. An automatic save may publish part of a run while typing
+continues. Undo still covers the complete run. Ctrl+Shift+Z replays the
+same edits, including typographic characters and genre-number completion.
+
+The visit list shows only titles, most recently visited first. An empty title
+appears as Untitled. A visit points to the actual crumb and its last caret
+position, so identical titles have separate destinations. Click an entry or
+press F6 from the manuscript, type a title fragment, and press Enter. Pressing F6 again in the
 sidebar returns focus to the manuscript. F2 and Shift+F2 move back and
 forward among deliberate jumps. Refining a search keeps the original
 return position. Ctrl+Shift+J follows the reference under the caret in either
@@ -215,6 +227,10 @@ Navigation and window keys
     Ctrl+Home / Ctrl+End      Start / end of the current crumb
     Ctrl+Page Up (RePág)      Start of the entire file, including any work title
     Ctrl+Page Down (AvPág)    End of the last crumb, before trailing line breaks
+    Ctrl+Shift+Up / Down      Extend selection to the previous / next crumb
+    Ctrl+Shift+Home / End     Select to the start / end of the current crumb
+    Ctrl+Shift+PgUp / PgDown  Select to file start / end of the last crumb
+    Ctrl+Space               Select from the caret using one vi movement
     Ctrl+Enter / Alt+Enter    Center the caret line / put the crumb at the top
     Ctrl+N                   Append a crumb and focus its body
     Ctrl+1                   Select the header and copy it in lowercase
@@ -240,6 +256,17 @@ Navigation and window keys
     Ctrl+S / Ctrl+Shift+S     Save / Save As
     Alt+W                    Close the manuscript window from the manuscript
     Ctrl+, / F10 / F1         Settings / document menu / keyboard reference
+    F10, then A              About Crumb Writer
+
+During Shift navigation the starting point stays fixed. For example, keep
+Ctrl+Shift held and press Down twice, then Up once. The moving end goes
+forward two crumbs and back one. Ordinary Shift+arrows can continue, shrink
+or reverse the selection from the same anchor. On the first crumb, Ctrl+Home
+targets its header, while Ctrl+Page Up includes the optional work title.
+
+About is a separate modeless window. It shows the program version, programmer,
+recipient, runtime Qt version, license and GitHub repository. Enter opens
+the focused repository link in the desktop browser. Escape closes the window.
 
 Ctrl+1 selects the original label and digits through the end of the header.
 For "Crumb 42" the clipboard receives "crumb 42". Custom labels are also
@@ -258,6 +285,45 @@ line breaks and text in one undoable edit. An existing final newline already
 starts a physical empty line. Escape returns to the physical end. Ctrl+Enter
 centers the current wrapped line, including the last one. Alt+Enter places
 the current crumb's first wrapped line at the top while preserving its caret.
+
+Select by a vi movement
+-----------------------
+
+In the manuscript, press Ctrl+Space. The caret stays at its current end of
+any selection. Type a command there and watch it appear in the bottom bar.
+Its destination becomes the moving end of a new selection. Commands finish
+on their last character. Only q and Q need Enter to say where a phrase ends.
+Backspace edits a pending command. Escape cancels it. A missing destination
+keeps the command, original caret and selection available for correction.
+
+    h / l           Left / right one character, including across physical lines
+    j / k           Next / previous physical line at the same character column
+    gj / gk         Next / previous wrapped screen row at the same horizontal position
+    w / b / e       Next word's start / a word's start backward / through its end
+    W / B / E       The same, using whole runs of non-whitespace as words
+    0 / ^ / $       Physical line start / first nonblank / physical line end
+    gg / G          First / last physical line, at its first nonblank
+    42G or 42gg     Physical manuscript line 42, at its first nonblank
+    fX / FX         Forward / backward through character X, including it
+    tX / TX         Forward / backward up to X, leaving it outside the selection
+    ; / ,           Repeat the last f, F, t or T in its original / opposite direction
+    qtext, Enter    Forward through the entire literal text, ignoring case
+    Qtext, Enter    Backward through the entire literal text, ignoring case
+
+A numeric prefix repeats a movement. For example, 2t- selects up to the
+second hyphen on the right, crossing intervening crumbs. Given the text
+"red-fox fled-quickly" with the caret before red, the selection is
+"red-fox fled". Type qfox and press Enter to include all of the next "Fox".
+Qfox and Enter includes the entire preceding match. Counts also work with
+phrases. Character finds respect case. Searches stop at the manuscript
+boundary in their direction. Ctrl+V can supply a literal phrase with spaces
+or actual line breaks. Command text always stays in the bottom bar.
+
+A wrapped crumb occupies one physical line and can fill several screen rows.
+Inside the second screen row of a four-row crumb, gj selects down to its
+third row. From that same starting point, j selects into the next crumb.
+Either movement uses the nearest available column on a shorter destination.
+Combining marks and emoji stay with their character in horizontal movements.
 
 Search and replacement
 ----------------------
@@ -323,7 +389,12 @@ Characters and Recurring
 
 The left panel has two alphabetical lists. Alt+1 focuses Characters and
 Alt+2 focuses Recurring. Type any alias to filter a list. Inside a list,
-Insert adds a group, F2 edits its line, and Delete confirms removal. Enter
+Insert opens Add with the selected manuscript text suggested as one alias.
+The field selects the suggestion so typing can replace it. Commas and quotes
+are escaped using the companion-file syntax. Physical line breaks become
+spaces and surrounding whitespace is trimmed. An empty selection opens a
+blank field. Enter saves and Escape cancels. F2 edits the selected group
+and Delete confirms removal. In the list, Enter
 lists every matching passage for all aliases in that group. Open a result
 to select its text in the manuscript. F2 in the manuscript returns to the
 place where that jump began. Ctrl+Enter inserts the first alias at the
@@ -488,6 +559,8 @@ adapter keeps file bytes, clipboard text and search positions consistent.
     src/qt/manuscripttools.cpp             Window wiring for companion files,
                                            synonym insertion and panel focus
     src/qt/statisticsdialog.*              Live totals, average and clipboard
+    src/qt/aboutdialog.cpp, buildinfo.h    Modeless credits and repository link,
+                                           shared release version for CLI and GUI
     src/qt/dailycount.*                    Daily count and persistence
     src/qt/preferences.*                   Shared settings and F1 reference
     src/qt/navigation.*                    Current metrics, visit history,
@@ -500,6 +573,10 @@ adapter keeps file bytes, clipboard text and search positions consistent.
                                            crumb editing and caret commands
     src/qt/editorinput.cpp                 Key/IME input, paste, undo groups,
                                            spacing and genre completion
+    src/qt/viselection.*                   Pending command, status, cancellation,
+                                           input methods and character-find repeat
+    src/qt/vimotion.*                      Destinations for character, word, crumb,
+                                           wrapped-row and literal phrase movements
     src/qt/committedpunctuation.*          Context for smart punctuation
     src/qt/editorviewport.cpp              Painting, paper, virtual rows,
                                            scrolling and visual positioning
@@ -534,6 +611,20 @@ current width. The background band is painted over visible wrapped rows.
 Whole-file regex scans and replacement planning can run in the background.
 Stale results are invalidated when the query or document changes.
 
+Every typed or deleted character completes its own QTextCursor edit block
+so model observers, painting and autosave can see the new text immediately.
+The next uninterrupted operation of the same kind uses joinPreviousEditBlock
+to group native undo commands. Smart punctuation and genre completion occur
+inside the same transaction. Autosave reads a snapshot independently.
+
+Shift navigation calculates the same destinations as ordinary Ctrl navigation
+and retains QTextCursor's anchor. Vi commands start at the active caret and
+resolve a candidate destination before installing the new selection. Physical
+line motion counts graphemes. Wrapped-row motion uses the current QTextLayout
+and horizontal pixel position. Literal character and phrase finds scan only
+the blocks they visit. A query containing an actual newline uses the full
+manuscript snapshot. An incomplete command never edits the document.
+
 On the Linux/X11 test machine, Xfwm tiled the complete editor from
 1050 x 680 to 672 x 990 with the last of 3,371 crumbs on screen. In two
 unedited trials, version 2.0 drew the resized manuscript in 18.48 ms and
@@ -566,10 +657,17 @@ Verification
 Use make check-core for the parser and storage tests without a display. In a
 graphical session, make check runs the core and Qt suites. make check-gui
 runs the model, document store, bookmarks, synonym lists, spelling,
-navigation, editor, search, window and resize tests. The resize test
+navigation, editor, vi selection, search, window and resize tests. The resize test
 measures a completed paint after typing in a moving
 window and checks the actual text and caret.
 The same Makefile supports FreeBSD base make and GNU make.
+
+The vi tests include the exact 2t- selection across crumbs, q and Q case
+matching and endpoints, failed commands, Backspace, Escape, input-method
+characters and physical versus wrapped rows. Editor and window tests check
+fixed Shift anchors, run boundaries, undo across a completed live save,
+quoted synonym suggestions, title-only history, grouped statistics and the
+keyboard path from F10 to the repository link in About.
 
 The document-store test drives a Qt event loop during live saves. It checks
 Save and Close both before the worker acknowledges an automatic write and

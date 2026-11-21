@@ -72,6 +72,10 @@ void MainWindow::buildMenu()
     add(edit, "Previous spelling issue…", "Shift+F8", [this] { spelling_->next(true); });
     add(edit, "Manuscript dictionary…", "Ctrl+Shift+D", [this] { spelling_->showDictionary(); });
     auto *nav = menu_->addMenu("Navigate");
+    add(nav, "Select by vi movement", "Ctrl+Space", [this] {
+        editor_->setFocus();
+        editor_->startViSelection();
+    });
     add(nav, "Find forward…", "Ctrl+F", [this] { search_->find(false); });
     add(nav, "Find backward…", "Ctrl+G", [this] { search_->find(true); });
     add(nav, "Find plain text…", "Ctrl+P", [this] { search_->findInMode(cwsearch::Mode::Text); });
@@ -96,6 +100,7 @@ void MainWindow::buildMenu()
     add(menu_, "Manuscript statistics…", "Ctrl+Shift+I", [this] { showStatistics(); });
     add(menu_, "Settings…", "Ctrl+,", [this] { prefs_.show(this); });
     add(menu_, "Keyboard Shortcuts…", "F1", [this] { showShortcutHelp(this); });
+    add(menu_, "&About Crumb Writer…", {}, [this] { showAbout(); });
     add(menu_, "Close window", "Alt+W", [this] { close(); });
 }
 
@@ -171,6 +176,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     if (e->type() != QEvent::KeyPress) return false;
     auto *widget = qobject_cast<QWidget *>(watched);
     if (!widget || widget->window() != this) return false;
+    if (widget == editor_ && editor_->viSelectionActive()) return false;
     auto *key = static_cast<QKeyEvent *>(e);
     const bool inSynonyms = widget == synonyms_ || synonyms_->isAncestorOf(widget);
     // The list filter and its keyboard actions take precedence inside the left panel.

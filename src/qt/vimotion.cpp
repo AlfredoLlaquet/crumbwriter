@@ -1,0 +1,185 @@
+#include "vimotion.h"
+#include "manuscripttext.h"
+
+#include <QAbstractTextDocumentLayout>
+#include <QTextBlock>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextLayout>
+
+namespace {
+enum class Token { Space, Word, Punctuation };
+
+Token tokenAt(const QTextCursor &cursor, bool bigWord)
+{
+    const auto *doc = cursor.document();
+    const QChar ch = doc->characterAt(cursor.position());
+    if (cursor.atEnd() || ch.isSpace()) return Token::Space;
+    char32_t cp = ch.unicode();
+    if (ch.isHighSurrogate()) {
+        const QChar next = doc->characterAt(cursor.position() + 1);
+        if (next.isLowSurrogate()) cp = QChar::surrogateToUcs4(ch, next);
+    }
+    if (bigWord || cp == '_' || QChar::isLetterOrNumber(cp) || QChar::isMark(cp))
+        return Token::Word;
+    return Token::Punctuation;
+}
+
+bool wordStep(QTextCursor &cursor, QChar motion)
+{
+    const bool big = motion.isUpper();
+    if (motion.toLower() == u'b') {
+        do {
+            if (!cursor.movePosition(QTextCursor::PreviousCharacter)) return false;
+        } while (!cursor.atStart() && tokenAt(cursor, big) == Token::Space);
+        const auto kind = tokenAt(cursor, big);
+        auto previous = cursor;
+        while (previous.movePosition(QTextCursor::PreviousCharacter) && tokenAt(previous, big) == kind)
+            cursor = previous;
+        return true;
+    }
+    if (cursor.atEnd()) return false;
+    auto skip = [&](Token kind) {
+        while (!cursor.atEnd() && tokenAt(cursor, big) == kind)
+            cursor.movePosition(QTextCursor::NextCharacter);
+    };
+    if (motion.toLower() == u'w') {
+        skip(tokenAt(cursor, big));
+        skip(Token::Space);
+    } else {
+        skip(Token::Space);
+        skip(tokenAt(cursor, big)); // Exclusive Qt endpoint includes the last letter.
+    }
+    return true;
+}
+
+int lastLine(const QTextDocument *doc)
+{
+    const auto last = doc->lastBlock();
+    return last.blockNumber() - int(last.blockNumber() > 0 && last.length() == 1);
+}
+
+QTextLayout *layoutFor(const QTextBlock &block)
+{
+    block.document()->documentLayout()->blockBoundingRect(block);
+    return block.layout();
+}
+
+std::optional<int> physicalLine(const QTextCursor &cursor, qint64 number, const QString &motion)
+{
+    if (number < 0 || number > lastLine(cursor.document())) return {};
+    const auto target = cursor.document()->findBlockByNumber(int(number));
+    if (motion == "$") return target.position() + target.length() - 1;
+    if (motion == "0") return target.position();
+    int column = 0;
+    if (motion == "j" || motion == "k") {
+        // Match the character column, including combined accents and emoji.
+        const auto *source = layoutFor(cursor.block());
+        const auto *dest = layoutFor(target);
+        int from = 0;
+        while (from < cursor.positionInBlock() && column < target.length() - 1) {
+            from = source->nextCursorPosition(from);
+            column = dest->nextCursorPosition(column);
+        }
+    } else {
+        const auto text = ManuscriptText::blockText(target);
+        while (column < text.size() && text[column].isSpace()) ++column;
+    }
+    return target.position() + column;
+}
+
+std::optional<int> screenRow(const QTextCursor &cursor, int distance)
+{
+    auto block = cursor.block();
+    auto *layout = layoutFor(block);
+    const auto first = layout->lineForTextPosition(cursor.positionInBlock());
+    if (!first.isValid()) return {};
+    const qreal x = first.cursorToX(cursor.positionInBlock());
+    qint64 row = qint64(first.lineNumber()) + distance;
+    const int last = lastLine(cursor.document());
+    while (row < 0 || row >= layout->lineCount()) {
+        if (row >= 0) row -= layout->lineCount();
+        block = distance < 0 ? block.previous() : block.next();
+        if (!block.isValid() || block.blockNumber() > last) return {};
+        layout = layoutFor(block);
+        if (distance < 0) row += layout->lineCount();
+    }
+    const auto line = layout->lineAt(int(row));
+    int column = line.xToCursor(x);
+    // At a soft wrap, the insertion point after the row belongs to the next row.
+    if (row + 1 < layout->lineCount() && column == line.textStart() + line.textLength())
+        column = layout->previousCursorPosition(column);
+    return block.position() + column;
+}
+
+// The common case reads only the paragraphs visited. A phrase pasted with an
+// actual newline requires the exact manuscript snapshot, including separators.
+std::optional<int> literal(const ViMotion &motion, QTextCursor cursor)
+{
+    const QChar op = motion.name.front();
+    const bool back = op.isUpper();
+    const bool till = op.toLower() == u't';
+    const auto cs = op.toLower() == u'q' ? Qt::CaseInsensitive : Qt::CaseSensitive;
+    if (motion.skipLastCharacter)
+        cursor.movePosition(back ? QTextCursor::PreviousCharacter : QTextCursor::NextCharacter);
+    const bool multiline = motion.target.contains(u'\n');
+    auto block = cursor.block();
+    qsizetype edge = multiline ? cursor.position() : cursor.positionInBlock();
+    int remaining = motion.count;
+    while (block.isValid()) {
+        const auto text = multiline ? ManuscriptText::documentText(cursor.document())
+                                    : ManuscriptText::blockText(block);
+        if (back && edge < 0) edge = text.size();
+        while (back ? edge >= motion.target.size() : edge < text.size()) {
+            const qsizetype hit = back ? text.lastIndexOf(motion.target, edge - motion.target.size(), cs)
+                                       : text.indexOf(motion.target, edge, cs);
+            if (hit < 0) break;
+            const qsizetype after = hit + motion.target.size();
+            if (--remaining == 0) {
+                const bool useEnd = back ? till : !till;
+                return (multiline ? 0 : block.position()) + int(useEnd ? after : hit);
+            }
+            edge = back ? hit : after;
+        }
+        if (multiline) break;
+        block = back ? block.previous() : block.next();
+        edge = back ? -1 : 0;
+    }
+    return {};
+}
+}
+
+std::optional<int> ViMotion::destination(QTextCursor cursor) const
+{
+    cursor.clearSelection();
+    const auto row = qint64(cursor.blockNumber());
+    if (!target.isEmpty()) {
+        const auto end = literal(*this, cursor);
+        if (!end) return {};
+        const auto block = cursor.document()->findBlock(*end);
+        const auto *layout = layoutFor(block);
+        const int column = *end - block.position();
+        if (layout->isValidCursorPosition(column)) return end;
+        // A literal can match just the base letter of a combined grapheme.
+        const bool after = name == "q" || name == "f" || name == "T";
+        return block.position() + (after ? layout->nextCursorPosition(column)
+                                         : layout->previousCursorPosition(column));
+    }
+    if (name == "j") return physicalLine(cursor, row + count, name);
+    if (name == "k") return physicalLine(cursor, row - count, name);
+    if (name == "gj" || name == "gk") return screenRow(cursor, name == "gk" ? -count : count);
+    if (name == "gg" || name == "G") {
+        const int line = explicitCount ? count - 1 : name == "gg" ? 0 : lastLine(cursor.document());
+        return physicalLine(cursor, line, name);
+    }
+    if (name == "$" || name == "0" || name == "^")
+        return physicalLine(cursor, name == "$" ? row + count - 1 : row, name);
+    if (name == "h" || name == "l") {
+        if (!cursor.movePosition(name == "h" ? QTextCursor::PreviousCharacter : QTextCursor::NextCharacter,
+                                 QTextCursor::MoveAnchor, count)) return {};
+    } else {
+        for (int i = 0; i < count; ++i)
+            if (!wordStep(cursor, name.front())) return {};
+    }
+    return cursor.position();
+}

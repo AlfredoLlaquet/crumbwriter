@@ -241,7 +241,13 @@ private:
         field->setObjectName(QStringLiteral("synonymText"));
         field->setAccessibleName(QStringLiteral("Synonyms"));
         label->setBuddy(field);
-        if (!adding) field->setText(SynonymFile::format(original));
+        if (!adding) {
+            field->setText(SynonymFile::format(original));
+        } else if (owner_.manuscriptSelection) {
+            QString name = owner_.manuscriptSelection().trimmed();
+            name.replace(u'\n', u' ');
+            if (!name.isEmpty()) field->setText(SynonymFile::format({name}));
+        }
         auto *hint = new QLabel(QStringLiteral("Separate names with commas. Enclose a name containing a comma in double quotes."), form);
         hint->setWordWrap(true);
         auto *error = new QLabel(form);

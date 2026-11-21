@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 #include "bookmarks.h"
 #include "manuscripteditor.h"
+#include "manuscripttext.h"
 #include "spellcheck.h"
 #include "statisticsdialog.h"
 #include "synonympanel.h"
@@ -12,6 +13,9 @@ void MainWindow::connectWritingTools()
     bookmarks_->onChanged = [this] { documentStateChanged(); };
     spelling_->onChanged = [this] { documentStateChanged(); };
     spelling_->onNotice = [this](const QString &message) { showNotice(message); };
+    synonyms_->manuscriptSelection = [this] {
+        return ManuscriptText::selectedText(editor_->textCursor());
+    };
     synonyms_->onChanged = [this] {
         spelling_->setAliases(synonyms_->allAliases());
         documentStateChanged();

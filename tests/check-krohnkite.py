@@ -191,6 +191,17 @@ def session(app, run):
             unchanged()
 
             key(alpha, 'ctrl+Prior')
+            key(alpha, 'ctrl+shift+Down')
+            key(alpha, 'ctrl+c')
+            assert clipboard_bytes() == original[:original.index(middle)].encode()
+            key(alpha, 'Escape')
+            key(alpha, 'ctrl+space')
+            output('xdotool', 'type', '--clearmodifiers', 'qCoPy')
+            key(alpha, 'Return')
+            key(alpha, 'ctrl+c')
+            assert clipboard_bytes() == b'Crumb 2: Middle: Copy'
+            key(alpha, 'Escape')
+            key(alpha, 'ctrl+Prior')
             key(alpha, 'ctrl+Down')
             key(alpha, 'ctrl+1')
             copied = clipboard_bytes()

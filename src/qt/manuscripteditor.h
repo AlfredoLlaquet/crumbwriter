@@ -9,6 +9,7 @@
 class CommittedPunctuation;
 class CrumbHighlighter;
 class QMenu;
+class ViSelection;
 
 // All document positions are UTF-16 offsets. A virtual row is never a block in
 // the document and never appears in a clipboard, save, search or word count.
@@ -27,6 +28,9 @@ public:
     void finishTyping();
     void prepareSearch();
     void clearEditorSelection();
+    void startViSelection();
+    bool viSelectionActive() const;
+    std::function<void(const QString &)> onViPrompt;
 
     void jumpTo(int position, bool center = true);
     void selectRange(int anchor, int position, bool center = true);
@@ -70,11 +74,14 @@ protected:
 private:
     enum class Alignment { Visible, Center, Top };
     enum class Input { Typed, Paste, Erase, Replacement };
+    enum class EditRun { None, Typing, Backspace, Delete };
     int clampPosition(int value) const;
     QTextCursor at(int position) const;
     QTextCursor writingEnd() const;
     QTextBlock crumbEdgeBlock() const;
-    void navigate(bool backward, bool fields);
+    void navigate(bool backward, bool fields, bool extend = false);
+    void moveTo(int position, bool extend);
+    bool moveByControlKey(int key, bool extend);
     void copyField(bool header);
     void onCursorMoved();
     void trimPending(bool joinPrevious = true);
@@ -82,9 +89,10 @@ private:
     void trackSeparator(const QTextCursor &cursor);
     void typeText(const QString &text, int replaceStart = 0, int replaceLength = 0);
     void removeByKey(QKeyEvent *event);
-    void eraseSelection(QTextCursor cursor);
+    void beginInputBlock(QTextCursor &cursor, EditRun run);
+    void eraseSelection(QTextCursor cursor, EditRun run = EditRun::None);
     void insertSelection(const QString &text, Input kind);
-    void replaceAt(QTextCursor &cursor, const QString &text, Input kind);
+    bool replaceAt(QTextCursor &cursor, const QString &text, Input kind);
     void recordEditForHash(QTextCursor &cursor, const QString &text);
     void applyPaper();
     void refreshBand();
@@ -100,6 +108,8 @@ private:
 
     std::unique_ptr<CrumbModel> model_;
     std::unique_ptr<CommittedPunctuation> punctuation_;
+    std::unique_ptr<ViSelection> vi_;
+    EditRun editRun_ = EditRun::None;
     CrumbHighlighter *highlighter_ = nullptr;
     QList<QTextEdit::ExtraSelection> searchHighlights_, spellingHighlights_;
     QPalette paper_;

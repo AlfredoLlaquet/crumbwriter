@@ -153,7 +153,7 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
     for (auto *widget : {number_, title_, words_, today_}) layout->addWidget(widget);
 
     auto *split = new QSplitter(Qt::Vertical, this);
-    auto addList = [this, split](const QString &caption, const QString &name, bool numberFirst) {
+    auto addList = [this, split](const QString &caption, const QString &name, bool genres) {
         auto *section = new QWidget(split);
         auto *column = new QVBoxLayout(section);
         column->setContentsMargins(0, 2, 0, 0);
@@ -163,7 +163,7 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
         heading->setText(caption);
         auto *headingRow = new QHBoxLayout;
         headingRow->addWidget(heading, 1);
-        if (!numberFirst) {
+        if (genres) {
             genreOrder_ = new QToolButton(section);
             genreOrder_->setObjectName("genreOrder");
             genreOrder_->setCheckable(true);
@@ -174,18 +174,17 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
         auto *tree = new SidebarList(section);
         tree->setObjectName(name);
         tree->setAccessibleName(caption);
-        tree->setColumnCount(2);
-        tree->setHeaderLabels(numberFirst ? QStringList{"Number", "Title"} : QStringList{"Genre", "Last"});
+        tree->setHeaderLabels(genres ? QStringList{"Genre", "Last"} : QStringList{"Title"});
         tree->setHeaderHidden(true);
-        tree->header()->setStretchLastSection(numberFirst);
-        tree->header()->setSectionResizeMode(numberFirst ? 0 : 1, QHeaderView::ResizeToContents);
-        tree->header()->setSectionResizeMode(numberFirst ? 1 : 0, QHeaderView::Stretch);
+        tree->header()->setStretchLastSection(false);
+        tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+        if (genres) tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
         column->addWidget(tree, 1);
         split->addWidget(section);
         return tree;
     };
-    auto *visits = addList("Visit history", "visitHistory", true);
-    auto *genres = addList("Genres", "genreList", false);
+    auto *visits = addList("Visit history", "visitHistory", false);
+    auto *genres = addList("Genres", "genreList", true);
     visits_ = visits;
     genres_ = genres;
     genreOrder_->setChecked(settings->value("editor/genre-sort-by-number", false).toBool());
@@ -216,15 +215,10 @@ void NavigationPanel::updateVisit(QTreeWidgetItem *item)
 {
     const int row = static_cast<VisitItem *>(item)->block.blockNumber();
     const auto &record = editor_->model().record(row);
-    const QString number = QString::number(record.number);
-    if (item->text(0) != number) item->setText(0, number);
-    if (item->text(1) != record.title) {
-        item->setText(1, record.title);
-        item->setToolTip(1, record.title);
-    }
-    if (item->data(0, Qt::UserRole) != QVariant(record.headerWarning)) {
-        item->setData(0, Qt::UserRole, record.headerWarning);
-        markNumber(item, 0, record.headerWarning, palette());
+    const QString title = record.title.isEmpty() ? tr("Untitled") : record.title;
+    if (item->text(0) != title) {
+        item->setText(0, title);
+        item->setToolTip(0, title);
     }
 }
 

@@ -1,6 +1,7 @@
 #include "manuscripteditor.h"
 #include "committedpunctuation.h"
 #include "manuscripttext.h"
+#include "viselection.h"
 
 #include <climits>
 
@@ -76,7 +77,7 @@ void ManuscriptEditor::trimPending(bool joinPrevious)
         p.endEditBlock();
 }
 
-void ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Input kind)
+bool ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Input kind)
 {
     int first = cursor.selectionStart();
     int end = cursor.selectionEnd();
@@ -101,13 +102,14 @@ void ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
     cursor.setPosition(first);
     cursor.setPosition(end, QTextCursor::KeepAnchor);
     if (text.isEmpty()) {
-        if (cursor.hasSelection())
-            cursor.removeSelectedText();
+        if (!cursor.hasSelection()) return false;
+        cursor.removeSelectedText();
     } else {
         ManuscriptText::insert(cursor, text);
     }
     if (kind == Input::Typed && smart_)
         punctuation_->feed(document(), first, text);
+    return true;
 }
 
 void ManuscriptEditor::recordEditForHash(QTextCursor &cursor, const QString &input)
@@ -121,6 +123,16 @@ void ManuscriptEditor::recordEditForHash(QTextCursor &cursor, const QString &inp
     }
 }
 
+void ManuscriptEditor::beginInputBlock(QTextCursor &cursor, EditRun run)
+{
+    // Close each key's transaction before returning to Qt. Observers and live
+    // saving see every edit. Only the undo boundary joins the preceding key.
+    if (run != EditRun::None && run == editRun_ && !textCursor().hasSelection())
+        cursor.joinPreviousEditBlock();
+    else
+        cursor.beginEditBlock();
+}
+
 void ManuscriptEditor::typeText(const QString &text, int replaceStart, int replaceLength)
 {
     if (isReadOnly())
@@ -128,7 +140,9 @@ void ManuscriptEditor::typeText(const QString &text, int replaceStart, int repla
     QScopedValueRollback<bool> guard(editing_, true);
     clearAlignment();
     auto c = textCursor();
-    c.beginEditBlock();
+    const bool separate = replaceStart || replaceLength || text.contains(u'\n') || text.contains(u'\r');
+    const auto run = separate ? EditRun::None : EditRun::Typing;
+    beginInputBlock(c, run);
     if (rows_) {
         const int count = rows_;
         clearVirtual();
@@ -150,7 +164,9 @@ void ManuscriptEditor::typeText(const QString &text, int replaceStart, int repla
                 c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
         }
     }
-    replaceAt(c, text, Input::Typed);
+    // A discarded duplicate space creates no undo command to join later.
+    if (replaceAt(c, text, Input::Typed)) editRun_ = run;
+    else if (editRun_ != run) editRun_ = EditRun::None;
     recordEditForHash(c, text);
     c.endEditBlock();
     setTextCursor(c);
@@ -223,6 +239,7 @@ void ManuscriptEditor::cut()
 void ManuscriptEditor::replayEdit(bool forward)
 {
     QScopedValueRollback<bool> guard(replaying_, true);
+    editRun_ = EditRun::None;
     punctuation_->reset();
     pendingSpace_ = {};
     clearVirtual();
@@ -266,7 +283,9 @@ void ManuscriptEditor::removeByKey(QKeyEvent *event)
                                  : (byWord ? QTextCursor::NextWord : QTextCursor::NextCharacter);
         c.movePosition(op, QTextCursor::KeepAnchor);
     }
-    eraseSelection(c);
+    const auto run = byWord || textCursor().hasSelection() ? EditRun::None
+                          : backward ? EditRun::Backspace : EditRun::Delete;
+    eraseSelection(c, run);
 }
 
 void ManuscriptEditor::deleteWord()
@@ -297,15 +316,18 @@ void ManuscriptEditor::deleteWord()
     eraseSelection(c);
 }
 
-void ManuscriptEditor::eraseSelection(QTextCursor c)
+void ManuscriptEditor::eraseSelection(QTextCursor c, EditRun run)
 {
-    if (isReadOnly() || !c.hasSelection())
+    if (isReadOnly() || !c.hasSelection()) {
+        if (run != editRun_) editRun_ = EditRun::None;
         return;
+    }
     punctuation_->reset();
     QScopedValueRollback<bool> guard(editing_, true);
     clearAlignment();
-    c.beginEditBlock();
+    beginInputBlock(c, run);
     replaceAt(c, {}, Input::Erase);
+    editRun_ = run;
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
@@ -313,6 +335,11 @@ void ManuscriptEditor::eraseSelection(QTextCursor c)
 
 void ManuscriptEditor::inputMethodEvent(QInputMethodEvent *e)
 {
+    if (vi_->active()) {
+        vi_->inputMethod(*e);
+        e->accept();
+        return;
+    }
     if (e->commitString().isEmpty() && !e->replacementLength()) {
         QPlainTextEdit::inputMethodEvent(e);
         return;
@@ -333,6 +360,17 @@ void ManuscriptEditor::inputMethodEvent(QInputMethodEvent *e)
 
 bool ManuscriptEditor::event(QEvent *e)
 {
+    if (vi_ && vi_->active()) {
+        if (e->type() == QEvent::ShortcutOverride) {
+            e->accept();
+            return true;
+        }
+        if (e->type() == QEvent::KeyPress) {
+            vi_->key(*static_cast<QKeyEvent *>(e));
+            e->accept();
+            return true;
+        }
+    }
     if (e->type() == QEvent::KeyPress) {
         auto *key = static_cast<QKeyEvent*>(e);
         const auto mods = key->modifiers() & ~Qt::KeypadModifier;
@@ -352,6 +390,8 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
     const bool enter = key == Qt::Key_Return || key == Qt::Key_Enter;
     if (enter && mods == Qt::ControlModifier) { centerCurrentLine(); return; }
     if (enter && mods == Qt::AltModifier) { topCurrentCrumb(); return; }
+    if ((mods == Qt::ControlModifier || mods == (Qt::ControlModifier | Qt::ShiftModifier)) &&
+        moveByControlKey(key, mods.testFlag(Qt::ShiftModifier))) return;
     if (mods == Qt::ControlModifier) {
         switch (key) {
         case Qt::Key_Q: copyCrumb(); return;
@@ -359,22 +399,7 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
         case Qt::Key_Y: deleteCrumb(); return;
         case Qt::Key_W: deleteWord(); return;
         case Qt::Key_N: appendCrumb(); return;
-        case Qt::Key_Up: case Qt::Key_Down: navigate(key == Qt::Key_Up, false); return;
-        case Qt::Key_Home: case Qt::Key_End: {
-            const auto block = crumbEdgeBlock();
-            const int column = key == Qt::Key_Home ? model_->record(block.blockNumber()).headerStart
-                                                   : block.length() - 1;
-            jumpTo(block.position() + column, false);
-            return;
-        }
-        case Qt::Key_PageUp: jumpTo(0, false); return;
-        case Qt::Key_PageDown: {
-            const int last = model_->neighbor(blockCount(), true);
-            auto end = last >= 0 ? QTextCursor(document()->findBlockByNumber(last)) : writingEnd();
-            end.movePosition(QTextCursor::EndOfBlock);
-            jumpTo(end.position(), false);
-            return;
-        }
+        case Qt::Key_Space: startViSelection(); return;
         default: break;
         }
     }

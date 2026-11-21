@@ -69,7 +69,7 @@ void punctuation(ManuscriptEditor &ed)
     ime(ed, QStringLiteral("sí... "));
     expect(ed, QStringLiteral("I’d Pepe,” new—sí… "));
     ed.undo();
-    expect(ed, QStringLiteral("I’d Pepe,” new--"));
+    expect(ed, {});
     ed.redo();
     expect(ed, QStringLiteral("I’d Pepe,” new—sí… "));
 
@@ -97,7 +97,7 @@ void punctuation(ManuscriptEditor &ed)
     ime(ed, QStringLiteral("s"));
     expect(ed, QStringLiteral("word —s"));
     ed.undo();
-    expect(ed, QStringLiteral("word --X"));
+    expect(ed, QStringLiteral("word XXX"));
     ed.setOverwriteMode(false);
     ed.loadText(QStringLiteral("word—"));
     ed.jumpTo(0, false);
@@ -281,6 +281,94 @@ void undoAndBoundaries(ManuscriptEditor &ed)
     type(ed, QStringLiteral("--"));
     ed.finishTyping();
     expect(ed, QStringLiteral("Leaf 1: : broken--s—"));
+}
+
+void editRuns(ManuscriptEditor &ed)
+{
+    const QString original = QStringLiteral("Crumb 1: : ");
+    ed.loadText(original + u'x');
+    auto undo = [&] { press(ed, Qt::Key_Z, Qt::ControlModifier); };
+    auto redo = [&] { press(ed, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier); };
+    type(ed, " red");
+    type(ed, " fox");
+    press(ed, Qt::Key_Backspace);
+    press(ed, Qt::Key_Backspace);
+    expect(ed, original + "x red f");
+    undo();
+    expect(ed, original + "x red fox");
+    undo();
+    expect(ed, original + u'x');
+    require(!ed.document()->isUndoAvailable(), "one typing run spans multiple words");
+    redo();
+    redo();
+    expect(ed, original + "x red f");
+
+    ed.jumpTo(original.size(), false);
+    press(ed, Qt::Key_Delete);
+    press(ed, Qt::Key_Delete);
+    press(ed, Qt::Key_Backspace);
+    undo();
+    expect(ed, original + "ed f");
+    undo();
+    expect(ed, original + "x red f");
+
+    ed.loadText("one");
+    type(ed, " two");
+    press(ed, Qt::Key_Left);
+    press(ed, Qt::Key_Right);
+    type(ed, " three");
+    press(ed, Qt::Key_Return);
+    type(ed, "next");
+    ed.insertLiteral(" pasted");
+    type(ed, " after");
+    for (const auto expected : {"one two three\nnext pasted", "one two three\nnext",
+                                "one two three\n", "one two three", "one two", "one"}) {
+        undo();
+        expect(ed, expected);
+    }
+
+    ed.loadText("start");
+    type(ed, " new--");
+    press(ed, Qt::Key_Left);
+    expect(ed, QStringLiteral("start new—"));
+    undo();
+    expect(ed, "start");
+    redo();
+    expect(ed, QStringLiteral("start new—"));
+
+    ed.loadText("red fox");
+    ed.insertLiteral("!");
+    ed.jumpTo(4, false);
+    type(ed, " x");
+    undo();
+    expect(ed, "red fox!");
+    undo();
+    expect(ed, "red fox");
+}
+
+void shiftNavigation(ManuscriptEditor &ed)
+{
+    const auto text = QStringLiteral("Book//Note 1: A: first\nNote 2: : middle\nNote 3: Z: last\n\n");
+    ed.loadText(text);
+    const int anchor = text.indexOf("middle") + 3;
+    ed.jumpTo(anchor, false);
+    auto select = [&](int key, int dest) {
+        press(ed, key, Qt::ControlModifier | Qt::ShiftModifier);
+        require(ed.textCursor().anchor() == anchor && ed.textCursor().position() == dest,
+                "modified crumb/file navigation always retains its starting anchor");
+    };
+    select(Qt::Key_End, text.indexOf("\nNote 3"));
+    press(ed, Qt::Key_Left, Qt::ShiftModifier);
+    require(ed.textCursor().anchor() == anchor, "ordinary Shift motion extends the same selection");
+    select(Qt::Key_Home, text.indexOf("Note 2"));
+    select(Qt::Key_Up, text.indexOf("Note 1"));
+    select(Qt::Key_Down, text.indexOf("Note 2"));
+    select(Qt::Key_Down, text.indexOf("Note 3"));
+    select(Qt::Key_PageDown, text.indexOf("\n\n"));
+    select(Qt::Key_PageUp, 0);
+    select(Qt::Key_End, text.indexOf("\nNote 2"));
+    select(Qt::Key_Home, text.indexOf("Note 1"));
+    expect(ed, text);
 }
 
 void unicodeRoundTrip(ManuscriptEditor &ed)
@@ -549,6 +637,8 @@ int main(int argc, char **argv)
     rewritingLastWord(editor);
     wholeWordDeletion(editor);
     undoAndBoundaries(editor);
+    editRuns(editor);
+    shiftNavigation(editor);
     unicodeRoundTrip(editor);
     fieldsAndClipboard(editor);
     openingViewport();

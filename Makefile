@@ -20,7 +20,7 @@ CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/draft.o
 CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/draft.h
 MODEL_OBJECTS = src/qt/crumbmodel.o src/qt/dailycount.o src/qt/manuscripttext.o
 EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o \
-                 src/qt/editorviewport.o src/qt/committedpunctuation.o
+                 src/qt/editorviewport.o src/qt/committedpunctuation.o src/qt/vimotion.o src/qt/viselection.o
 SEARCH_OBJECTS = $(EDITOR_OBJECTS) src/qt/searchpanel.o src/qt/searchengine.o src/qt/searchhistory.o
 BOOKMARK_OBJECTS = src/qt/bookmarks.o src/qt/bookmarkfile.o
 SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o
@@ -34,7 +34,7 @@ ICON_FILES = data/icons/*/apps/org.thecrumbs.CrumbWriter.png
 APP_OBJECTS = $(QT_OBJECTS) $(CORE_OBJECTS) $(RESOURCE)
 QT_TESTS = tests/qt/test-model tests/qt/test-documentstore tests/qt/test-bookmarks \
            tests/qt/test-editor tests/qt/test-search tests/qt/test-navigation tests/qt/test-synonyms tests/qt/test-spelling \
-           tests/qt/test-window tests/qt/test-resize
+           tests/qt/test-window tests/qt/test-vi tests/qt/test-resize
 
 all: crumbwriter
 
@@ -70,6 +70,9 @@ tests/qt/test-bookmarks: tests/qt/test-bookmarks.cpp $(BOOKMARK_OBJECTS)
 	$(TEST_LINK) $(BOOKMARK_OBJECTS) $(LIBS)
 
 tests/qt/test-editor: tests/qt/test-editor.cpp $(EDITOR_OBJECTS) $(CORE_OBJECTS)
+	$(TEST_LINK) $(EDITOR_OBJECTS) $(CORE_OBJECTS) $(LIBS)
+
+tests/qt/test-vi: tests/qt/test-vi.cpp $(EDITOR_OBJECTS) $(CORE_OBJECTS)
 	$(TEST_LINK) $(EDITOR_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
 tests/qt/test-search: tests/qt/test-search.cpp $(SEARCH_OBJECTS) $(CORE_OBJECTS)

@@ -78,5 +78,12 @@ int main(int argc, char **argv)
     panel.updateCurrent();
     check(panel.findChild<QLabel *>("todayCount")->text() == "New today   12",
           "ordinary navigation preserves the daily count");
+    editor.loadText("Crumb 1: Owl: first\nCrumb 2: : second\nCrumb 3: Owl: third");
+    panel.reset();
+    editor.jumpTo(0, false);
+    editor.jumpTo(editor.manuscriptText().indexOf("second"), false);
+    auto *history = panel.findChild<QTreeWidget *>("visitHistory");
+    check(history->columnCount() == 1 && displayedNames(history) == QStringList{"Untitled", "Owl", "Owl"},
+          "title-only history keeps duplicate titles at separate destinations and labels an empty title");
     return 0;
 }
