@@ -39,7 +39,7 @@ StatisticsDialog::StatisticsDialog(CrumbModel &model, QWidget *parent) : QDialog
     form->setColumnStretch(1, 1);
     form->setHorizontalSpacing(16);
     form->setVerticalSpacing(12);
-    layout->addLayout(form);
+    layout->addLayout(form, 1);
     auto value = [&](int row, const QString &caption, const char *name) {
         auto *description = new QLabel(caption, this);
         description->setWordWrap(true);
@@ -51,15 +51,16 @@ StatisticsDialog::StatisticsDialog(CrumbModel &model, QWidget *parent) : QDialog
         label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         label->setTextInteractionFlags(Qt::TextSelectableByMouse);
         auto font = label->font();
+        font.setPointSizeF(label->fontInfo().pointSizeF() * 1.2);
         font.setBold(true);
         label->setFont(font);
         form->addWidget(label, row, 1);
+        form->setRowStretch(row, 1);
         return label;
     };
     crumbs_ = value(0, tr("Crumbs"), "statisticsCrumbs");
     words_ = value(1, tr("Total words"), "statisticsWords");
     average_ = value(2, tr("Average words per crumb"), "statisticsAverage");
-    layout->addStretch();
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     auto *copy = buttons->addButton(tr("&Copy"), QDialogButtonBox::ActionRole);
     const auto copySummary = [this] { QApplication::clipboard()->setText(summary()); };

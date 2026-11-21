@@ -139,6 +139,8 @@ title and words on unfinished lines. The average is total words divided by
 the crumb count, rounded to two decimal places. An empty manuscript displays
 zero for all three figures. A padded two-column layout aligns all three
 figures at their right edge and lets long labels wrap in a narrow tile.
+The figures use a slightly larger type size. The rows share the available
+height when the window grows.
 Numbers use the desktop locale's grouping and decimal symbols, with US
 English formatting for the C locale. Four-digit totals always show the
 thousands separator, including 3.425 on a Spanish desktop. The figures update during editing.
@@ -705,6 +707,10 @@ figures. The manuscript used to verify 2.1 contained 3,371 crumbs and
 returned 170,138. Exclude the work-title prefix when checking the first
 individual crumb. Exercise supplementary-plane characters, combining marks, alternate
 labels, repeated header numbers, compound genres and abbreviated drafts.
+
+For 2.2, the desktop Statistics window showed 3,425 crumbs, 172,723 words
+and an average of 50.43 for the supplied manuscript. The independent sed
+and wc command returned the same 172,723 words.
 
 Use disposable files for typing and storage tests. Check the bytes of
 startup backups and UTF-8 output, all supported newline styles, an input
