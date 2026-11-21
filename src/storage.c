@@ -51,11 +51,18 @@ same_file(const struct stat *a, const struct stat *b)
 }
 
 static gboolean
-same_version(const struct stat *a, const struct stat *b)
+same_data_attributes(const struct stat *a, const struct stat *b)
 {
     return same_file(a, b) && a->st_size == b->st_size &&
+           a->st_mode == b->st_mode && a->st_uid == b->st_uid && a->st_gid == b->st_gid &&
            a->st_mtim.tv_sec == b->st_mtim.tv_sec &&
-           a->st_mtim.tv_nsec == b->st_mtim.tv_nsec &&
+           a->st_mtim.tv_nsec == b->st_mtim.tv_nsec;
+}
+
+static gboolean
+same_version(const struct stat *a, const struct stat *b)
+{
+    return same_data_attributes(a, b) &&
            a->st_ctim.tv_sec == b->st_ctim.tv_sec &&
            a->st_ctim.tv_nsec == b->st_ctim.tv_nsec;
 }
@@ -126,10 +133,39 @@ open_regular(const gchar *path, gint flags, struct stat *st, GError **error)
 }
 
 static gboolean
-still_current(const gchar *path, const struct stat *snapshot, GError **error)
+still_current(gint fd, const gchar *path, const struct stat *snapshot,
+              const gchar *expected, gsize length, GError **error)
 {
     struct stat current;
-    if (lstat(path, &current) != 0 || !same_version(snapshot, &current)) {
+    if (lstat(path, &current) != 0 || !same_data_attributes(snapshot, &current) ||
+        (guint64)current.st_size != length) {
+        changed_error(error, path);
+        return FALSE;
+    }
+    if (same_version(snapshot, &current))
+        return TRUE;
+
+    /* FreeBSD UFS can update ctime after our earlier rename when it finishes
+     * a link-count update. Verify the exact bytes through the open inode and
+     * then recheck the pathname. pread preserves the caller's read offset. */
+    gchar block[65536];
+    for (gsize offset = 0; offset < length;) {
+        gsize wanted = MIN(sizeof block, length - offset);
+        ssize_t count = pread(fd, block, wanted, (off_t)offset);
+        if (count < 0) {
+            if (errno == EINTR)
+                continue;
+            io_error(error, "Cannot verify", path, errno);
+            return FALSE;
+        }
+        if (count == 0 || memcmp(block, expected + offset, (gsize)count) != 0) {
+            changed_error(error, path);
+            return FALSE;
+        }
+        offset += (gsize)count;
+    }
+    struct stat verified;
+    if (lstat(path, &verified) != 0 || !same_version(&current, &verified)) {
         changed_error(error, path);
         return FALSE;
     }
@@ -166,7 +202,7 @@ read_snapshot(gint fd, const gchar *path, const struct stat *st, gsize *size,
         }
         g_string_append_len(raw, block, count);
     }
-    if (!still_current(path, st, error)) {
+    if (!still_current(fd, path, st, raw->str, raw->len, error)) {
         g_string_free(raw, TRUE);
         return NULL;
     }
@@ -537,7 +573,8 @@ commit_bytes(CwFile *file, const TextFormat *format, const gchar *text, CwWriteG
     mode_t mode = existing ? current.st_mode & 07777 : 0666;
     g_autofree gchar *stage = stage_bytes(file->path, raw, size, mode, existing, &next, error);
     gboolean ok = FALSE;
-    if (stage && (!existing || still_current(file->path, &current, error)) &&
+    if (stage && (!existing || still_current(fd, file->path, &current,
+                                            file->disk_bytes, file->disk_length, error)) &&
         can_write(gate, TRUE, error)) {
         if ((existing ? rename(stage, file->path) : link(stage, file->path)) == 0) {
             ok = TRUE;

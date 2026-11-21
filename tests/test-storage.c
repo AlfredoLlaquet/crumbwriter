@@ -324,6 +324,37 @@ symlinks(Fixture *f, gconstpointer data)
 }
 
 static void
+save_again_after_copy(Fixture *f, gconstpointer data)
+{
+    (void)data;
+    GError *error = NULL;
+    g_autofree gchar *copy_path = g_build_filename(f->directory, "Crumbs.txt.copy", NULL);
+    put_bytes(f->path, "source", -1);
+    put_bytes(copy_path, "previous destination", -1);
+    g_autofree gchar *original = NULL;
+    CwFile *source = cw_file_open(f->path, TRUE, &original, &error);
+    g_assert_no_error(error);
+    CwFile *copy = cw_file_save_as_like(source, copy_path, "first revision", TRUE, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(copy);
+    cw_file_free(source);
+    expect_bytes(cw_file_backup_path(copy), "previous destination", 20);
+    g_assert_true(cw_file_save(copy, "second revision", &error));
+    g_assert_no_error(error);
+    expect_bytes(copy_path, "second revision", 15);
+    expect_bytes(f->path, "source", 6);
+
+    g_autofree gchar *replacement = g_build_filename(f->directory, "replacement", NULL);
+    put_bytes(replacement, "second revision", -1);
+    g_assert_cmpint(g_rename(replacement, copy_path), ==, 0);
+    g_assert_false(cw_file_save(copy, "third revision", &error));
+    g_assert_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG);
+    g_clear_error(&error);
+    expect_bytes(copy_path, "second revision", 15);
+    cw_file_free(copy);
+}
+
+static void
 invalid_input(Fixture *f, gconstpointer data)
 {
     (void)data;
@@ -358,6 +389,7 @@ main(int argc, char **argv)
     g_test_add("/storage/new-and-mixed", Fixture, NULL, setup, new_and_mixed, teardown);
     g_test_add("/storage/manuscript-spacing", Fixture, NULL, setup, manuscript_spacing, teardown);
     g_test_add("/storage/external-edits", Fixture, NULL, setup, external_edits, teardown);
+    g_test_add("/storage/save-again-after-copy", Fixture, NULL, setup, save_again_after_copy, teardown);
     g_test_add("/storage/symlinks", Fixture, NULL, setup, symlinks, teardown);
     g_test_add("/storage/invalid-input", Fixture, NULL, setup, invalid_input, teardown);
     return g_test_run();

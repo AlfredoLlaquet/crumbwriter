@@ -444,6 +444,13 @@ draft. With live saving enabled, untitled documents also receive drafts under
 $XDG_DATA_HOME/crumbwriter/drafts or ~/.local/share/crumbwriter/drafts.
 Recovery drafts reopen as unsaved manuscripts at the next launch.
 
+FreeBSD can finish updating an inode's change time after a successful
+rename. If only that time changes during a save, the editor verifies the
+file's exact bytes on the open descriptor, then checks the pathname again
+before publishing. A replacement inode, edited bytes, or changed write
+permissions still stop the save. This applies to the next save after Save As
+over an existing file as well as subsequent live saves.
+
 Closing with queued edits, an active write, a save failure or pending companion files
 opens the Unsaved Changes dialog. A fully saved document closes directly.
 
