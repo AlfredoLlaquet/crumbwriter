@@ -7,6 +7,7 @@
 #include <QtCore/QTimer>
 #include <QtGui/QAction>
 #include <QtGui/QKeyEvent>
+#include <QtGui/QScreen>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -394,9 +395,14 @@ public:
         target = messageLabel(form);
         layout->addWidget(target);
         auto *fields = new QFormLayout;
+        fields->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+        fields->setRowWrapPolicy(QFormLayout::WrapLongRows);
         categoryField = new QComboBox(form);
         categoryField->setObjectName(QStringLiteral("bookmarkCategory"));
         categoryField->setEditable(true);
+        categoryField->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        categoryField->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        categoryField->setMinimumContentsLength(1);
         categoryField->setInsertPolicy(QComboBox::NoInsert);
         categoryField->setCompleter(nullptr);
         fields->addRow(QStringLiteral("&Category"), categoryField);
@@ -426,7 +432,8 @@ public:
 
     void edit(EditKind editKind, QString category, QString name, int line)
     {
-        if (!form)
+        const bool firstUse = !form;
+        if (firstUse)
             prepareForm();
         kind = editKind;
         originalCategory = category;
@@ -453,6 +460,11 @@ public:
         }
         message(target, caption);
         message(formError, {});
+        const int available = qMin(owner->width(), owner->screen()->availableGeometry().width() * 9 / 10);
+        if (firstUse || form->width() > available) {
+            const int preferred = qMax(640, 68 * categoryField->fontMetrics().averageCharWidth());
+            form->resize(qMin(preferred, available), form->sizeHint().height());
+        }
         showDialog(form);
         QLineEdit *focus = kind == EditKind::RenameBookmark ? nameField : categoryField->lineEdit();
         focus->setFocus();

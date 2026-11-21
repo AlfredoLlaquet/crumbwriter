@@ -1,0 +1,97 @@
+#include "mainwindow.h"
+#include "bookmarks.h"
+#include "manuscripteditor.h"
+#include "spellcheck.h"
+#include "statisticsdialog.h"
+#include "synonympanel.h"
+
+#include <QSplitter>
+
+void MainWindow::connectWritingTools()
+{
+    bookmarks_->onChanged = [this] { documentStateChanged(); };
+    spelling_->onChanged = [this] { documentStateChanged(); };
+    spelling_->onNotice = [this](const QString &message) { showNotice(message); };
+    synonyms_->onChanged = [this] {
+        spelling_->setAliases(synonyms_->allAliases());
+        documentStateChanged();
+    };
+    synonyms_->insertSynonym = [this](const QString &text) {
+        editor_->setFocus();
+        editor_->insertLiteral(text);
+    };
+    synonyms_->returnToEditor = [this] { editor_->setFocus(); };
+    synonyms_->jumpToMatch = [this](int start, int end) {
+        const auto original = editor_->textCursor();
+        if (start != original.selectionStart() || end != original.selectionEnd())
+            trail_.remember(original);
+        editor_->selectMatch(start, end);
+        editor_->setFocus();
+    };
+}
+
+bool MainWindow::companionsPending() const
+{
+    return bookmarks_->hasPending() || synonyms_->hasPending() || spelling_->hasPending();
+}
+
+bool MainWindow::updateCompanions(CompanionAction action, const QString &manuscript)
+{
+    QStringList errors;
+    auto update = [&](auto *companion) {
+        QString error;
+        bool ok = true;
+        switch (action) {
+        case CompanionAction::Open:   ok = companion->openManuscript(manuscript, &error); break;
+        case CompanionAction::SaveAs: ok = companion->saveAs(manuscript, &error); break;
+        case CompanionAction::Flush:
+            if (companion->hasPending()) ok = companion->flush(&error);
+            break;
+        }
+        if (!ok) errors.append(error.isEmpty() ? tr("Could not update a manuscript companion file.") : error);
+    };
+    update(bookmarks_);
+    update(synonyms_);
+    update(spelling_);
+    if (!errors.isEmpty()) showNotice(errors.join(u'\n'));
+    return errors.isEmpty();
+}
+
+void MainWindow::focusSynonyms(bool recurring)
+{
+    showPanel(synonyms_, true, synonymWidth_);
+    if (recurring) synonyms_->focusRecurring();
+    else synonyms_->focusCharacters();
+}
+
+void MainWindow::showPanel(QWidget *panel, bool show, int &preferredWidth)
+{
+    if (show == !panel->isHidden()) return;
+    if (!show) {
+        preferredWidth = qMax(1, panel->width());
+        panel->hide();
+        editor_->setFocus();
+        return;
+    }
+    auto sizes = split_->sizes();
+    const int index = split_->indexOf(panel);
+    const int editorIndex = split_->indexOf(editor_);
+    const int width = qMin(preferredWidth, qMax(1, sizes[editorIndex] / 2));
+    sizes[index] = width;
+    sizes[editorIndex] = qMax(1, sizes[editorIndex] - width);
+    panel->show();
+    split_->setSizes(sizes);
+}
+
+void MainWindow::showSidebar(bool show)
+{
+    showPanel(side_, show, sidebarWidth_);
+}
+
+void MainWindow::showStatistics()
+{
+    if (!statistics_) statistics_ = new StatisticsDialog(editor_->model(), this);
+    statistics_->show();
+    statistics_->raise();
+    statistics_->activateWindow();
+}

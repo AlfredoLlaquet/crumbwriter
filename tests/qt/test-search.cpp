@@ -3,6 +3,7 @@
 #include "searchhistory.h"
 #include "searchpanel.h"
 #include <QApplication>
+#include <QCheckBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QKeyEvent>
@@ -14,6 +15,7 @@
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QThread>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <cstdio>
 #include <cstdlib>
@@ -216,6 +218,55 @@ void overlappingSearch()
     }
 }
 
+void directFindAndFocus()
+{
+    Fixture f;
+    const QString paper = QStringLiteral("old code1 code2\nanchor co.e\nnew code3 code4");
+    const int middle = paper.indexOf(u"anchor");
+    f.editor->loadText(paper);
+    f.editor->jumpTo(middle);
+    auto *mode = f.search->findChild<QToolButton *>("cw-search-mode");
+    auto *words = f.search->findChild<QCheckBox *>("cw-search-word");
+    auto *wrap = f.search->findChild<QCheckBox *>("cw-search-wrap");
+
+    f.key(Qt::Key_G, Qt::ControlModifier);
+    f.key(Qt::Key_R, Qt::ControlModifier);
+    f.query->setText("code[0-9]");
+    f.search->repeat();
+    check(f.isAt(0, "code2"), "switching to regex in a backward search preserves its direction");
+    f.key(Qt::Key_Escape);
+
+    const int seed = paper.indexOf(u"co.e");
+    f.editor->selectMatch(seed, seed + 4);
+    check(f.key(Qt::Key_R, Qt::ControlModifier) && f.query->hasFocus() &&
+          mode->text() == "Regex" && f.query->text() == "co.e",
+          "Ctrl R on a manuscript selection opens regex with the selected expression");
+    f.query->setText("code[0-9]");
+    f.search->repeat();
+    check(f.isAt(2, "code3"), "direct regex search starts forward from the writing caret");
+
+    f.editor->jumpTo(middle);
+    f.editor->setFocus();
+    check(!f.key(Qt::Key_W, Qt::ControlModifier) && !f.key(Qt::Key_W, Qt::AltModifier) &&
+          !words->isChecked() && wrap->isChecked(), "editing shortcuts stay with manuscript when find is open");
+    check(f.key(Qt::Key_P, Qt::ControlModifier) && f.query->hasFocus() && mode->text() == "Text",
+          "Ctrl P opens plain-text search directly from the manuscript");
+    f.query->setText("code");
+    check(f.isAt(2, "code"), "direct text search previews the first match after the writing caret");
+    check(f.key(Qt::Key_W, Qt::ControlModifier) && f.key(Qt::Key_W, Qt::AltModifier) &&
+          words->isChecked() && !wrap->isChecked(), "whole-word and wrap shortcuts stay in the search fields");
+
+    f.key(Qt::Key_H, Qt::ControlModifier);
+    f.key(Qt::Key_R, Qt::ControlModifier);
+    check(f.replacement->isVisible(), "switching modes from a search field preserves Replace");
+    check(!f.key(Qt::Key_N, Qt::ControlModifier), "Ctrl N is available to append from an open search");
+    f.key(Qt::Key_L, Qt::ControlModifier);
+    check(f.number->hasFocus() && !f.replacement->isVisible(), "Ctrl L opens number mode from Replace");
+    f.key(Qt::Key_Escape);
+    check(f.key(Qt::Key_P, Qt::ControlModifier) && f.query->hasFocus() && mode->text() == "Text",
+          "Ctrl P opens plain text when Find is closed");
+}
+
 void controlsAndReplace()
 {
     Fixture f;
@@ -223,11 +274,12 @@ void controlsAndReplace()
     f.editor->loadText(text);
     f.editor->jumpTo(text.indexOf(QStringLiteral("Leaf 5")) + 2);
     f.key(Qt::Key_G, Qt::ControlModifier);
-    f.key(Qt::Key_N, Qt::ControlModifier);
+    f.editor->setFocus();
+    f.key(Qt::Key_L, Qt::ControlModifier);
     f.number->setText(QStringLiteral("9"));
     f.search->repeat();
     check(f.search->isHidden() && f.editor->textCursor().position() == text.indexOf(QStringLiteral("Leaf 9")),
-          "reverse duplicate-aware number jump");
+          "Ctrl L in an open backward search preserves direction even after focusing the manuscript");
     f.search->goToNumber();
     f.number->setText(QStringLiteral("5"));
     f.key(Qt::Key_H, Qt::ControlModifier);
@@ -255,7 +307,7 @@ void controlsAndReplace()
           "confirmed regex bulk replacement preserves Unicode, headers, terminal newline");
     f.editor->undo();
     check(f.editor->manuscriptText() == text, "one Undo restores all replacements");
-    f.key(Qt::Key_N, Qt::ControlModifier);
+    f.key(Qt::Key_L, Qt::ControlModifier);
     check(!f.replacement->isVisible() && !all->isVisible(), "no replacements in number mode");
     f.key(Qt::Key_P, Qt::ControlModifier);
     f.query->setText(QStringLiteral("word"));
@@ -327,6 +379,7 @@ int main(int argc, char **argv)
     historyImport();
     anchoredNavigation();
     overlappingSearch();
+    directFindAndFocus();
     controlsAndReplace();
     staleAndReservedText();
     asynchronousSearch();

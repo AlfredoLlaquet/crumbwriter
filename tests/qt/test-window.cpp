@@ -2,9 +2,12 @@
 #include "manuscripteditor.h"
 #include "preferences.h"
 #include <QApplication>
+#include <QCheckBox>
 #include <QClipboard>
+#include <QDialog>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileDialog>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -101,7 +104,7 @@ void testWindow(const QTemporaryDir &tmp)
     CHECK(editor->viewport()->rect().contains(editor->cursorRect()));
     key(Qt::Key_1, Qt::ControlModifier);
     CHECK(editor->textCursor().selectedText() == "Note 3");
-    CHECK(QApplication::clipboard()->text() == "Note 3");
+    CHECK(QApplication::clipboard()->text() == "note 3");
     key(Qt::Key_Escape);
     const int origin = bytes.indexOf("crumb 3") + 4;
     editor->jumpTo(origin);
@@ -191,6 +194,80 @@ void testDuplicateHistory(const QTemporaryDir &tmp)
     CHECK(until([&] { return !window.isVisible(); }));
     CHECK(read(path) == bytes);
 }
+
+void testWritingTools(const QTemporaryDir &tmp)
+{
+    const auto path = tmp.filePath("Writing.txt");
+    write(path, QStringLiteral("A Book//Crumb 1: T: red—blue / fox.\nCrumb 2: U: end\n").toUtf8());
+    write(path + ".characters", "\"Fox, Captain\", Red Fox\n");
+    write(path + ".recurring", "red, scarlet\n");
+    write(path + ".dictionary", "Zorbo\n");
+    Preferences prefs(tmp.filePath("writing.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    prefs.settings().setValue("editor/backup", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.loadDocument(path));
+    window.activateManuscript(false);
+    auto *ed = window.editor();
+    CHECK(until([&] { return ed->hasFocus(); }));
+
+    key(Qt::Key_I, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *stats = window.findChild<QDialog *>("statisticsDialog");
+    CHECK(stats && stats->isVisible() && !stats->isModal());
+    const auto figure = [&](const char *name) { return stats->findChild<QLabel *>(name)->text(); };
+    CHECK(figure("statisticsCrumbs") == "2");
+    CHECK(figure("statisticsWords") == "12");
+    CHECK(figure("statisticsAverage") == QLocale().toString(6.0, 'f', 2));
+
+    window.activateManuscript(false);
+    CHECK(until([&] { return ed->hasFocus(); }));
+    key(Qt::Key_P, Qt::ControlModifier);
+    auto *find = window.findChild<QLineEdit *>("cw-find");
+    CHECK(find && find->hasFocus());
+    auto *words = window.findChild<QCheckBox *>("cw-search-word");
+    auto *wrap = window.findChild<QCheckBox *>("cw-search-wrap");
+    const bool oldWords = words->isChecked(), oldWrap = wrap->isChecked();
+    key(Qt::Key_W, Qt::ControlModifier);
+    key(Qt::Key_W, Qt::AltModifier);
+    CHECK(words->isChecked() != oldWords && wrap->isChecked() != oldWrap && window.isVisible());
+    ed->setFocus();
+    ed->openAtEnd();
+    key(Qt::Key_W, Qt::ControlModifier);
+    CHECK(!ed->manuscriptText().contains("end"));
+    CHECK(figure("statisticsWords") == "11");
+    key(Qt::Key_R, Qt::ControlModifier);
+    CHECK(find->hasFocus());
+    key(Qt::Key_L, Qt::ControlModifier);
+    CHECK(window.findChild<QLineEdit *>("cw-crumb-number")->hasFocus());
+    key(Qt::Key_N, Qt::ControlModifier);
+    CHECK(ed->hasFocus() && ed->textCursor().blockNumber() == 2);
+    CHECK(figure("statisticsCrumbs") == "3");
+    CHECK(window.findChild<QLabel *>("todayCount")->text().contains("1"));
+    key(Qt::Key_Escape);
+
+    key(Qt::Key_1, Qt::AltModifier);
+    CHECK(!ed->hasFocus());
+    key(Qt::Key_Return, Qt::ControlModifier);
+    CHECK(until([&] { return ed->hasFocus(); }));
+    CHECK(ed->textCursor().block().text().endsWith("Fox, Captain"));
+
+    const auto copy = tmp.filePath("Copy.txt");
+    key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *chooser = window.findChild<QFileDialog *>();
+    CHECK(chooser && chooser->isVisible());
+    chooser->selectFile(copy);
+    static_cast<QDialog *>(chooser)->accept();
+    CHECK(until([&] { return window.path() == copy && QFile::exists(copy + ".dictionary"); }));
+    for (auto suffix : {".characters", ".recurring", ".dictionary"})
+        CHECK(read(path + suffix) == read(copy + suffix));
+    CHECK(read(path).endsWith("U: end\n"));
+    stats->close();
+    window.activateManuscript(false);
+    CHECK(until([&] { return ed->hasFocus(); }));
+    key(Qt::Key_W, Qt::AltModifier);
+    CHECK(until([&] { return !window.isVisible(); }));
+}
 }
 
 int main(int argc, char **argv)
@@ -201,5 +278,6 @@ int main(int argc, char **argv)
     CHECK(tmp.isValid());
     testWindow(tmp);
     testDuplicateHistory(tmp);
+    testWritingTools(tmp);
     std::puts("Main window keyboard, reference jump, duplicate history and close choices passed.");
 }

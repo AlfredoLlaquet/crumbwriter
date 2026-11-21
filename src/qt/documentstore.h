@@ -1,6 +1,7 @@
 #ifndef CW_QT_DOCUMENTSTORE_H
 #define CW_QT_DOCUMENTSTORE_H
 
+#include <QByteArray>
 #include <QObject>
 #include <QStringList>
 #include <functional>
@@ -41,6 +42,10 @@ public:
     std::function<void()> onChanged;
     std::function<void(const QString &)> onError;
     std::function<void(const QString &oldPath, const QString &newPath)> onPathChanged;
+    // Both hooks run on the GUI thread. Only an installed manuscript or draft
+    // receives the metadata captured alongside its exact text revision.
+    std::function<QByteArray()> captureMetadata;
+    std::function<void(const QString &path, const QByteArray &metadata)> onPublished;
     std::function<void()> onSaveAsNeeded;
     std::function<void()> onReadyToClose;
 

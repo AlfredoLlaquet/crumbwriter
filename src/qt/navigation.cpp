@@ -6,10 +6,13 @@
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QSettings>
 #include <QSplitter>
 #include <QTextBlock>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+#include <algorithm>
 
 namespace {
 class SidebarList final : public QTreeWidget {
@@ -125,7 +128,7 @@ QTextCursor JumpHistory::move(const QTextCursor &from, bool forward)
 
 void JumpHistory::clear() { previous_.clear(); next_.clear(); }
 
-NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QWidget *parent)
+NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, QWidget *parent)
     : QWidget(parent), editor_(editor)
 {
     setObjectName("sidebar");
@@ -144,12 +147,13 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QWidget *parent)
     title_->setMaximumHeight(title_->fontMetrics().lineSpacing() * 4);
     words_ = label(this);
     words_->setObjectName("wordCount");
-    session_ = label(this);
-    session_->setObjectName("sessionCount");
-    for (auto *widget : {number_, title_, words_, session_}) layout->addWidget(widget);
+    today_ = label(this);
+    today_->setObjectName("todayCount");
+    setTodayCount(0);
+    for (auto *widget : {number_, title_, words_, today_}) layout->addWidget(widget);
 
     auto *split = new QSplitter(Qt::Vertical, this);
-    auto addList = [split](const QString &caption, const QString &name, bool numberFirst) {
+    auto addList = [this, split](const QString &caption, const QString &name, bool numberFirst) {
         auto *section = new QWidget(split);
         auto *column = new QVBoxLayout(section);
         column->setContentsMargins(0, 2, 0, 0);
@@ -157,7 +161,16 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QWidget *parent)
         column->setSizeConstraint(QLayout::SetNoConstraint);
         auto *heading = label(section, true);
         heading->setText(caption);
-        column->addWidget(heading);
+        auto *headingRow = new QHBoxLayout;
+        headingRow->addWidget(heading, 1);
+        if (!numberFirst) {
+            genreOrder_ = new QToolButton(section);
+            genreOrder_->setObjectName("genreOrder");
+            genreOrder_->setCheckable(true);
+            genreOrder_->setFocusPolicy(Qt::StrongFocus);
+            headingRow->addWidget(genreOrder_);
+        }
+        column->addLayout(headingRow);
         auto *tree = new SidebarList(section);
         tree->setObjectName(name);
         tree->setAccessibleName(caption);
@@ -175,6 +188,12 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QWidget *parent)
     auto *genres = addList("Genres", "genreList", false);
     visits_ = visits;
     genres_ = genres;
+    genreOrder_->setChecked(settings->value("editor/genre-sort-by-number", false).toBool());
+    connect(genreOrder_, &QToolButton::toggled, this, [this, settings](bool byNumber) {
+        settings->setValue("editor/genre-sort-by-number", byNumber);
+        settings->sync();
+        updateGenres();
+    });
     visits->open = [this](auto *item) { openVisit(item); };
     genres->open = [this](auto *item) { continueGenre(item); };
     layout->addWidget(split, 1);
@@ -221,7 +240,6 @@ void NavigationPanel::updateCurrent()
     title_->setText(valid ? record.title : QString());
     title_->setToolTip(title_->text());
     words_->setText(QString("Words   %1").arg(virtualRows ? 0 : record.words));
-    session_->setText(QString("New this session   %1").arg(editor_->model().sessionCount()));
     QPalette colors = palette();
     if (valid && record.headerWarning)
         colors.setColor(QPalette::WindowText, colors.color(QPalette::Window).lightness() < 128
@@ -280,10 +298,21 @@ void NavigationPanel::updateModel(const CrumbChange &change)
 
 void NavigationPanel::updateGenres()
 {
+    const bool byNumber = genreOrder_->isChecked();
+    genreOrder_->setText(byNumber ? "# ↑" : "A–Z");
+    const QString order = byNumber ? tr("Genres ordered by number, then name") : tr("Genres ordered alphabetically");
+    genreOrder_->setAccessibleName(order);
+    genreOrder_->setToolTip(order + tr(". Switch order (Shift+F7)"));
     QString selected;
     if (genres_->currentItem()) selected = genres_->currentItem()->data(0, Qt::UserRole).toString();
     genres_->clear();
-    for (const auto &genre : editor_->model().genres()) {
+    auto rows = editor_->model().genres(); // Alphabetical order also breaks number ties.
+    if (byNumber) {
+        std::stable_sort(rows.begin(), rows.end(), [](const CrumbGenre &a, const CrumbGenre &b) {
+            return a.number < b.number;
+        });
+    }
+    for (const auto &genre : rows) {
         auto *item = new QTreeWidgetItem(genres_, {genre.name, "#" + QString::number(genre.number)});
         item->setData(0, Qt::UserRole, genre.key);
         item->setToolTip(0, genre.name);
@@ -291,6 +320,16 @@ void NavigationPanel::updateGenres()
         if (!genre.canAppend) item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
         if (genre.key == selected) genres_->setCurrentItem(item);
     }
+}
+
+void NavigationPanel::toggleGenreOrder()
+{
+    genreOrder_->toggle();
+}
+
+void NavigationPanel::setTodayCount(int count)
+{
+    today_->setText(QString("New today   %1").arg(count));
 }
 
 void NavigationPanel::openVisit(QTreeWidgetItem *item)

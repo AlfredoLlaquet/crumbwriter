@@ -8,6 +8,7 @@
 
 class CommittedPunctuation;
 class CrumbHighlighter;
+class QMenu;
 
 // All document positions are UTF-16 offsets. A virtual row is never a block in
 // the document and never appears in a clipboard, save, search or word count.
@@ -31,12 +32,16 @@ public:
     void selectRange(int anchor, int position, bool center = true);
     void selectMatch(int start, int end);
     void setSearchHighlights(const QList<QTextEdit::ExtraSelection> &ranges);
+    void setSpellingHighlights(const QList<QTextEdit::ExtraSelection> &ranges);
+    std::function<void(QMenu *, int)> spellingMenu;
     void centerCurrentLine();
     void topCurrentCrumb();
     void appendCrumb(const QString &genre = {});
     void copyCrumb();
     void copyHeader();
     void deleteCrumb();
+    void deleteWord();
+    void insertLiteral(const QString &text);
 
     int virtualRows() const { return rows_; }
     void clearVirtual();
@@ -64,7 +69,7 @@ protected:
 
 private:
     enum class Alignment { Visible, Center, Top };
-    enum class Input { Typed, Paste, Replacement };
+    enum class Input { Typed, Paste, Erase, Replacement };
     int clampPosition(int value) const;
     QTextCursor at(int position) const;
     QTextCursor writingEnd() const;
@@ -77,6 +82,7 @@ private:
     void trackSeparator(const QTextCursor &cursor);
     void typeText(const QString &text, int replaceStart = 0, int replaceLength = 0);
     void removeByKey(QKeyEvent *event);
+    void eraseSelection(QTextCursor cursor);
     void insertSelection(const QString &text, Input kind);
     void replaceAt(QTextCursor &cursor, const QString &text, Input kind);
     void recordEditForHash(QTextCursor &cursor, const QString &text);
@@ -95,6 +101,7 @@ private:
     std::unique_ptr<CrumbModel> model_;
     std::unique_ptr<CommittedPunctuation> punctuation_;
     CrumbHighlighter *highlighter_ = nullptr;
+    QList<QTextEdit::ExtraSelection> searchHighlights_, spellingHighlights_;
     QPalette paper_;
     bool activePaper_ = true;
     bool smart_ = true;

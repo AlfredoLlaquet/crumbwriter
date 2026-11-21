@@ -27,24 +27,36 @@ QString preferencesFile()
 struct HelpRow { const char *scope; const char *keys; const char *effect; };
 constexpr HelpRow shortcuts[] = {
     {"Manuscript","Ctrl+N","Append the next crumb and go to its body"},
-    {"Manuscript","Ctrl+1","Select and copy the header without its colon"},
+    {"Manuscript","Ctrl+1","Select the header and copy its lowercase form without its colon"},
     {"Manuscript","Ctrl+Q","Select and copy the whole crumb without its newline"},
     {"Manuscript","Ctrl+Y","Delete the current crumb when the manuscript has focus"},
+    {"Manuscript","Ctrl+W","Delete the selected text or the word or space at the caret"},
     {"Manuscript","Ctrl+Z / Ctrl+Shift+Z","Undo / redo"},
     {"Manuscript","Ctrl+A / X / C / V","Select all / cut / copy / paste"},
-    {"Manuscript","Tab / Shift+Tab","Next / previous header, title or body"},
+    {"Manuscript","Tab / Shift+Tab","Next / previous title or body"},
     {"Manuscript","Up / Down","Move by one wrapped line, including virtual rows below the file"},
     {"Manuscript","Home / End","Beginning / end of the wrapped line"},
     {"Manuscript","Ctrl+Up / Ctrl+Down","Previous / next crumb"},
     {"Manuscript","Ctrl+Home / Ctrl+End","Beginning / end of this crumb"},
-    {"Manuscript","Ctrl+Page Up / Ctrl+Page Down","Beginning / end of the file (RePág / AvPág)"},
+    {"Manuscript","Ctrl+Page Up / Ctrl+Page Down","Beginning of the file / end of the last crumb (RePág / AvPág)"},
     {"Manuscript","Ctrl+Enter / Alt+Enter","Center the current line / put this crumb at the top"},
     {"Navigation","F2 / Shift+F2","Back / forward to the exact caret position after a jump"},
     {"Navigation","F4 / Shift+F4","Next / previous numbering warning"},
     {"Navigation","Ctrl+Shift+J","Follow the crumb reference under the caret"},
     {"Navigation","Ctrl+L","Go to a crumb number"},
     {"Navigation","F6 / F7","Focus visit history / genres. Type part of a title or genre, then Enter"},
-    {"Navigation","F9","Show or hide the sidebar"},
+    {"Navigation","Shift+F7","Sort genres alphabetically or by number then name"},
+    {"Navigation","F9 / Shift+F9","Show or hide the right / left panel"},
+    {"Synonym lists","Alt+1 / Alt+2","Focus Characters / Recurring"},
+    {"Synonym lists","Type to filter","Find entries by any synonym"},
+    {"Synonym lists","Insert / F2 / Delete","Add / edit / remove a synonym group"},
+    {"Synonym lists","Enter / Ctrl+Enter","Find all occurrences / insert the first synonym at the manuscript caret"},
+    {"Synonym lists","F5 / Escape","Reload the list from disk / return to the manuscript"},
+    {"Spelling","F8 / Shift+F8","Review next / previous spelling issue"},
+    {"Spelling","Ctrl+Shift+D","Open the manuscript dictionary"},
+    {"Spelling review","Enter / Alt+A","Apply the replacement / replace all occurrences of the misspelling"},
+    {"Spelling review","Alt+I / Alt+L / Alt+D","Ignore once / ignore all / add the word to the manuscript dictionary"},
+    {"Dictionary","Enter / Delete / F5","Add the typed word / remove the selected entry / reload from disk"},
     {"Bookmarks","Ctrl+B / Alt+B","Add a bookmark / open the Bookmarks window"},
     {"Bookmarks","Type in Filter, then Enter","Open a matching bookmark at its saved physical line"},
     {"Bookmarks window","Ctrl+F / Up / Down","Focus the filter / move through matching bookmarks"},
@@ -53,14 +65,15 @@ constexpr HelpRow shortcuts[] = {
     {"Find and Replace","Ctrl+F / Ctrl+G","Search forward / backward from the manuscript caret"},
     {"Find and Replace","Ctrl+H","Open Replace, then switch between Find and Replace with"},
     {"Find and Replace","F3 / Shift+F3","Repeat in the opening direction / opposite direction"},
-    {"While Find is open","Ctrl+P / Ctrl+R / Ctrl+N","Plain text / regular expression / crumb number"},
-    {"While Find is open","Ctrl+M / Ctrl+W / Alt+W","Toggle match case / whole words / wrap"},
+    {"Find and Replace","Ctrl+P / Ctrl+R / Ctrl+L","Find plain text / regular expression / crumb number"},
+    {"Find controls","Ctrl+M / Ctrl+W / Alt+W","Toggle match case / whole words / wrap"},
     {"While Find is open","Alt+Down","Open recent searches"},
     {"While Find is open","Enter / Shift+Enter","Next result in the opening direction / opposite direction"},
     {"Window","Escape","Close Find and clear the selection, or leave virtual space"},
     {"Window","Ctrl+O / Ctrl+Shift+N","Open a manuscript / create an untitled window"},
     {"Window","Ctrl+S / Ctrl+Shift+S","Save / Save As"},
-    {"Window","Ctrl+W","Close the manuscript when Find is closed"},
+    {"Window","Alt+W","Close the manuscript window. In Find controls, toggle Wrap"},
+    {"Window","Ctrl+Shift+I","Show manuscript statistics. Ctrl+C in the dialog copies the figures"},
     {"Window","Ctrl+, / F10 / F1","Settings / Document menu / Keyboard Shortcuts"}
 };
 }
@@ -168,6 +181,7 @@ void Preferences::show(QWidget *parent)
         QObject::connect(check, &QCheckBox::toggled, dialog, [this, key](bool on) { set(key, on); });
     };
     toggle("Use smart &punctuation", "smart-punctuation");
+    toggle("Check American English &spelling", "spell-check");
     toggle("Make a &backup before editing", "backup");
     toggle("Save &live while typing", "live-save");
     spin("Save &interval (seconds)", "save-delay", saveDelay(), 1, 30);

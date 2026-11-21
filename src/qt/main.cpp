@@ -12,7 +12,7 @@ int main(int argc, char **argv)
     std::setlocale(LC_ALL, "");
     for (int i = 1; i < argc && std::strcmp(argv[i], "--"); ++i) {
         if (!std::strcmp(argv[i], "--version") || !std::strcmp(argv[i], "-v")) {
-            std::puts("Crumb Writer 2.0");
+            std::puts("Crumb Writer 2.1");
             return 0;
         }
         if (!std::strcmp(argv[i], "--help") || !std::strcmp(argv[i], "-h")) {
@@ -22,7 +22,7 @@ int main(int argc, char **argv)
     }
     QCoreApplication::setOrganizationName("TheCrumbs");
     QCoreApplication::setApplicationName("CrumbWriter");
-    QCoreApplication::setApplicationVersion("2.0");
+    QCoreApplication::setApplicationVersion("2.1");
     QApplication app(argc, argv);
     std::setlocale(LC_CTYPE, "");
     QGuiApplication::setApplicationDisplayName("Crumb Writer");

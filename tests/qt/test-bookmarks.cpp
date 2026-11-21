@@ -8,6 +8,7 @@
 #include <QtCore/QTemporaryDir>
 #include <QtCore/QTimer>
 #include <QtGui/QKeyEvent>
+#include <QtGui/QScreen>
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
@@ -144,6 +145,7 @@ void pendingAndConflicts(const QString &directory)
 void dialogs(const QString &directory)
 {
     QWidget window;
+    window.resize(800, 500);
     window.show();
     QStringList titles{"One", "Manuscript title", "Haiku #1", "Four"};
     int line = 2;
@@ -160,6 +162,9 @@ void dialogs(const QString &directory)
     check(form && form->isVisible() && !form->isModal(), "add window is missing or modal");
     auto *category = form->findChild<QComboBox *>("bookmarkCategory");
     auto *name = form->findChild<QLineEdit *>("bookmarkName");
+    const int available = qMin(window.width(), window.screen()->availableGeometry().width() * 9 / 10);
+    check(form->width() >= qMin(600, available) && category->width() >= form->width() * 2 / 3,
+          "add bookmark must give most of its wide form to the category control");
     category->setEditText("Revise");
     check(name->placeholderText() == "1", "initial proposed name");
     key(category->lineEdit(), Qt::Key_Return);
@@ -221,6 +226,13 @@ void dialogs(const QString &directory)
     check(destination == 0 && browser->isVisible(), "missing line silently jumped elsewhere");
     key(filter, Qt::Key_Escape);
     check(!browser->isVisible(), "Escape did not close bookmark window");
+
+    window.resize(340, 350);
+    line = 1;
+    marks.addCurrent();
+    QApplication::processEvents();
+    check(form->width() <= window.width() && category->lineEdit()->width() > form->width() / 2,
+          "the same editable category fits inside a narrow manuscript tile");
 }
 
 } // namespace

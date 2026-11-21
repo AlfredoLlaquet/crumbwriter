@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 2.0. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 2.1. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Build, update and launch
 ------------------------
@@ -15,12 +15,15 @@ program. The qt6-base package supplies Qt Widgets, Qt Network and the rcc
 tool that embeds the application icon. The Makefile locates them through
 pkg-config, supplied by pkgconf.
 
-Upgrading from 1.4
-~~~~~~~~~~~~~~~~~~
+Upgrading from 2.0 or 1.4
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On a computer that already builds 1.4, install the new package as root.
+Version 2.1 uses Hunspell with the American English dictionary. On a
+FreeBSD computer that already builds version 2.0, install these as root.
 
-    pkg install qt6-base
+    pkg install hunspell en-hunspell
+
+For a direct upgrade from version 1.4, add qt6-base to that command.
 
 Save your work and close all Crumb Writer windows. As the desktop account,
 run the following commands in the existing crumbwriter checkout on main.
@@ -31,7 +34,7 @@ The ordinary make command rebuilds it in place.
     ./crumbwriter --version
     ./crumbwriter
 
-The version check should print "Crumb Writer 2.0". The last command runs
+The version check should print "Crumb Writer 2.1". The last command runs
 the copy built in this directory. A Plasma launcher uses the installed
 copy. Repeat the installation described below to update that copy as well.
 
@@ -40,7 +43,7 @@ First installation
 
 On a new computer, install the full package list as root.
 
-    pkg install git pkgconf glib qt6-base
+    pkg install git pkgconf glib qt6-base hunspell en-hunspell
 
 Then check out the source, build and launch as the desktop account.
 
@@ -80,8 +83,10 @@ $HOME/.local/bin on PATH.
 
 Both commands install the executable, manual, Plasma launcher and icon.
 DESTDIR can stage either installation for packaging. Linux uses the same
-make targets with a C++17 compiler, pkg-config, Qt 6 base development tools
-and GLib/GIO development headers. The icon comes from the official Crumbs
+make targets with a C++17 compiler, pkg-config, Qt 6 base development tools,
+GLib/GIO and Hunspell development headers and the en_US dictionary. On Debian
+and Ubuntu the spelling packages are libhunspell-dev and hunspell-en-us.
+The icon comes from the official Crumbs
 website's favicon. The Wayland application ID and desktop file share the identifier
 org.thecrumbs.CrumbWriter. Installed icons and Qt's embedded icon contain
 the original sizes from 16 to 256 pixels.
@@ -100,7 +105,10 @@ By default the writing font is proportional Serif at 14 points. Headers are
 italic, titles bold and bodies normal. The writing area always wraps to the
 available editor width. Moving the window edge, tiling it or moving the
 sidebar divider gives the text its new width. Long unbroken words can wrap
-inside narrow tiles. Scrolling and jumps are immediate.
+inside narrow tiles. A gap of about a quarter of a text line separates
+physical crumbs on screen. Wrapped lines within a crumb retain normal line
+spacing. The file still contains one line per crumb. Scrolling and jumps
+are immediate.
 
 The sidebar shows the current crumb's header, title and word count. The count
 includes the header, title and body, with the first work title through //
@@ -112,10 +120,25 @@ includes the work title and replaces its first // separator with one space.
 
     sed -e '1s@//@ @' -e 's/—/ /g' -e 's@ / @ @g' Crumbs.txt | wc -w
 
-"Crumb 2: : " counts as three words. The session total counts distinct valid
-header numbers currently present that were absent when the manuscript opened.
-Appending, editing, pasting, deleting and undoing update the total. Each
-manuscript window has its own opening baseline, history and undo stack.
+"Crumb 2: : " counts as three words. New today counts new recognized crumbs
+in this manuscript on the local calendar date. Three additions followed by
+deleting one of those crumbs give a count of two. Undo restores the third.
+Reopening the manuscript on the same day retains its count. Midnight starts
+a new count, including when the editor stays open. Crumb Writer stores the
+date and identities of the older crumbs in the account's application data
+directory ($XDG_DATA_HOME/crumbwriter/daily, normally ~/.local/share/crumbwriter/daily).
+This lets it reconstruct the count from the saved manuscript, including
+after discarding unsaved changes. Each successful manuscript or recovery-draft
+save records which lines in that revision were new. Identical duplicate headers
+retain their counts after reopening, even when more edits arrived during the
+save. Deleting an older crumb leaves today's count intact.
+
+Ctrl+Shift+I opens modeless Manuscript Statistics. Crumbs counts recognized
+records. Total words uses the whole-file command above, including the work
+title and words on unfinished lines. The average is total words divided by
+the crumb count, rounded to two decimal places. An empty manuscript displays
+zero for all three figures. The figures update during editing, and Ctrl+C or
+the Copy button copies all three together.
 
 Appearance and editing
 ----------------------
@@ -137,8 +160,10 @@ line breaks follow the newly appended crumb. One Undo removes the new record.
 Typing "Haiku #" in a title completes the next number from the nearest
 earlier Haiku. The typed genre spelling is preserved. With no previous
 occurrence, the hash remains available for writing. A hash in a body is
-literal. The alphabetized Genres list shows the most recent number of each
-genre. Activating "Portrait #42" appends a new crumb titled "Portrait #43"
+literal. The Genres list shows the most recent number of each genre. The
+button beside Genres, or Shift+F7, switches between alphabetical order and
+increasing last number, with ties sorted by name. The choice is remembered.
+Activating "Portrait #42" appends a new crumb titled "Portrait #43"
 and focuses the body. F7, a fragment of the genre name, and Enter do the
 same from the keyboard. A title such as "Negation #10, Confession #3" indexes
 both components. "Fingers (Haiku #157)" also contributes to Haiku.
@@ -156,6 +181,7 @@ Tabs and runs of ordinary spaces become a single ASCII space. Pasting
 normalizes the whole insertion and its edges in one undoable edit. Newlines,
 blank lines and nonbreaking spaces are preserved. A space typed at the end of
 a crumb stays available for the next word, including across a live save.
+Backspacing over the last word also leaves its preceding space available.
 Leaving the crumb or beginning a search trims a pending trailing space. Saved
 manuscripts, drafts and copied crumbs omit trailing ASCII spaces and tabs.
 
@@ -184,16 +210,17 @@ Navigation and window keys
 
     Up / Down                Previous / next wrapped visual line
     Home / End               Start / end of that visual line
-    Tab / Shift+Tab          Next / previous header, title or body
+    Tab / Shift+Tab          Next / previous title or body
     Ctrl+Up / Ctrl+Down       Previous / next recognizable crumb
     Ctrl+Home / Ctrl+End      Start / end of the current crumb
     Ctrl+Page Up (RePág)      Start of the entire file, including any work title
-    Ctrl+Page Down (AvPág)    End of the entire file, including any final newline
+    Ctrl+Page Down (AvPág)    End of the last crumb, before trailing line breaks
     Ctrl+Enter / Alt+Enter    Center the caret line / put the crumb at the top
-    Ctrl+N                   Append a crumb when Find is closed
-    Ctrl+1                   Select and copy the header, such as "Crumb 42"
+    Ctrl+N                   Append a crumb and focus its body
+    Ctrl+1                   Select the header and copy it in lowercase
     Ctrl+Q                   Select and copy the current crumb
     Ctrl+Y                   Delete the current crumb with manuscript focus
+    Ctrl+W                   Delete the selected text, word or space in the manuscript
     Ctrl+Z / Ctrl+Shift+Z     Undo / redo
     Ctrl+A / Ctrl+X           Select all / cut selection
     Ctrl+C / Ctrl+V           Copy selection / paste
@@ -202,15 +229,21 @@ Navigation and window keys
     F4 / Shift+F4             Next / previous numbering warning
     Ctrl+Shift+J / Ctrl+L     Follow a crumb reference / go to a crumb number
     F6 / F7                  Focus visit history / genres
-    F9                       Show or hide the sidebar
+    Shift+F7                 Toggle genre order by name or by number then name
+    F9 / Shift+F9            Show or hide the right / left panel
+    Alt+1 / Alt+2            Focus Characters / Recurring
+    F8 / Shift+F8            Review next / previous spelling issue
+    Ctrl+Shift+D             Open the manuscript dictionary
+    Ctrl+Shift+I             Open live manuscript statistics
     Ctrl+B / Alt+B            Add a named bookmark / open Bookmarks
     Ctrl+O / Ctrl+Shift+N     Open a manuscript / create an untitled window
     Ctrl+S / Ctrl+Shift+S     Save / Save As
-    Ctrl+W                   Close the window when Find is closed
+    Alt+W                    Close the manuscript window from the manuscript
     Ctrl+, / F10 / F1         Settings / document menu / keyboard reference
 
-Ctrl+1 includes the original label and digits through the end of the header.
-The colon and optional work title are outside the selection. Ctrl+Q selects
+Ctrl+1 selects the original label and digits through the end of the header.
+For "Crumb 42" the clipboard receives "crumb 42". Custom labels are also
+lowercased. The colon and optional work title are outside the selection. Ctrl+Q selects
 through the end of the crumb's body, excluding its terminating newline and
 any first-line work title. Both operations copy plain text and leave the
 copied span selected. Ctrl+Y deletes the crumb at the caret in one edit,
@@ -230,7 +263,10 @@ Search and replacement
 ----------------------
 
 Ctrl+F opens forward Find from the manuscript caret. Ctrl+G opens backward
-Find from the same position. Plain-text input immediately selects the nearest
+Find from the same position. Ctrl+P starts a forward plain-text search and
+Ctrl+R starts a forward regex search directly from the manuscript. In a
+search field these keys switch the mode of the current search. Plain-text
+input immediately selects the nearest
 match in the opening direction and centers its starting visual line. Each
 refinement starts at the original search caret. Clearing the query or
 refining it to a missing match after a preview returns to the origin. Escape
@@ -243,7 +279,7 @@ the optional first-line prefix, alternate labels, duplicate numbers, direction
 and wrap. A bookmark goes to a physical line. A number search goes to a
 matching header. Replacement is available in plain-text and regex modes.
 
-    Ctrl+P / Ctrl+R / Ctrl+N   Plain text / regular expression / crumb number
+    Ctrl+P / Ctrl+R / Ctrl+L   Plain text / regular expression / crumb number
     Ctrl+M / Ctrl+W / Alt+W    Toggle match case / whole words / wrap
     Alt+Down                  Show recent searches and focus the list
     Enter / Shift+Enter       From query, repeat forward or back relative
@@ -251,8 +287,11 @@ matching header. Replacement is available in plain-text and regex modes.
     F3 / Shift+F3             Repeat in the opening / opposite direction
 
 F3 and Shift+F3 also work with the panel closed. After Ctrl+G, F3 goes
-backward. After Ctrl+F or Ctrl+H, F3 goes forward. Find shortcuts apply
-while the panel is visible, including when focus is back in the manuscript.
+backward. After opening forward Find or Replace, F3 goes forward. While the
+Find controls have focus, Ctrl+W toggles whole words and Alt+W toggles wrap.
+With the manuscript focused, Ctrl+W deletes and Alt+W closes the window.
+Ctrl+N appends a crumb even from the Find field. Escape closes the search
+bar from either the search controls or the manuscript.
 Completed queries retain their mode and options in recent searches. Arrows
 and Enter recall a search. Repeating an identical query and options moves
 that entry to the top. The Qt version reads existing 1.4 search history.
@@ -279,6 +318,53 @@ manuscript, query or replacement invalidate the preview.
     PCRE2 patterns     https://www.pcre.org/current/doc/html/pcre2pattern.html
     Replacement text   https://docs.gtk.org/glib/method.MatchInfo.expand_references.html
 
+Characters and Recurring
+------------------------
+
+The left panel has two alphabetical lists. Alt+1 focuses Characters and
+Alt+2 focuses Recurring. Type any alias to filter a list. Inside a list,
+Insert adds a group, F2 edits its line, and Delete confirms removal. Enter
+lists every matching passage for all aliases in that group. Open a result
+to select its text in the manuscript. F2 in the manuscript returns to the
+place where that jump began. Ctrl+Enter inserts the first alias at the
+manuscript caret. Escape returns to the manuscript. Shift+F9 shows or
+hides the entire left panel.
+
+A manuscript named Crumbs.txt has two UTF-8 text companions named
+Crumbs.txt.characters and Crumbs.txt.recurring. Each physical line is one
+group. The first synonym determines the display order and insertion text.
+Separate aliases with commas. Spaces around separators are ignored. Put an
+alias containing a comma in double quotes. Double a literal straight quote
+inside a quoted alias. For example, this line has three aliases.
+
+    "Fox, Captain", Red Fox, Captain Fox
+
+Matching is case-insensitive and literal. A search for Fox finds the name
+as a word. F5 reloads changes made to the list file in another editor.
+Save As copies the lists alongside the new manuscript.
+
+American English spelling
+-------------------------
+
+Spelling uses Hunspell with en_US and is enabled by default. Ctrl+, opens
+Settings, where Check American English spelling switches it on or off.
+Underlined words can be reviewed from the keyboard with F8 and Shift+F8.
+The correction dialog offers suggestions, an editable replacement, Replace,
+Replace All, Ignore Once, Ignore All and Add to Dictionary. The manuscript
+context menu also provides corrections. In the replacement field, Enter
+applies the correction. Alt+A replaces all, Alt+I ignores once, Alt+L
+ignores all, and Alt+D adds the word to the manuscript dictionary.
+Ctrl+Shift+D opens that dictionary. Type to filter or press Enter to add
+the typed word. Delete removes the selected entry and F5 reloads from disk.
+
+Straight and curly apostrophes are equivalent for spelling, including in
+contractions such as don't and don’t. Both synonym lists exempt complete
+aliases. Listing Zorbo Marmalade exempts that full name. Adding Zorbo as
+another alias or as a dictionary word accepts it on its own. The personal
+dictionary for Crumbs.txt is Crumbs.txt.dictionary, a UTF-8 file with one
+entry per line. Entries match regardless of case. Save As carries this file
+alongside the copied manuscript.
+
 Named bookmarks
 ---------------
 
@@ -288,6 +374,8 @@ the previous category, so Ctrl+B followed by Enter adds its next numbered
 bookmark. A category starts numbering at 1. A manually assigned positive
 decimal name such as 7 can advance its counter. Deleting a numbered bookmark
 preserves the category's counter. Names are unique inside a category.
+The wider Add Bookmark dialog gives the category field room to show long
+names and can shrink when the desktop tiles the window.
 
 Alt+B opens a separate modeless Bookmarks window for that manuscript. Tree
 view presents categories and names. A category with one bookmark opens that
@@ -356,7 +444,7 @@ draft. With live saving enabled, untitled documents also receive drafts under
 $XDG_DATA_HOME/crumbwriter/drafts or ~/.local/share/crumbwriter/drafts.
 Recovery drafts reopen as unsaved manuscripts at the next launch.
 
-Closing with queued edits, an active write, a save failure or pending bookmarks
+Closing with queued edits, an active write, a save failure or pending companion files
 opens the Unsaved Changes dialog. A fully saved document closes directly.
 
     Save and Close          Save the latest edits, then close on success.
@@ -390,6 +478,10 @@ adapter keeps file bytes, clipboard text and search positions consistent.
                                            recovery and manuscript windows
     src/qt/mainwindow.*, windowcommands.cpp Window actions, focus, closing,
                                            opening, save and bookmark wiring
+    src/qt/manuscripttools.cpp             Window wiring for companion files,
+                                           synonym insertion and panel focus
+    src/qt/statisticsdialog.*              Live totals, average and clipboard
+    src/qt/dailycount.*                    Daily count and persistence
     src/qt/preferences.*                   Shared settings and F1 reference
     src/qt/navigation.*                    Current metrics, visit history,
                                            genre list and back/forward marks
@@ -410,6 +502,12 @@ adapter keeps file bytes, clipboard text and search positions consistent.
                                            and stored queries with options
     src/qt/bookmarks.*, bookmarkfile.*     Modeless bookmark UI and atomic
                                            versioned JSON companion files
+    src/qt/synonympanel.*, synonymfile.*   Left panel, alias groups, CSV text
+    src/qt/synonymresults.*                Results for complete aliases
+    src/qt/textcompanion.*                 Checked atomic reads and writes
+                                           for lists and the user dictionary
+    src/qt/spellcheck.*, spellwords.*      Spelling controller and word checks
+    src/qt/spellreview.*                   Modeless spelling review
     src/qt/documentstore.*                 Revisioned save queue, worker,
                                            recovery and close coordination
     src/crumb.c, spacing.c                 Tested UTF-8 grammar, word count
@@ -456,10 +554,19 @@ Verification
 
 Use make check-core for the parser and storage tests without a display. In a
 graphical session, make check runs the core and Qt suites. make check-gui
-runs the model, document store, bookmarks, editor, search, window and resize
-tests. The resize test measures a completed paint after typing in a moving
+runs the model, document store, bookmarks, synonym lists, spelling,
+navigation, editor, search, window and resize tests. The resize test
+measures a completed paint after typing in a moving
 window and checks the actual text and caret.
 The same Makefile supports FreeBSD base make and GNU make.
+
+With both side panels visible, the 2.1 Linux X11 test using Qt 6.8.2
+changed the manuscript width between 613 and 383 pixels while typing.
+In two runs of 20 samples per manuscript, the 95th-percentile time from
+resize and key input to completed paint ranged from 3.7 to 5.9 ms with
+3,371 crumbs and from 5.7 to 7.1 ms with 25,092 crumbs. The native Wayland
+check also backspaced through a final word, waited for autosave, typed a
+replacement and verified the saved separator and replacement text.
 
 The 2.0 release built on FreeBSD 15.1 with Qt 6.11.3. In the native
 Plasma 6/Krohnkite test, the window widened from 640 to 1280 pixels while
@@ -470,8 +577,11 @@ file. The same release passed the Linux X11 and Wayland checks.
 For a counting change, compare each valid Qt model record against sed and
 wc in the target locale. tests/qt/test-model /path/to/Crumbs.txt prints
 one-based line numbers and counts for a supplied manuscript after its model
-checks. Exclude the work-title prefix when checking the first individual
-crumb. Exercise supplementary-plane characters, combining marks, alternate
+checks. Use tests/qt/test-model --stats /path/to/Crumbs.txt for whole-file
+figures. The manuscript used to verify 2.1 contained 3,371 crumbs and
+170,138 words, an average of 50.47. The official sed and wc pipeline also
+returned 170,138. Exclude the work-title prefix when checking the first
+individual crumb. Exercise supplementary-plane characters, combining marks, alternate
 labels, repeated header numbers, compound genres and abbreviated drafts.
 
 Use disposable files for typing and storage tests. Check the bytes of

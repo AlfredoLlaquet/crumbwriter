@@ -1,6 +1,8 @@
 #include "crumbmodel.h"
+#include "manuscripttext.h"
 
 #include <QtCore/QFile>
+#include <QtCore/QTemporaryDir>
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextCursor>
 #include <QtGui/QTextDocument>
@@ -10,7 +12,6 @@
 #include <clocale>
 #include <cstdio>
 #include <random>
-#include <set>
 
 #define CHECK(condition) do { if (!(condition)) qFatal("%s:%d: %s", __FILE__, __LINE__, #condition); } while (false)
 
@@ -50,10 +51,10 @@ static void fieldsAndWords()
     CHECK(model.nextGenreTitle(QStringLiteral("strasse")) == QStringLiteral("STRASSE #4"));
     CHECK(model.nextGenreTitle(QStringLiteral("éloge")) == QStringLiteral("E\u0301LOGE #3"));
     CHECK(model.nextHeader() == u"Bocí 5: : ");
-    CHECK(model.sessionCount() == 0);
+    CHECK(model.todayCount() == 0);
 }
 
-static void numbersAndSession()
+static void numbersAndDailyCount()
 {
     QTextDocument doc;
     doc.setPlainText(QStringLiteral("Book// Crumb 7: Alpha: x\npartial\nNote 7: Beta: y\nEntry 3: Z: z"));
@@ -72,13 +73,13 @@ static void numbersAndSession()
     QTextCursor cursor(&doc);
     cursor.movePosition(QTextCursor::End);
     cursor.insertText(QStringLiteral("\nPip 8: E: w\nPip 8: F: h"));
-    CHECK(model.sessionCount() == 1 && model.nextHeader() == u"Pip 9: : ");
+    CHECK(model.todayCount() == 2 && model.nextHeader() == u"Pip 9: : ");
     doc.undo();
-    CHECK(model.sessionCount() == 0 && model.nextHeader() == u"Entry 8: : ");
+    CHECK(model.todayCount() == 0 && model.nextHeader() == u"Entry 8: : ");
     doc.redo();
-    CHECK(model.sessionCount() == 1);
+    CHECK(model.todayCount() == 2);
     model.markOpened();
-    CHECK(model.sessionCount() == 0);
+    CHECK(model.todayCount() == 0);
     replace(doc, 0, doc.characterCount()-1, {});
     CHECK(model.nextHeader() == u"Pip 1: : ");
     model.markOpened();
@@ -156,7 +157,7 @@ static void observersAndFormatting()
     cursor.insertText(QStringLiteral("."));
     CHECK(textChanges == 1);
     cursor.insertText(QStringLiteral("\nCrumb 2: : new"));
-    CHECK(textChanges == 2 && model.sessionCount() == 1);
+    CHECK(textChanges == 2 && model.todayCount() == 1);
     int dead = 0;
     {
         QObject temporary;
@@ -170,6 +171,8 @@ static void observersAndFormatting()
 // This catches stale rows after undo, a physical-line split, or a bulk paste.
 static void compareModel(const CrumbModel &actual, const CrumbModel &expected, int count)
 {
+    CHECK(actual.totalWords() == expected.totalWords());
+    CHECK(actual.crumbCount() == expected.crumbCount());
     if (expected.neighbor(-1, false) >= 0)
         CHECK(actual.nextHeader() == expected.nextHeader());
     else
@@ -214,32 +217,191 @@ static void incrementalIndex()
         fresh.setPlainText(doc.toPlainText());
         CrumbModel reference(&fresh);
         compareModel(model, reference, doc.blockCount());
-        std::set<quint64> newNumbers;
-        for (int i = 0; i < doc.blockCount(); ++i) {
-            const auto &record = reference.record(i);
-            if (record.valid && (record.number < 1 || record.number > 3))
-                newNumbers.insert(record.number);
-        }
-        CHECK(model.sessionCount() == int(newNumbers.size()));
+        CHECK(model.todayCount() >= std::max(0, model.crumbCount() - 3));
+        CHECK(model.todayCount() <= model.crumbCount());
     }
+}
+
+static void manuscriptStatistics()
+{
+    QTextDocument doc;
+    doc.setPlainText(QStringLiteral("Work title//Crumb 1: T: a—b / c / / d\n"
+                                    "unfinished extra\n\nCrumb 1: : z\n"));
+    CrumbModel model(&doc);
+    CHECK(model.crumbCount() == 2);
+    CHECK(model.totalWords() == 16); // 10 words on line 1, 2 on line 2, 4 on line 4.
+    CHECK(model.record(0).words == 8);
+    replace(doc, doc.characterCount()-1, 0, QStringLiteral("trailing text"));
+    CHECK(model.totalWords() == 18 && model.crumbCount() == 2);
+    doc.undo();
+    CHECK(model.totalWords() == 16);
+    doc.setPlainText(QStringLiteral("Crumb 1: URL: https://site.tld//tail\n"));
+    CHECK(model.crumbCount() == 1 && model.totalWords() == 5 && model.record(0).words == 4);
+    doc.clear();
+    CHECK(model.crumbCount() == 0 && model.totalWords() == 0);
+}
+
+static void dailyPersistence(const QString &directory)
+{
+    const QString path = directory + "/Manuscript.txt";
+    const QString copy = directory + "/Copy.txt";
+    QDate date(2026, 11, 20);
+    const auto clock = [&] { return date; };
+    const QString old = QStringLiteral("Crumb 1: A: a\nCrumb 2: B: b");
+    const QString three = QStringLiteral("\nCrumb 3: C: c\nCrumb 4: D: d\nCrumb 5: E: e");
+    auto reopen = [&](const QString &name, const QString &text) {
+        QTextDocument file;
+        file.setPlainText(text);
+        CrumbModel model(&file, clock);
+        CHECK(model.openDailyCount(name).isEmpty());
+        return model.todayCount();
+    };
+    QTextDocument doc;
+    doc.setPlainText(old);
+    CrumbModel model(&doc, clock);
+    CHECK(model.openDailyCount(path).isEmpty() && model.todayCount() == 0);
+    replace(doc, doc.characterCount() - 1, 0, three);
+    CHECK(model.todayCount() == 3 && reopen(path, doc.toPlainText()) == 3);
+    const int last = doc.lastBlock().position();
+    replace(doc, last - 1, doc.characterCount() - last, {});
+    CHECK(model.todayCount() == 2 && reopen(path, doc.toPlainText()) == 2);
+    CHECK(reopen(path, old + three) == 3); // A pending deletion discarded before saving.
+    doc.undo();
+    CHECK(model.todayCount() == 3);
+    replace(doc, 0, doc.findBlockByNumber(1).position(), {});
+    CHECK(model.todayCount() == 3 && reopen(path, doc.toPlainText()) == 3);
+    doc.undo();
+    CHECK(model.todayCount() == 3);
+
+    // Correct an old header even when the digits disappear between keypresses.
+    replace(doc, 6, 1, {});
+    replace(doc, 6, 0, QStringLiteral("42"));
+    CHECK(model.todayCount() == 3 && reopen(path, doc.toPlainText()) == 3);
+    CHECK(reopen(path, old) == 0); // Published text before this correction.
+    // The displaced header number can be reused for a genuine new crumb.
+    // Reopening then deleting that new record must reduce the counter.
+    {
+        QTextDocument reused;
+        reused.setPlainText(doc.toPlainText() + QStringLiteral("\nCrumb 1: Another: one"));
+        CrumbModel restored(&reused, clock);
+        CHECK(restored.openDailyCount(path).isEmpty() && restored.todayCount() == 4);
+        const int end = reused.lastBlock().position() - 1;
+        replace(reused, end, reused.characterCount() - 1 - end, {});
+        CHECK(restored.todayCount() == 3);
+    }
+    CHECK(model.saveDailyCountAs(copy).isEmpty() && reopen(copy, doc.toPlainText()) == 3);
+    CHECK(reopen(directory + "/Independent.txt", doc.toPlainText()) == 0);
+    date = date.addDays(1);
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral("\nCrumb 6: F: f"));
+    CHECK(model.todayCount() == 1 && reopen(copy, doc.toPlainText()) == 1);
+    CHECK(reopen(path, old + three) == 0);
+    date = date.addDays(1);
+    int changes = 0;
+    model.observe(&doc, [&](const CrumbChange &change) { if (!change.textChanged) ++changes; });
+    model.refreshDay(); // Also the idle-midnight timer entry point.
+    CHECK(changes == 1 && model.todayCount() == 0);
+
+    // The saved file can precede two chained renumberings. Reordering its
+    // lines must not cause both old identities to be assigned to one number.
+    QTextDocument renumbered;
+    renumbered.setPlainText(old);
+    CrumbModel ids(&renumbered, clock);
+    const QString renamed = directory + "/Renumbered.txt";
+    CHECK(ids.openDailyCount(renamed).isEmpty());
+    replace(renumbered, 6, 1, QStringLiteral("9"));
+    replace(renumbered, renumbered.findBlockByNumber(1).position() + 6, 1, QStringLiteral("1"));
+    CHECK(ids.todayCount() == 0);
+    CHECK(reopen(renamed, QStringLiteral("Crumb 1: B: b\nCrumb 9: A: a")) == 0);
+    CHECK(reopen(renamed, old) == 0);
+
+    const QString identical = QStringLiteral("Crumb 1: Same: text");
+    for (bool insertAbove : {false, true}) {
+        QTextDocument duplicates;
+        duplicates.setPlainText(identical);
+        CrumbModel daily(&duplicates, clock);
+        if (insertAbove) replace(duplicates, 0, 0, identical + u'\n');
+        else replace(duplicates, identical.size(), 0, u'\n' + identical);
+        CHECK(daily.todayCount() == 1);
+        // Delete the old copy. The newly written copy still counts.
+        replace(duplicates, insertAbove ? identical.size() : 0, identical.size() + 1, {});
+        CHECK(duplicates.toPlainText() == identical && daily.todayCount() == 1);
+        duplicates.undo();
+        CHECK(daily.todayCount() == 1);
+        replace(duplicates, insertAbove ? 0 : identical.size(), identical.size() + 1, {});
+        CHECK(daily.todayCount() == 0);
+    }
+
+    // The old and new file contents are byte-for-byte identical. A late
+    // worker result must publish the daily identities of its own revision.
+    QTextDocument same;
+    same.setPlainText(identical);
+    CrumbModel ledger(&same, clock);
+    const QString source = directory + "/Duplicates.txt";
+    const QString target = directory + "/DuplicatesCopy.txt";
+    const QString draft = directory + "/DuplicatesDraft.txt";
+    CHECK(ledger.openDailyCount(source).isEmpty());
+    const auto morning = ledger.dailySnapshot();
+    replace(same, identical.size(), 0, u'\n' + identical);
+    replace(same, 0, identical.size() + 1, {});
+    CHECK(ledger.todayCount() == 1 && reopen(source, identical) == 0);
+    const auto installed = ledger.dailySnapshot();
+    CHECK(morning != installed);
+    replace(same, identical.size(), 0, QStringLiteral("!"));
+    CHECK(ledger.dailySnapshot() == installed); // Body typing reuses the cached number layout.
+    replace(same, 0, same.characterCount() - 1, {});
+    CHECK(ledger.todayCount() == 0);
+    CHECK(ledger.publishDailySnapshot(source, installed).isEmpty());
+    CHECK(reopen(source, identical) == 1);
+    CHECK(ledger.publishDailySnapshot(draft, morning).isEmpty());
+    CHECK(reopen(draft, identical) == 0 && reopen(source, identical) == 1);
+    CHECK(ledger.saveDailyCountAs(target).isEmpty());
+    CHECK(ledger.publishDailySnapshot(target, morning).isEmpty());
+    CHECK(reopen(target, identical) == 0 && reopen(source, identical) == 1);
+    CHECK(ledger.publishDailySnapshot(draft, installed).isEmpty());
+    CHECK(reopen(draft, identical) == 1 && reopen(target, identical) == 0);
+    date = date.addDays(1);
+    CHECK(ledger.publishDailySnapshot(target, installed).isEmpty());
+    CHECK(reopen(target, identical) == 0);
+
+    // A pre-midnight unsaved deletion leaves a different set of old rows on
+    // disk. Closing with Discard the next day must restore both as older.
+    QTextDocument night;
+    night.setPlainText(old);
+    CrumbModel late(&night, clock);
+    const QString overnight = directory + "/Overnight.txt";
+    CHECK(late.openDailyCount(overnight).isEmpty());
+    replace(night, 0, night.findBlockByNumber(1).position(), {});
+    date = date.addDays(1);
+    late.refreshDay();
+    CHECK(reopen(overnight, old) == 0);
+    CHECK(reopen(overnight, old + QStringLiteral("\nCrumb 3: Today: text")) == 1);
 }
 
 int main(int argc, char **argv)
 {
+    QTemporaryDir temp;
+    CHECK(temp.isValid());
+    qputenv("XDG_DATA_HOME", temp.path().toLocal8Bit());
     QApplication app(argc, argv);
     std::setlocale(LC_CTYPE, "");
     fieldsAndWords();
-    numbersAndSession();
+    numbersAndDailyCount();
+    manuscriptStatistics();
+    dailyPersistence(temp.path());
     genreEditsAndWarnings();
     observersAndFormatting();
     incrementalIndex();
-    std::puts("Crumb model field, genre, number, session, warning and incremental tests passed.");
-    if (argc == 2) {
-        QFile file(QString::fromLocal8Bit(argv[1]));
+    std::puts("Crumb model fields, genres, numbering, daily counts and manuscript statistics passed.");
+    if (argc == 2 || (argc == 3 && QByteArray(argv[1]) == "--stats")) {
+        QFile file(QString::fromLocal8Bit(argv[argc-1]));
         CHECK(file.open(QIODevice::ReadOnly));
         QTextDocument doc;
-        doc.setPlainText(QString::fromUtf8(file.readAll()));
+        ManuscriptText::load(&doc, QString::fromUtf8(file.readAll()));
         CrumbModel model(&doc);
+        if (argc == 3) {
+            std::printf("%d crumbs, %lld words\n", model.crumbCount(), static_cast<long long>(model.totalWords()));
+            return 0;
+        }
         for (int line = 0; line < doc.blockCount(); ++line)
             if (model.record(line).valid)
                 std::printf("%d %d\n", line + 1, model.record(line).words);

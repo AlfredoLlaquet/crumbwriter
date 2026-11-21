@@ -1,6 +1,7 @@
 #ifndef CRUMBWRITER_CRUMBMODEL_H
 #define CRUMBWRITER_CRUMBMODEL_H
 
+#include <QtCore/QDate>
 #include <QtCore/QObject>
 #include <QtCore/QString>
 #include <QtCore/QVector>
@@ -38,6 +39,7 @@ struct CrumbRecord {
     QString label;
     QString title;
     int words = 0;
+    int fileWords = 0; // Whole-file convention, including any first-line work title.
     int recordStart = 0;
     int headerStart = 0;
     int digitsStart = 0;
@@ -69,14 +71,22 @@ struct CrumbChange {
 
 class CrumbModel final : public QObject {
 public:
-    explicit CrumbModel(QTextDocument *document);
+    explicit CrumbModel(QTextDocument *document, std::function<QDate()> localDate = QDate::currentDate);
     ~CrumbModel() override;
 
     // A record reference remains valid until the next document edit.
     const CrumbRecord &record(int line) const;
     QVector<CrumbGenre> genres() const;
-    int sessionCount() const;
+    int crumbCount() const;
+    qint64 totalWords() const;
+    int todayCount() const;
     void markOpened();
+    QString openDailyCount(const QString &manuscript);
+    QString saveDailyCountAs(const QString &manuscript);
+    QByteArray dailySnapshot();
+    QString publishDailySnapshot(const QString &manuscript, const QByteArray &snapshot);
+    void refreshDay();
+    std::function<void(const QString &)> onDailyCountError;
 
     int findNumber(quint64 number, int absoluteOrigin, bool backward, bool wrap,
                    bool includeOrigin = true) const;

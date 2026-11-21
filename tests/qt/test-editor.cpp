@@ -145,6 +145,82 @@ void spacing(ManuscriptEditor &ed)
     expect(ed, QStringLiteral("Leaf 1: : x y"));
 }
 
+void rewritingLastWord(ManuscriptEditor &ed)
+{
+    const QString head = QStringLiteral("Leaf 1: : red");
+    const QString next = QStringLiteral("\nLeaf 2: : end\n");
+    const auto original = head + QStringLiteral(" fox") + next;
+    QTemporaryDir temp;
+    const auto path = temp.filePath(QStringLiteral("rewrite.txt"));
+    QFile disk(path);
+    require(disk.open(QIODevice::WriteOnly) && disk.write(original.toUtf8()) == original.size(),
+            "create last-word fixture");
+    disk.close();
+    gchar *loaded = nullptr;
+    GError *error = nullptr;
+    CwFile *file = cw_file_open(QFile::encodeName(path).constData(), false, &loaded, &error);
+    require(file && !error, "open last-word fixture");
+    ed.loadText(QString::fromUtf8(loaded));
+    g_free(loaded);
+    ed.jumpTo(original.indexOf(u'\n'), false);
+    for (int i = 0; i < 3; ++i)
+        press(ed, Qt::Key_Backspace);
+    expect(ed, head + u' ' + next);
+    require(ed.textCursor().atBlockEnd() && ed.textCursor().position() == head.size() + 1,
+            "backspacing the last word retains its preceding space at the caret");
+    require(cw_file_save(file, ed.manuscriptText().toUtf8().constData(), &error) && !error,
+            "save while a preceding separator is awaiting the replacement word");
+    require(disk.open(QIODevice::ReadOnly) && disk.readAll() == (head + next).toUtf8(),
+            "saved bytes drop the provisional space while the editing caret keeps it");
+    disk.close();
+    type(ed, QStringLiteral("panda"));
+    expect(ed, head + QStringLiteral(" panda") + next);
+    for (int i = 0; i < 5; ++i)
+        press(ed, Qt::Key_Backspace);
+    press(ed, Qt::Key_Down, Qt::ControlModifier);
+    expect(ed, head + next);
+    cw_file_free(file);
+}
+
+void wholeWordDeletion(ManuscriptEditor &ed)
+{
+    const auto text = QStringLiteral("Note 1: : A she’d half-eaten 👩🏽‍🔬.\nNote 2: : last\n");
+    auto erase = [&](int pos, const QString &expected) {
+        ed.loadText(text);
+        ed.jumpTo(pos, false);
+        press(ed, Qt::Key_W, Qt::ControlModifier);
+        expect(ed, expected);
+        ed.undo();
+        expect(ed, text);
+        require(!ed.document()->isUndoAvailable(), "whole-word deletion is one undoable edit");
+    };
+    erase(text.indexOf(u'’'), QString(text).remove(QStringLiteral("she’d ")));
+    erase(text.indexOf(u'-'), QString(text).remove(QStringLiteral("half-eaten ")));
+    const int space = text.indexOf(QStringLiteral(" she’d"));
+    erase(space, QString(text).remove(space, 1));
+    erase(text.indexOf(QStringLiteral("👩")), QString(text).remove(QStringLiteral("👩🏽‍🔬")));
+    const int lastStart = text.indexOf(QStringLiteral("last"));
+    erase(lastStart+4, QString(text).remove(QStringLiteral("last")));
+    ed.selectRange(lastStart+1, lastStart+3, false);
+    press(ed, Qt::Key_W, Qt::ControlModifier);
+    expect(ed, QString(text).replace(QStringLiteral("last"), QStringLiteral("lt")));
+    ed.undo();
+    expect(ed, text);
+    ed.jumpTo(text.size(), false); // Empty physical line after the last LF.
+    press(ed, Qt::Key_W, Qt::ControlModifier);
+    expect(ed, text);
+    require(!ed.document()->isUndoAvailable(), "Ctrl+W preserves paragraph boundaries");
+
+    QApplication::clipboard()->setText(QStringLiteral("clipboard"));
+    ed.selectRange(lastStart, lastStart+4, false);
+    ed.insertLiteral(QStringLiteral("new--name"));
+    expect(ed, QString(text).replace(QStringLiteral("last"), QStringLiteral("new--name")));
+    require(QApplication::clipboard()->text() == QStringLiteral("clipboard") && !ed.textCursor().hasSelection(),
+            "literal insertion replaces the selection and preserves the clipboard");
+    ed.undo();
+    expect(ed, text);
+}
+
 void undoAndBoundaries(ManuscriptEditor &ed)
 {
     const QString one = QStringLiteral("Leaf 1: : A");
@@ -275,15 +351,13 @@ void fieldsAndClipboard(ManuscriptEditor &ed)
     require(ed.textCursor().blockNumber() == 1 && ed.textCursor().atBlockEnd(), "opens before final LF");
     press(ed, Qt::Key_PageUp, Qt::ControlModifier);
     press(ed, Qt::Key_Tab);
-    require(ed.textCursor().position() == 8, "Tab reaches first header beyond work title");
-    press(ed, Qt::Key_Tab);
-    require(ed.textCursor().position() == original.indexOf(QStringLiteral("Haiku")), "Tab reaches title");
+    require(ed.textCursor().position() == original.indexOf(QStringLiteral("Haiku")), "Tab skips work title and header");
     press(ed, Qt::Key_Tab);
     require(ed.textCursor().position() == original.indexOf(QStringLiteral("hóla")), "Tab reaches body");
     press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
     press(ed, Qt::Key_1, Qt::ControlModifier);
     require(ed.textCursor().selectedText() == QStringLiteral("Bóci 1") &&
-            QApplication::clipboard()->text() == QStringLiteral("Bóci 1"), "Ctrl+1 copies custom header without colon");
+            QApplication::clipboard()->text() == QStringLiteral("bóci 1"), "Ctrl+1 copies lowercase custom label and keeps the original header selected");
     press(ed, Qt::Key_Escape);
     require(!ed.textCursor().hasSelection(), "Escape clears selection");
     press(ed, Qt::Key_Q, Qt::ControlModifier);
@@ -295,6 +369,23 @@ void fieldsAndClipboard(ManuscriptEditor &ed)
     expect(ed, QStringLiteral("Títol// Bóci 1: Haiku #1: hóla.\n"));
     ed.undo();
     expect(ed, original);
+    ed.jumpTo(original.indexOf(QStringLiteral("hóla")), false);
+    press(ed, Qt::Key_Tab);
+    require(ed.textCursor().blockNumber() == 1 && ed.textCursor().positionInBlock() == 8,
+            "next crumb's empty title is a stop before the second colon");
+    press(ed, Qt::Key_Tab);
+    require(ed.textCursor().position() == original.indexOf(QStringLiteral("👩")),
+            "empty title advances directly to body");
+    press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
+    press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
+    require(ed.textCursor().position() == original.indexOf(QStringLiteral("hóla")),
+            "reverse traversal between crumbs skips both headers");
+    auto trailing = original + QStringLiteral("\n\n");
+    ed.loadText(trailing);
+    ed.jumpTo(0, false);
+    press(ed, Qt::Key_PageDown, Qt::ControlModifier);
+    require(ed.textCursor().blockNumber() == 1 && ed.textCursor().atBlockEnd(),
+            "Ctrl+Page Down ends the final crumb before all terminal newlines");
 
     ed.loadText(QStringLiteral("Title // Note 1: A: x\n"));
     ed.deleteCrumb();
@@ -365,6 +456,10 @@ void geometry(ManuscriptEditor &ed)
     const int startY = ed.cursorRect().y();
     press(ed, Qt::Key_Down);
     require(ed.textCursor().blockNumber()==0 && ed.cursorRect().y()>startY, "Down uses wrapped screen lines");
+    const auto *wrapped = ed.textCursor().block().layout();
+    require(wrapped->lineCount() > 1 &&
+            qAbs(wrapped->lineAt(1).y() - wrapped->lineAt(0).y() - wrapped->lineAt(0).height()) <= 1,
+            "wrapped rows of the same crumb keep normal line spacing");
     press(ed, Qt::Key_Up);
     const int visual = first.size()/2;
     ed.selectRange(visual-5, visual, false);
@@ -419,6 +514,15 @@ void geometry(ManuscriptEditor &ed)
     const auto band = white.pixelColor(white.width()-3, ed.cursorRect().center().y());
     require(band.blue()==255 && band.red()>=229 && band.red()<=234 && band.green()>=239 && band.green()<=244,
             "current crumb tint extends to the writing margin");
+    const QRect firstRow = ed.cursorRect(QTextCursor(ed.document()->firstBlock()));
+    const QRect secondRow = ed.cursorRect(QTextCursor(ed.document()->firstBlock().next()));
+    const int gap = secondRow.top() - (firstRow.top() + firstRow.height());
+    require(gap >= 2 && qAbs(gap - qRound(firstRow.height()/4.0)) <= 2,
+            "neighboring crumbs have approximately one quarter of a line of extra space");
+    require(ed.cursorForPosition(secondRow.center()).blockNumber() == 1,
+            "mouse hit testing follows the extra paragraph spacing");
+    require(white.pixelColor(white.width()-3, firstRow.bottom()+1+gap/2) == Qt::white,
+            "the current-crumb band ends before the gap");
     ed.setPaperActive(false);
     settle();
     require(ed.viewport()->grab().toImage().pixelColor(white.width()-3, ed.cursorRect().center().y())
@@ -433,6 +537,8 @@ int main(int argc, char **argv)
     ManuscriptEditor editor;
     punctuation(editor);
     spacing(editor);
+    rewritingLastWord(editor);
+    wholeWordDeletion(editor);
     undoAndBoundaries(editor);
     unicodeRoundTrip(editor);
     fieldsAndClipboard(editor);

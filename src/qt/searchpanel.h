@@ -28,6 +28,7 @@ public:
     ~SearchPanel() override;
 
     void find(bool backwards = false);
+    void findInMode(cwsearch::Mode mode);
     void findReplace();
     void goToNumber();
     void repeat(bool opposite = false);
@@ -45,7 +46,7 @@ private:
     using Span = cwsearch::Span;
 
     void buildUi();
-    void open(Mode mode, bool backwards, bool replace);
+    void open(std::optional<Mode> requestedMode, bool backwards, bool replace);
     void setMode(Mode mode);
     void updateControls();
     QLineEdit *entry() const;

@@ -7,6 +7,8 @@
 #include <functional>
 
 class QLabel;
+class QSettings;
+class QToolButton;
 class QTreeWidget;
 class QTreeWidgetItem;
 class ManuscriptEditor;
@@ -24,11 +26,13 @@ private:
 
 class NavigationPanel final : public QWidget {
 public:
-    explicit NavigationPanel(ManuscriptEditor *editor, QWidget *parent = nullptr);
+    NavigationPanel(ManuscriptEditor *editor, QSettings *settings, QWidget *parent = nullptr);
     void reset();
     void updateCurrent();
     void focusHistory();
     void focusGenres();
+    void toggleGenreOrder();
+    void setTodayCount(int count);
     std::function<void(int)> jumpTo;
 private:
     void updateModel(const CrumbChange &change);
@@ -40,7 +44,8 @@ private:
     QLabel *number_;
     QLabel *title_;
     QLabel *words_;
-    QLabel *session_;
+    QLabel *today_;
+    QToolButton *genreOrder_;
     QTreeWidget *visits_;
     QTreeWidget *genres_;
     QHash<int, QTreeWidgetItem *> visitedLines_;

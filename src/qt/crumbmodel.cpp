@@ -1,7 +1,10 @@
 #include "crumbmodel.h"
+#include "dailycount.h"
 #include "manuscripttext.h"
 
+#include <QtCore/QDateTime>
 #include <QtCore/QPointer>
+#include <QtCore/QTimer>
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextDocument>
 
@@ -119,7 +122,7 @@ CrumbRecord parseRecord(const QString &text, bool firstLine, const CrumbRecord *
 {
     CrumbRecord record;
     record.text = text;
-    const QByteArray bytes = text.toUtf8();
+    QByteArray bytes = text.toUtf8();
     CwCrumb parsed{};
     cw_crumb_parse(bytes.constData(), firstLine, &parsed);
     ColumnMap map(text);
@@ -149,6 +152,17 @@ CrumbRecord parseRecord(const QString &text, bool firstLine, const CrumbRecord *
             record.genres = parseGenres(record.title, record.titleStart);
         }
     }
+    // The official whole-file sed expression replaces the first // even if
+    // it is inside a URL or an unfinished line. Individual counts use the
+    // parser's separate first-line work-title rule.
+    if (firstLine) {
+        const qsizetype separator = bytes.indexOf("//");
+        if (separator >= 0) bytes.replace(separator, 2, " ");
+        record.fileWords = separator >= 0 || !record.valid
+            ? int(cw_crumb_words(bytes.constData(), false)) : record.words;
+    } else {
+        record.fileWords = record.valid ? record.words : int(cw_crumb_words(bytes.constData(), false));
+    }
     cw_crumb_clear(&parsed);
     return record;
 }
@@ -169,7 +183,8 @@ struct Observer {
 } // namespace
 
 struct CrumbModel::Data {
-    explicit Data(QTextDocument *document) : document(document) {}
+    Data(QTextDocument *document, std::function<QDate()> date)
+        : document(document), localDate(std::move(date)) {}
 
     QTextDocument *document;
     std::vector<CrumbRecord> rows;
@@ -177,10 +192,20 @@ struct CrumbModel::Data {
     std::set<int> recognized;
     std::map<QString, std::set<Occurrence>> genres;
     std::set<int> warningRows;
-    std::set<quint64> openingNumbers;
-    int newNumbers = 0;
+    qint64 fileWords = 0;
+    std::function<QDate()> localDate;
+    DailyCount daily;
+    QTimer dateTimer;
     QString fallbackLabel = QStringLiteral("Crumb");
     QVector<Observer> observers;
+
+    QString openDaily(const QString &manuscript)
+    {
+        QVector<quint64> headers;
+        headers.reserve(rows.size());
+        for (const auto &record : rows) headers.append(record.number);
+        return daily.open(manuscript, localDate(), headers);
+    }
 
     int headerPosition(int line) const
     {
@@ -191,10 +216,7 @@ struct CrumbModel::Data {
     {
         if (!r.valid)
             return;
-        auto &matches = numbers[r.number];
-        if (matches.empty() && !openingNumbers.count(r.number))
-            ++newNumbers;
-        matches.insert(line);
+        numbers[r.number].insert(line);
         recognized.insert(line);
     }
 
@@ -204,11 +226,7 @@ struct CrumbModel::Data {
             return;
         auto it = numbers.find(r.number);
         it->second.erase(line);
-        if (it->second.empty()) {
-            numbers.erase(it);
-            if (!openingNumbers.count(r.number))
-                --newNumbers;
-        }
+        if (it->second.empty()) numbers.erase(it);
         recognized.erase(line);
     }
 
@@ -277,7 +295,6 @@ struct CrumbModel::Data {
         recognized.clear();
         genres.clear();
         warningRows.clear();
-        newNumbers = 0;
         for (int line = 0; line < int(rows.size()); ++line) {
             addNumber(line, rows[line]);
             addParts(line, rows[line]);
@@ -338,17 +355,28 @@ struct CrumbModel::Data {
     }
 };
 
-CrumbModel::CrumbModel(QTextDocument *document)
-    : d(std::make_unique<Data>(document))
+CrumbModel::CrumbModel(QTextDocument *document, std::function<QDate()> localDate)
+    : d(std::make_unique<Data>(document, std::move(localDate)))
 {
     // The detailed contentsChange signal is emitted for documents with a layout.
     document->documentLayout();
     CrumbChange initial;
-    for (auto block = document->begin(); block.isValid(); block = block.next())
+    for (auto block = document->begin(); block.isValid(); block = block.next()) {
         d->rows.push_back(parseRecord(ManuscriptText::blockText(block), block.blockNumber() == 0));
+        d->fileWords += d->rows.back().fileWords;
+    }
     d->rebuildIndices(initial);
     markOpened();
     connect(document, &QTextDocument::contentsChange, this, &CrumbModel::update);
+    d->dateTimer.setSingleShot(true);
+    auto schedule = [this] {
+        const auto now = QDateTime::currentDateTime();
+        const auto midnight = now.date().addDays(1).startOfDay();
+        // Also pick up a clock or time-zone change while the window is idle.
+        d->dateTimer.start(int(std::clamp<qint64>(now.msecsTo(midnight), 1, 60000)));
+    };
+    connect(&d->dateTimer, &QTimer::timeout, this, [this, schedule] { refreshDay(); schedule(); });
+    schedule();
 }
 
 CrumbModel::~CrumbModel() = default;
@@ -375,6 +403,7 @@ void CrumbModel::update(int position, int removed, int added)
     std::vector<CrumbRecord> parsed;
     parsed.reserve(last + 1 - first);
     auto block = doc->findBlockByNumber(first);
+    const int editStart = position - block.position();
     bool changed = delta != 0;
     for (int line = first; line <= last; ++line, block = block.next()) {
         const QString text = ManuscriptText::blockText(block);
@@ -388,6 +417,18 @@ void CrumbModel::update(int position, int removed, int added)
     }
     if (!changed)
         return;
+
+    // The first edit after midnight can precede the queued timer event.
+    // The unedited model still contains yesterday's closing baseline here.
+    const QDate today = d->localDate();
+    if (d->daily.date() != today) {
+        const QString error = d->daily.startDay(today);
+        if (!error.isEmpty() && onDailyCountError) onDailyCountError(error);
+    }
+    const QString dailyError = d->daily.replace(first, oldEnd, d->rows, parsed, editStart, removed, added);
+    if (!dailyError.isEmpty() && onDailyCountError) onDailyCountError(dailyError);
+    for (int line = first; line < oldEnd; ++line) d->fileWords -= d->rows[line].fileWords;
+    for (const auto &record : parsed) d->fileWords += record.fileWords;
 
     CrumbChange change;
     change.firstLine = first;
@@ -430,23 +471,54 @@ QVector<CrumbGenre> CrumbModel::genres() const
     return result;
 }
 
-int CrumbModel::sessionCount() const
-{
-    return d->newNumbers;
-}
+int CrumbModel::crumbCount() const { return int(d->recognized.size()); }
+qint64 CrumbModel::totalWords() const { return d->fileWords; }
+int CrumbModel::todayCount() const { return d->daily.count(); }
 
 void CrumbModel::markOpened()
 {
-    d->openingNumbers.clear();
-    for (const auto &entry : d->numbers)
-        d->openingNumbers.insert(entry.first);
-    d->newNumbers = 0;
+    d->openDaily({});
     d->fallbackLabel = d->recognized.empty() ? QStringLiteral("Crumb")
                                              : d->rows[*d->recognized.rbegin()].label;
     CrumbChange change;
     change.lastLine = std::max(0, int(d->rows.size()) - 1);
     change.genresChanged = true;
     notify(change);
+}
+
+QString CrumbModel::openDailyCount(const QString &manuscript)
+{
+    const int previous = todayCount();
+    const auto error = d->openDaily(manuscript);
+    if (previous != todayCount()) notify({});
+    return error;
+}
+
+QString CrumbModel::saveDailyCountAs(const QString &manuscript)
+{
+    refreshDay();
+    return d->daily.saveAs(manuscript);
+}
+
+QByteArray CrumbModel::dailySnapshot()
+{
+    refreshDay();
+    return d->daily.snapshot();
+}
+
+QString CrumbModel::publishDailySnapshot(const QString &manuscript, const QByteArray &snapshot)
+{
+    refreshDay();
+    return d->daily.publish(manuscript, snapshot);
+}
+
+void CrumbModel::refreshDay()
+{
+    const QDate date = d->localDate();
+    if (d->daily.date() == date) return;
+    const QString error = d->daily.startDay(date);
+    if (!error.isEmpty() && onDailyCountError) onDailyCountError(error);
+    notify({});
 }
 
 int CrumbModel::findNumber(quint64 number, int origin, bool backward, bool wrap,

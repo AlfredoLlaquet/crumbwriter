@@ -11,6 +11,26 @@
 #include <QtGui/QTextBlock>
 #include <QtWidgets/QScrollBar>
 
+namespace {
+class CrumbLayout final : public QPlainTextDocumentLayout {
+public:
+    using QPlainTextDocumentLayout::QPlainTextDocumentLayout;
+
+    QRectF blockBoundingRect(const QTextBlock &block) const override
+    {
+        auto bounds = QPlainTextDocumentLayout::blockBoundingRect(block);
+        if (!bounds.isEmpty() && block.next().isValid()) {
+            const auto *lines = block.layout();
+            const qreal row = lines->lineAt(lines->lineCount() - 1).height();
+            // Lay out the gap with its paragraph so Qt also accounts for it in
+            // hit testing, scrolling and caret geometry. Wrapped rows stay tight.
+            bounds.setHeight(bounds.height() + qMax(1, qRound(row / 4)));
+        }
+        return bounds;
+    }
+};
+}
+
 class CrumbHighlighter final : public QSyntaxHighlighter {
 public:
     CrumbHighlighter(ManuscriptEditor *editor, CrumbModel &model)
@@ -75,10 +95,15 @@ private:
 
 ManuscriptEditor::ManuscriptEditor(QWidget *parent)
     : QPlainTextEdit(parent),
-      model_(std::make_unique<CrumbModel>(document())),
       punctuation_(std::make_unique<CommittedPunctuation>()),
       paper_(palette())
 {
+    auto *manuscript = new QTextDocument(this);
+    auto *layout = new CrumbLayout(manuscript);
+    layout->setPaintDevice(viewport());
+    manuscript->setDocumentLayout(layout);
+    setDocument(manuscript);
+    model_ = std::make_unique<CrumbModel>(manuscript);
     setObjectName(QStringLiteral("manuscript"));
     setFont(QFont(QStringLiteral("Serif"), 14));
     setTabChangesFocus(false);
@@ -140,6 +165,8 @@ void ManuscriptEditor::loadText(const QString &text)
     punctuation_->reset();
     clearVirtual();
     clearAlignment();
+    searchHighlights_.clear();
+    spellingHighlights_.clear();
     setExtraSelections({});
     ManuscriptText::load(document(), normalizeInsertion(text));
     model_->markOpened();
@@ -232,7 +259,14 @@ void ManuscriptEditor::selectMatch(int start, int end)
 
 void ManuscriptEditor::setSearchHighlights(const QList<QTextEdit::ExtraSelection> &ranges)
 {
-    setExtraSelections(ranges);
+    searchHighlights_ = ranges;
+    setExtraSelections(spellingHighlights_ + searchHighlights_);
+}
+
+void ManuscriptEditor::setSpellingHighlights(const QList<QTextEdit::ExtraSelection> &ranges)
+{
+    spellingHighlights_ = ranges;
+    setExtraSelections(spellingHighlights_ + searchHighlights_);
 }
 
 void ManuscriptEditor::appendCrumb(const QString &genre)
@@ -282,7 +316,8 @@ void ManuscriptEditor::copyField(bool header)
     c.setPosition(block.position() + (header ? r.headerEnd : block.length() - 1),
                   QTextCursor::KeepAnchor);
     setTextCursor(c);
-    QGuiApplication::clipboard()->setText(ManuscriptText::selectedText(c));
+    const QString selected = ManuscriptText::selectedText(c);
+    QGuiApplication::clipboard()->setText(header ? selected.toLower() : selected);
     setFocus();
 }
 
@@ -335,20 +370,26 @@ void ManuscriptEditor::navigate(bool backward, bool fields)
 {
     const bool virt = rows_ != 0;
     const int line = virt ? blockCount() : textCursor().blockNumber();
-    int n = fields && !virt && model_->record(line).valid ? line : model_->neighbor(line, backward);
-    const int column = textCursor().positionInBlock();
-    while (n >= 0) {
-        const auto &r = model_->record(n);
-        const int stops[] = { r.headerStart, r.titleStart, r.bodyStart };
-        for (int j = 0; j < (fields ? 3 : 1); ++j) {
-            const int stop = stops[fields && backward ? 2 - j : j];
-            if (n != line || (backward ? stop < column : stop > column)) {
-                jumpTo(document()->findBlockByNumber(n).position() + stop, false);
+    if (fields && !virt) {
+        const auto &r = model_->record(line);
+        if (r.valid) {
+            const int column = textCursor().positionInBlock();
+            const int stops[] = {backward ? r.bodyStart : r.titleStart,
+                                 backward ? r.titleStart : r.bodyStart};
+            for (int stop : stops) {
+                if (backward ? stop >= column : stop <= column)
+                    continue;
+                jumpTo(textCursor().block().position() + stop, false);
                 return;
             }
         }
-        n = model_->neighbor(n, backward);
     }
+    const int neighbor = model_->neighbor(line, backward);
+    if (neighbor < 0)
+        return;
+    const auto &r = model_->record(neighbor);
+    const int stop = fields ? (backward ? r.bodyStart : r.titleStart) : r.headerStart;
+    jumpTo(document()->findBlockByNumber(neighbor).position() + stop, false);
 }
 
 void ManuscriptEditor::focusOutEvent(QFocusEvent *e)

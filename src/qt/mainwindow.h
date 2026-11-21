@@ -17,6 +17,9 @@ class QToolButton;
 class QVBoxLayout;
 class Preferences;
 class SearchPanel;
+class SpellCheck;
+class StatisticsDialog;
+class SynonymPanel;
 
 class MainWindow final : public QWidget {
 public:
@@ -43,17 +46,26 @@ private:
     void documentStateChanged();
     void showCloseDialog();
     void save(bool asNew);
+    void appendCrumb();
     void jump(int position);
     void goBack(bool forward);
     void numberingWarning(bool backward);
     void followReference();
-    bool flushBookmarks();
+    void connectWritingTools();
+    void showStatistics();
+    void focusSynonyms(bool recurring);
+    bool companionsPending() const;
+    enum class CompanionAction { Open, SaveAs, Flush };
+    bool updateCompanions(CompanionAction action, const QString &manuscript = {});
+    void showPanel(QWidget *panel, bool show, int &preferredWidth);
     void showSidebar(bool show);
 
     Preferences &prefs_;
     ManuscriptEditor *editor_ = nullptr;
     NavigationPanel *side_ = nullptr;
     SearchPanel *search_ = nullptr;
+    SynonymPanel *synonyms_ = nullptr;
+    SpellCheck *spelling_ = nullptr;
     Bookmarks *bookmarks_ = nullptr;
     DocumentStore *store_ = nullptr;
     QSplitter *split_ = nullptr;
@@ -64,11 +76,13 @@ private:
     QToolButton *menuButton_ = nullptr;
     QPointer<QFileDialog> chooser_;
     QPointer<QMessageBox> closeDialog_;
+    QPointer<StatisticsDialog> statistics_;
     JumpHistory trail_;
     bool loading_ = false;
     bool allowClose_ = false;
     bool discarding_ = false;
     int sidebarWidth_ = 230;
+    int synonymWidth_ = 190;
 };
 
 #endif

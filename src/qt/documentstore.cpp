@@ -243,6 +243,7 @@ public:
         // Qt's implicitly shared string can be read by the worker. Its UTF-8
         // conversion, normalization, conflict check, fsync and rename all run there.
         const QString snapshot = writing ? snapshotProvider() : QString();
+        const QByteArray metadata = writing && owner->captureMetadata ? owner->captureMetadata() : QByteArray();
         const bool needRecovery = dirty() || request.operation == Operation::Save;
         auto writingGate = std::make_shared<CwWriteGate>();
         gate = writingGate;
@@ -250,10 +251,10 @@ public:
         message = request.operation == Operation::Discard ? QStringLiteral("Discarding unsaved changes") :
                   request.operation == Operation::Draft ? QStringLiteral("Saving recovery draft") :
                                                          QStringLiteral("Saving");
-        workers.start([this, request, snapshot, captured, writingGate, needRecovery] {
+        workers.start([this, request, snapshot, captured, metadata, writingGate, needRecovery] {
             Result result = disk.perform(request, snapshot, needRecovery, writingGate.get());
-            QMetaObject::invokeMethod(owner, [this, request, captured, result = std::move(result)] {
-                completed(request, captured, result);
+            QMetaObject::invokeMethod(owner, [this, request, captured, metadata, result = std::move(result)] {
+                completed(request, captured, result, metadata);
             }, Qt::QueuedConnection);
         });
         notify();
@@ -303,7 +304,7 @@ public:
         }
     }
 
-    void completed(const Request &request, quint64 captured, const Result &result)
+    void completed(const Request &request, quint64 captured, const Result &result, const QByteArray &metadata)
     {
         gate.reset();
         const QString oldName = name;
@@ -335,8 +336,12 @@ public:
             if (closing == Closing::Saving || request.operation == Operation::Discard)
                 closing = Closing::No;
         }
+        const QString publishedPath = result.recovered || (result.ok && request.operation == Operation::Draft)
+                                    ? result.draft : result.ok ? result.path : QString();
         if (oldName != name && owner->onPathChanged)
             owner->onPathChanged(oldName, name);
+        if (!publishedPath.isEmpty() && owner->onPublished)
+            owner->onPublished(publishedPath, metadata);
         notify();
         if (!result.ok && !result.canceled && closing != Closing::Discarding && owner->onError)
             owner->onError(result.error);

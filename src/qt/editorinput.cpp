@@ -5,8 +5,10 @@
 #include <climits>
 
 #include <QtCore/QMimeData>
+#include <QtCore/QRegularExpression>
 #include <QtCore/QScopedValueRollback>
 #include <QtGui/QClipboard>
+#include <QtGui/QContextMenuEvent>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QInputMethodEvent>
 #include <QtGui/QKeyEvent>
@@ -86,8 +88,10 @@ void ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
     if (leftSpace) {
         if (text.startsWith(u' '))
             text.remove(0, 1);
-        if ((text.startsWith(u'\n')) || (text.isEmpty() && atEnd &&
-            !(kind == Input::Typed && !input.isEmpty() && horizontal(input.back()))))
+        // Typing and erasing can expose a separator at the active caret.
+        // trackSeparator keeps it for the next word and storage trims its copy.
+        const bool literal = kind == Input::Paste || kind == Input::Replacement;
+        if (text.startsWith(u'\n') || (literal && text.isEmpty() && atEnd))
             --first;
     }
     // At most one horizontal separator exists on either side of an already
@@ -191,8 +195,14 @@ int ManuscriptEditor::replaceRangeLiteral(int start, int end, const QString &tex
 
 void ManuscriptEditor::insertFromMimeData(const QMimeData *source)
 {
-    if (source && source->hasText() && !source->text().isEmpty())
-        insertSelection(source->text(), Input::Paste);
+    if (source && source->hasText())
+        insertLiteral(source->text());
+}
+
+void ManuscriptEditor::insertLiteral(const QString &text)
+{
+    if (!text.isEmpty())
+        insertSelection(text, Input::Paste);
 }
 
 QMimeData *ManuscriptEditor::createMimeDataFromSelection() const
@@ -207,7 +217,7 @@ void ManuscriptEditor::cut()
     if (isReadOnly() || !textCursor().hasSelection())
         return;
     QGuiApplication::clipboard()->setMimeData(createMimeDataFromSelection());
-    insertSelection({}, Input::Replacement);
+    insertSelection({}, Input::Erase);
 }
 
 void ManuscriptEditor::replayEdit(bool forward)
@@ -248,9 +258,6 @@ void ManuscriptEditor::redo() { replayEdit(true); }
 
 void ManuscriptEditor::removeByKey(QKeyEvent *event)
 {
-    if (isReadOnly())
-        return;
-    punctuation_->reset();
     const bool backward = event->key() == Qt::Key_Backspace;
     const bool byWord = event->modifiers().testFlag(Qt::ControlModifier);
     auto c = textCursor();
@@ -259,11 +266,46 @@ void ManuscriptEditor::removeByKey(QKeyEvent *event)
                                  : (byWord ? QTextCursor::NextWord : QTextCursor::NextCharacter);
         c.movePosition(op, QTextCursor::KeepAnchor);
     }
-    if (!c.hasSelection())
+    eraseSelection(c);
+}
+
+void ManuscriptEditor::deleteWord()
+{
+    if (rows_ || isReadOnly())
         return;
+    auto c = textCursor();
+    if (!c.hasSelection()) {
+        // A punctuation mark or emoji outside a word is one grapheme. Internal
+        // apostrophes and hyphens are part of the word on either side of the caret.
+        static const QRegularExpression tokens(QStringLiteral(
+            R"([\p{L}\p{M}\p{N}_]+(?:['’ʼ‐‑-][\p{L}\p{M}\p{N}_]+)*|\h+|\X)"));
+        const auto text = ManuscriptText::blockText(c.block());
+        if (text.isEmpty())
+            return;
+        const int here = qMin(c.positionInBlock(), int(text.size()) - 1);
+        auto matches = tokens.globalMatch(text);
+        while (matches.hasNext()) {
+            const auto token = matches.next();
+            if (token.capturedEnd() <= here)
+                continue;
+            const int start = c.block().position();
+            c.setPosition(start + int(token.capturedStart()));
+            c.setPosition(start + int(token.capturedEnd()), QTextCursor::KeepAnchor);
+            break;
+        }
+    }
+    eraseSelection(c);
+}
+
+void ManuscriptEditor::eraseSelection(QTextCursor c)
+{
+    if (isReadOnly() || !c.hasSelection())
+        return;
+    punctuation_->reset();
     QScopedValueRollback<bool> guard(editing_, true);
+    clearAlignment();
     c.beginEditBlock();
-    replaceAt(c, {}, Input::Replacement);
+    replaceAt(c, {}, Input::Erase);
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
@@ -315,6 +357,7 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
         case Qt::Key_Q: copyCrumb(); return;
         case Qt::Key_1: copyHeader(); return;
         case Qt::Key_Y: deleteCrumb(); return;
+        case Qt::Key_W: deleteWord(); return;
         case Qt::Key_N: appendCrumb(); return;
         case Qt::Key_Up: case Qt::Key_Down: navigate(key == Qt::Key_Up, false); return;
         case Qt::Key_Home: case Qt::Key_End: {
@@ -325,7 +368,13 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
             return;
         }
         case Qt::Key_PageUp: jumpTo(0, false); return;
-        case Qt::Key_PageDown: jumpTo(document()->characterCount()-1, false); return;
+        case Qt::Key_PageDown: {
+            const int last = model_->neighbor(blockCount(), true);
+            auto end = last >= 0 ? QTextCursor(document()->findBlockByNumber(last)) : writingEnd();
+            end.movePosition(QTextCursor::EndOfBlock);
+            jumpTo(end.position(), false);
+            return;
+        }
         default: break;
         }
     }
@@ -373,6 +422,13 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
 void ManuscriptEditor::contextMenuEvent(QContextMenuEvent *event)
 {
     QMenu menu(this);
+    if (spellingMenu) {
+        const int pos = event->reason() == QContextMenuEvent::Keyboard ? textCursor().position()
+                            : cursorForPosition(event->pos()).position();
+        spellingMenu(&menu, pos);
+        if (!menu.isEmpty())
+            menu.addSeparator();
+    }
     auto *undoAction = menu.addAction(tr("Undo"), this, &ManuscriptEditor::undo);
     undoAction->setEnabled(document()->isUndoAvailable());
     auto *redoAction = menu.addAction(tr("Redo"), this, &ManuscriptEditor::redo);

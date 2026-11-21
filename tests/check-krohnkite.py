@@ -59,8 +59,8 @@ def rectangle(window):
 
 def paper_color(window):
     x, y, width, height = rectangle(window)
-    # A blank patch of the manuscript below the short fixture and above the footer.
-    left, top = x + width // 10, y + height - 54
+    # The manuscript is the middle pane between the two sidebars.
+    left, top = x + width // 2, y + height - 54
     return tuple(map(int, output(os.environ['CW_TEST_PAPER_SAMPLER'], str(left), str(top)).split()))
 
 
@@ -98,6 +98,10 @@ def key(window, chord):
     time.sleep(.3)
 
 
+def clipboard_bytes():
+    return subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
+
+
 def session(app, run):
     procs = []
     log = run / 'session.log'
@@ -118,7 +122,12 @@ def session(app, run):
             middle = 'Crumb 2: Middle: Copy this crumb.'
             original = f'Book//Crumb 1: First: An editor window.\n{middle}\nCrumb 3: Last: The end.\n'
             first.write_text(original.replace(middle, 'Crumb 2:\tMiddle: Copy \t this crumb.  '))
-            second.write_text('Crumb 1: Second: Another editor window.\n')
+            second_text = 'Crumb 1: Second: Another editor window.'
+            second.write_text(second_text + '\n')
+            Path(str(second) + '.characters').write_text(
+                'Antler, Reindeer\n"Captain, Widgets", Blue Cap, Pilot\n', encoding='utf-8')
+            Path(str(second) + '.recurring').write_text(
+                'Comets, Shooting Stars\nPlanet Pebble, Pebblepost\n', encoding='utf-8')
             screen = tuple(map(int, output('xdotool', 'getdisplaygeometry').split()))
             first_process = launch(app, first)
             first_title = 'Alpha.txt — Crumb Writer'
@@ -148,12 +157,13 @@ def session(app, run):
             key(alpha, 'Escape')
             normal_paper = wait_for('reactivated manuscript returns to its theme color',
                                     lambda: restored_paper(alpha))
-            for chord in ('F6', 'F7', 'F6', 'ctrl+f', 'e', 'Return', 'alt+Down', 'Escape',
-                          'Escape', 'ctrl+h', 'Escape', 'F10', 'Escape'):
+            for chord in ('F6', 'F7', 'F6', 'shift+F7', 'ctrl+p', 'e', 'Return', 'alt+Down', 'Escape',
+                          'Escape', 'ctrl+r', 'ctrl+l', 'Escape', 'ctrl+h', 'Escape', 'F10', 'Escape'):
                 key(alpha, chord)
                 unchanged()
                 expect_paper(alpha, normal_paper, f'main window after {chord}')
-            for chord, name in [('ctrl+comma', 'Settings'), ('F1', 'Help'), ('alt+b', 'Bookmarks')]:
+            for chord, name in [('ctrl+comma', 'Settings'), ('F1', 'Help'), ('alt+b', 'Bookmarks'),
+                                ('ctrl+shift+i', 'Statistics')]:
                 existing = set(windows().values())
                 key(alpha, chord)
 
@@ -168,6 +178,10 @@ def session(app, run):
                 props = output('xprop', '-id', dialog, '_NET_WM_WINDOW_TYPE', '_NET_WM_STATE')
                 assert '_NET_WM_WINDOW_TYPE_DIALOG' in props and '_NET_WM_STATE_MODAL' not in props, props
                 unchanged()
+                if name == 'Statistics':
+                    key(dialog, 'ctrl+c')
+                    expected_stats = 'Crumbs: 3\nTotal words: 18\nAverage words per crumb: 6.00'
+                    assert clipboard_bytes().decode() == expected_stats
                 key(dialog, 'Escape')
                 wait_for(f'{name} closed', lambda: dialog not in windows().values())
 
@@ -179,10 +193,10 @@ def session(app, run):
             key(alpha, 'ctrl+Prior')
             key(alpha, 'ctrl+Down')
             key(alpha, 'ctrl+1')
-            copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
-            assert copied == b'Crumb 2', f'selected header bytes: {copied!r}'
+            copied = clipboard_bytes()
+            assert copied == b'crumb 2', f'lowercase header clipboard bytes: {copied!r}'
             key(alpha, 'ctrl+q')
-            copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
+            copied = clipboard_bytes()
             assert copied == middle.encode(), f'clipboard bytes: {copied!r}'
             key(alpha, 'Escape')
             edited = original.replace(middle, middle + 'x')
@@ -197,7 +211,7 @@ def session(app, run):
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=5)
             key(alpha, 'ctrl+v')
             key(alpha, 'ctrl+q')
-            copied = subprocess.check_output(['xclip', '-selection', 'clipboard', '-out'], timeout=5)
+            copied = clipboard_bytes()
             pasted = middle + ' Pasted clean words.'
             assert copied == pasted.encode(), f'clipboard after paste: {copied!r}'
             key(alpha, 'ctrl+s')
@@ -218,11 +232,36 @@ def session(app, run):
             for chord in ('ctrl+f', 'Escape', 'ctrl+h', 'Escape'):
                 key(short, chord)
                 unchanged()
-            key(beta, 'ctrl+w')
+            key(beta, 'ctrl+Next')
+            output('xdotool', 'type', '--clearmodifiers', '--delay', '20', ' Qzvexblim')
+            second_text += ' Qzvexblim'
+            key(beta, 'ctrl+s')
+            key(beta, 'F8')
+            review = wait_for('keyboard spelling review', lambda: next((window for title, window in windows().items()
+                              if title.startswith('Spelling — American English')), None))
+            key(review, 'alt+d')
+            dictionary = Path(str(second) + '.dictionary')
+            wait_for('added spelling saved in manuscript dictionary',
+                     lambda: dictionary.exists() and 'qzvexblim' in dictionary.read_text().casefold().splitlines())
+            if review in windows().values():
+                key(review, 'Escape')
+            key(beta, 'ctrl+Next')
+            for chord, alias, first_name in [('alt+1', 'blue cap', 'Captain, Widgets'),
+                                             ('alt+2', 'pebblepost', 'Planet Pebble')]:
+                key(beta, chord)
+                output('xdotool', 'type', '--clearmodifiers', '--delay', '24', alias)
+                key(beta, 'ctrl+Return')
+                key(beta, 'ctrl+s')
+                second_text += first_name
+                wait_for(f'first synonym inserted at the last crumb via {chord}',
+                         lambda: second.read_text() == second_text + '\n')
+                unchanged()
+            print('Both synonym lists filtered and inserted their first names from the keyboard.', flush=True)
+            key(beta, 'alt+w')
             clients.remove(beta)
             wait_for('closing the extra manuscript retiles the others', lambda: tiles(clients, screen))
 
-            key(alpha, 'ctrl+w')
+            key(alpha, 'alt+w')
             peer_process.terminate()
             wait_for('closing test documents', lambda: alpha not in windows().values()
                      and peer not in windows().values())
@@ -249,7 +288,7 @@ def check_live_resize(app, run, launch, screen):
     path = run / 'Resize.txt'
     first = 'This proportional text wraps across several visual lines. ' * 4
     manuscript = '\n'.join(f'Crumb {n}: Genre #{n}: {first}End.' for n in range(1, 3372))
-    path.write_text(manuscript, encoding='utf-8')
+    path.write_text(manuscript + '\n\n', encoding='utf-8')
     launch(app, path)
     writer = wait_for('large manuscript at EOF', lambda: windows().get('Resize.txt — Crumb Writer'))
     wide = wait_for('wide manuscript tile', lambda: tiles([writer], screen))[0]
@@ -259,6 +298,7 @@ def check_live_resize(app, run, launch, screen):
     narrow = wait_for('two tiles with large manuscript', lambda: tiles([writer, peer], screen))[0]
     assert narrow[2] < wide[2], (narrow, wide)
     output('xdotool', 'windowactivate', '--sync', writer)
+    key(writer, 'ctrl+Next')
     text = 'Typing during a window resize.'
     with subprocess.Popen(['xdotool', 'type', '--clearmodifiers', '--delay', '45', text]) as typing:
         time.sleep(.15)
@@ -266,7 +306,7 @@ def check_live_resize(app, run, launch, screen):
         wait_for('retiling to full window width', lambda: rectangle(writer)[2] == wide[2])
         assert typing.wait(timeout=8) == 0
     output('xdotool', 'key', '--clearmodifiers', 'ctrl+s')
-    expected = (manuscript + text).encode()
+    expected = (manuscript + text + '\n\n').encode()
     wait_for('typing saved at last crumb', lambda: path.read_bytes() == expected)
     print(f'Krohnkite resized a 3,371-crumb manuscript from {narrow[2]} to {wide[2]} pixels '
           'during typing. All input reached the final body.', flush=True)

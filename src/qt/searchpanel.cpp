@@ -139,6 +139,7 @@ void SearchPanel::buildUi()
     modes = new QToolButton;
     modes->setObjectName(QStringLiteral("cw-search-mode"));
     modes->setAccessibleName(QStringLiteral("Search mode"));
+    modes->setToolTip(QStringLiteral("Plain text (Ctrl+P), regular expression (Ctrl+R), crumb number (Ctrl+L)"));
     modes->setPopupMode(QToolButton::InstantPopup);
     modeMenu = new QMenu(modes);
     for (Mode mode : {Mode::Text, Mode::Regex, Mode::Number}) {
@@ -318,17 +319,18 @@ void SearchPanel::saveOrigin(int destination)
         recordOrigin(origin);
 }
 
-void SearchPanel::open(Mode mode, bool reverse, bool replace)
+void SearchPanel::open(std::optional<Mode> requestedMode, bool reverse, bool replace)
 {
     const bool wasHidden = isHidden();
     const Span previousHit = hit;
     beginOrigin();
+    Mode mode = requestedMode.value_or(lastTextMode);
     const QTextCursor selected = editor->textCursor();
-    if (wasHidden && mode != Mode::Number && selected.hasSelection() &&
+    if ((wasHidden || requestedMode) && mode != Mode::Number && selected.hasSelection() &&
         selected.document()->findBlock(selected.selectionStart()) == selected.document()->findBlock(selected.selectionEnd()) &&
         !(previousHit == Span{selected.selectionStart(), selected.selectionEnd()})) {
         QScopedValueRollback<bool> guard(settingControls, true);
-        mode = Mode::Text;
+        mode = requestedMode.value_or(Mode::Text);
         findEntry->setText(ManuscriptText::selectedText(selected));
     }
     options.mode = mode;
@@ -344,7 +346,12 @@ void SearchPanel::open(Mode mode, bool reverse, bool replace)
 
 void SearchPanel::find(bool reverse)
 {
-    open(options.mode == Mode::Number ? lastTextMode : options.mode, reverse, false);
+    open(std::nullopt, reverse, false);
+}
+
+void SearchPanel::findInMode(Mode mode)
+{
+    open(mode, false, false);
 }
 
 void SearchPanel::findReplace()
@@ -355,7 +362,7 @@ void SearchPanel::findReplace()
         destination->selectAll();
         return;
     }
-    open(options.mode == Mode::Number ? lastTextMode : options.mode, false, true);
+    open(std::nullopt, false, true);
 }
 
 void SearchPanel::goToNumber()
@@ -961,12 +968,24 @@ bool SearchPanel::handleKey(QKeyEvent *event)
     const auto mods = event->modifiers() & ~Qt::KeypadModifier;
     if (recentPopup->isVisible() || modeMenu->isVisible())
         return false; // Native popup navigation owns Escape, arrows and Return.
+    const bool inSearch = isAncestorOf(QApplication::focusWidget());
     if (mods == Qt::ControlModifier) {
         switch (key) {
         case Qt::Key_F: find(false); return true;
         case Qt::Key_G: find(true); return true;
         case Qt::Key_H: findReplace(); return true;
-        case Qt::Key_L: goToNumber(); return true;
+        case Qt::Key_L:
+            if (!isHidden()) setMode(Mode::Number);
+            else goToNumber();
+            return true;
+        case Qt::Key_P:
+        case Qt::Key_R: {
+            const Mode mode = key == Qt::Key_P ? Mode::Text : Mode::Regex;
+            if (editor->hasFocus()) findInMode(mode);
+            else if (inSearch) setMode(mode);
+            else return false;
+            return true;
+        }
         default: break;
         }
     }
@@ -985,15 +1004,15 @@ bool SearchPanel::handleKey(QKeyEvent *event)
         return false;
     if (mods == Qt::ControlModifier) {
         switch (key) {
-        case Qt::Key_P: setMode(Mode::Text); return true;
-        case Qt::Key_R: setMode(Mode::Regex); return true;
-        case Qt::Key_N: setMode(Mode::Number); return true;
         case Qt::Key_M: if (options.mode != Mode::Number) matchCase->toggle(); return true;
-        case Qt::Key_W: if (options.mode != Mode::Number) wholeWords->toggle(); return true;
+        case Qt::Key_W:
+            if (!inSearch) return false;
+            if (options.mode != Mode::Number) wholeWords->toggle();
+            return true;
         default: break;
         }
     }
-    if (mods == Qt::AltModifier && key == Qt::Key_W) {
+    if (inSearch && mods == Qt::AltModifier && key == Qt::Key_W) {
         wrap->toggle();
         return true;
     }

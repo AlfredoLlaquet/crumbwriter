@@ -21,7 +21,7 @@ jobs:
           release: '15.1'
           copyback: false
           prepare: |
-            pkg install -y qt6-base glib pkgconf xorg-vfbserver dejavu
+            pkg install -y qt6-base glib pkgconf hunspell en-hunspell xorg-vfbserver dejavu
           run: |
             set -eu
             make -j2
@@ -63,7 +63,8 @@ jobs:
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon
+          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us \
+            libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon
       - name: Build
         id: build
         run: make -j2
@@ -97,7 +98,8 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git ca-certificates build-essential pkgconf npm qt6-base-dev qt6-qpa-plugins libglib2.0-dev libxcb-cursor0 \
+            git ca-certificates build-essential pkgconf npm qt6-base-dev qt6-qpa-plugins libglib2.0-dev \
+            libhunspell-dev hunspell-en-us libxcb-cursor0 \
             kwin-x11 plasma-workspace dbus-x11 xvfb xauth x11-utils xterm xdotool xclip \
             shared-mime-info xfonts-base fonts-dejavu-core python3 libx11-dev
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

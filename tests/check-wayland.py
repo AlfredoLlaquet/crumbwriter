@@ -85,7 +85,7 @@ def check(app, run):
         wait_for("the Crumb Writer desktop ID", lambda: re.search(
             r'xdg_toplevel[^\s(]*\.set_app_id\("org\.thecrumbs\.CrumbWriter"\)', client_log.read_text(errors="replace")))
         print("Wayland window identifies itself with the Crumb Writer desktop file.", flush=True)
-        keyboard("mousemove", "--window", window, "250", "240", "click", "1")
+        keyboard("mousemove", "--window", window, "520", "240", "click", "1")
         wait_for("Wayland keyboard focus", lambda: re.search(r"\bwl_keyboard[^\s(]*\.enter\(",
                                                             client_log.read_text(errors="replace")))
 
@@ -99,11 +99,23 @@ def check(app, run):
         save_and_check(first + second + typed)
         print("Wayland typing converted punctuation and kept one word separator across live save.", flush=True)
 
-        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Prior", "ctrl+Down", "Tab", "Tab", "shift+Tab")
+        keyboard("type", "--clearmodifiers", " fox")
+        save_and_check(first + second + typed + " fox")
+        keyboard("key", "--clearmodifiers", "--repeat", "3", "--delay", "60", "BackSpace")
+        wait_for("live save after erasing the last word",
+                 lambda: manuscript.read_bytes() == (first + second + typed).encode())
+        keyboard("type", "--clearmodifiers", "panda")
+        save_and_check(first + second + typed + " panda")
+        keyboard("key", "--clearmodifiers", "--delay", "60", "Left", "Left", "ctrl+w")
+        save_and_check(first + second + typed)
+        print("Wayland backspacing preserved the separator across autosave; Ctrl+W deleted the whole word.", flush=True)
+
+        # Cross a crumb boundary both ways: first title, first body, second title.
+        keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Prior", "Tab", "Tab", "Tab", "shift+Tab", "Tab")
         keyboard("type", "--clearmodifiers", "Verified ")
         verified = first + "Crumb 2: Verified Second:" + typed
         save_and_check(verified)
-        print("Wayland Ctrl+Down, Tab, and Shift+Tab reached the intended fields.", flush=True)
+        print("Wayland Tab and Shift+Tab crossed crumbs through titles and bodies.", flush=True)
 
         keyboard("key", "--clearmodifiers", "--delay", "60", "ctrl+Next", "Down", "Down", "ctrl+Return")
         keyboard("type", "--clearmodifiers", "V")
@@ -111,7 +123,7 @@ def check(app, run):
         keyboard("key", "--clearmodifiers", "ctrl+z")
         save_and_check(verified)
         print("Wayland virtual typing materialized two newlines and one undo restored the original bytes.", flush=True)
-        keyboard("key", "--clearmodifiers", "ctrl+w")
+        keyboard("key", "--clearmodifiers", "alt+w")
         if editor.wait(timeout=8) != 0:
             raise AssertionError("Closing the editor failed")
     except BaseException:

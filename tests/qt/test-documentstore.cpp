@@ -59,6 +59,11 @@ struct Fixture {
             ++snapshots;
             return text;
         });
+        store.captureMetadata = [this] { return text.toUtf8(); };
+        store.onPublished = [this](const QString &name, const QByteArray &metadata) {
+            CHECK(QThread::currentThread() == QCoreApplication::instance()->thread());
+            published.append({name, metadata});
+        };
         store.configureLiveSave(false, 1);
         store.onReadyToClose = [this] { ++closures; };
         store.onError = [this](const QString &failure) { error = failure; };
@@ -69,6 +74,7 @@ struct Fixture {
 
     QString path, text, error;
     int snapshots = 0, closures = 0;
+    QList<std::pair<QString, QByteArray>> published;
     DocumentStore store;
 };
 
@@ -104,10 +110,12 @@ void oldSnapshotCannotMarkNewEditSaved(const QString &path)
     f.idle();
     CHECK(contents(path) == "two");
     CHECK(f.store.isDirty() && f.store.needsCloseConfirmation());
+    CHECK(f.published.size() == 1 && f.published[0].first == path && f.published[0].second == "two");
     f.store.beginCloseConfirmation();
     f.store.discardAndClose();
     waitUntil([&] { return f.closures == 1; });
     CHECK(contents(path) == "two");
+    CHECK(f.published.size() == 1);
 }
 
 void closeWithNewerQueuedEdit(const QString &path)
@@ -123,6 +131,8 @@ void closeWithNewerQueuedEdit(const QString &path)
     const QByteArray installed = contents(path);
     CHECK(installed == "old" || installed == "first write");
     CHECK(f.snapshots == 1);
+    CHECK(f.published.size() == (installed == "old" ? 0 : 1));
+    if (!f.published.isEmpty()) CHECK(f.published[0].second == installed);
 }
 
 void guardedDiscardBeforePublication(const QString &path)
@@ -184,6 +194,7 @@ void conflictRecoveryAndSaveAs(const QString &path)
     const QString draft = f.store.draftPath();
     CHECK(DocumentStore::recoveryDrafts().contains(draft));
     CHECK(contents(draft) == "the author's new text");
+    CHECK(f.published.size() == 1 && f.published[0].first == draft && f.published[0].second == contents(draft));
     const QString newName = path + ".copy";
     writeFile(newName, "the previous destination");
     int pathChanges = 0;
@@ -195,14 +206,17 @@ void conflictRecoveryAndSaveAs(const QString &path)
         f.store.keepEditing();
     };
     f.store.saveAs(newName, true, true);
+    f.edit("another change while Save As runs");
     f.idle();
     QCoreApplication::processEvents();
-    CHECK(pathChanges == 1 && f.closures == 0 && !f.store.isDirty());
+    CHECK(pathChanges == 1 && f.closures == 0 && f.store.isDirty());
     CHECK(contents(newName) == "the author's new text");
+    CHECK(f.published.size() == 2 && f.published[1].first == newName && f.published[1].second == contents(newName));
     CHECK(contents(f.store.backupPath()) == "the previous destination");
     CHECK(!QFileInfo::exists(draft));
     f.store.saveAndClose();
     waitUntil([&] { return f.closures == 1; });
+    CHECK(f.published.size() == 3 && f.published[2].first == newName && f.published[2].second == f.text.toUtf8());
 }
 
 void queuedSaveAsRespectsChosenDestination(const QString &source, bool originallyPresent)
@@ -266,6 +280,7 @@ void rejectUnrepresentableSnapshot(const QString &path)
     f.store.saveAndClose();
     f.idle();
     CHECK(f.closures == 0 && !f.error.isEmpty());
+    CHECK(f.published.isEmpty());
     CHECK(contents(path) == "legible");
 }
 

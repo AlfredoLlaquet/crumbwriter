@@ -4,6 +4,8 @@
 #include "manuscripteditor.h"
 #include "preferences.h"
 #include "searchpanel.h"
+#include "spellcheck.h"
+#include "synonympanel.h"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -57,13 +59,13 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     layout->addWidget(search_);
     split_ = new QSplitter(Qt::Horizontal, this);
     split_->setObjectName("manuscriptSplitter");
+    synonyms_ = new SynonymPanel(editor_->document(), this);
+    split_->addWidget(synonyms_);
     split_->addWidget(editor_);
-    side_ = new NavigationPanel(editor_, split_);
+    side_ = new NavigationPanel(editor_, &prefs_.settings(), this);
     split_->addWidget(side_);
-    split_->setCollapsible(0, false);
-    split_->setCollapsible(1, false);
-    split_->setStretchFactor(0, 1);
-    split_->setStretchFactor(1, 0);
+    split_->setChildrenCollapsible(false);
+    for (int i = 0; i < split_->count(); ++i) split_->setStretchFactor(i, 1);
     layout->addWidget(split_, 1);
 
     status_ = new QLabel(this);
@@ -74,6 +76,11 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
 
     store_ = new DocumentStore(this);
     store_->setSnapshotProvider([this] { return editor_->manuscriptText(); });
+    store_->captureMetadata = [this] { return editor_->model().dailySnapshot(); };
+    store_->onPublished = [this](const QString &path, const QByteArray &metadata) {
+        const QString error = editor_->model().publishDailySnapshot(path, metadata);
+        if (!error.isEmpty()) showNotice(error);
+    };
     bookmarks_ = new Bookmarks(this,
         [this] { return editor_->textCursor().blockNumber() + 1 + editor_->virtualRows(); },
         [this] { return editor_->document()->blockCount(); },
@@ -82,23 +89,23 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
             const auto block = editor_->document()->findBlockByNumber(line - 1);
             if (block.isValid()) jump(block.position());
         });
-    bookmarks_->onChanged = [this] { documentStateChanged(); };
+    spelling_ = new SpellCheck(editor_, this);
+    connectWritingTools();
+    editor_->model().onDailyCountError = [this](const QString &error) { showNotice(error); };
     store_->onChanged = [this] { documentStateChanged(); };
     store_->onError = [this](const QString &error) { showNotice(error); };
     store_->onPathChanged = [this](const QString &, const QString &target) {
         if (!loading_) {
-            QString error;
-            if (!bookmarks_->saveAs(target, &error)) {
-                store_->keepEditing();
-                showNotice(error);
-            }
+            const QString dailyError = editor_->model().saveDailyCountAs(target);
+            if (!dailyError.isEmpty()) showNotice(dailyError);
+            if (!updateCompanions(CompanionAction::SaveAs, target)) store_->keepEditing();
         }
         prefs_.remember(target);
         documentStateChanged();
     };
     store_->onSaveAsNeeded = [this] { chooseFile(true); };
     store_->onReadyToClose = [this] {
-        if (!discarding_ && !flushBookmarks()) {
+        if (!discarding_ && !updateCompanions(CompanionAction::Flush)) {
             store_->keepEditing();
             return;
         }
@@ -108,6 +115,7 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     side_->jumpTo = [this](int pos) { jump(pos); };
     search_->recordOrigin = [this](const QTextCursor &c) { trail_.remember(c); };
     editor_->model().observe(this, [this](const CrumbChange &change) {
+        side_->setTodayCount(editor_->model().todayCount());
         if (!loading_ && change.textChanged) {
             store_->markEdited();
             bookmarks_->refresh();
@@ -121,7 +129,9 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     buildMenu();
     const QSize available = screen()->availableGeometry().size();
     resize(QSize(1060, 720).boundedTo(available * 0.80));
-    split_->setSizes({qMax(1, width() - sidebarWidth_), sidebarWidth_});
+    const int left = qMin(synonymWidth_, width() / 5);
+    const int right = qMin(sidebarWidth_, width() / 4);
+    split_->setSizes({left, qMax(1, width() - left - right), right});
     qApp->installEventFilter(this);
     applyPreferences();
     documentStateChanged();
@@ -131,12 +141,17 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
 MainWindow::~MainWindow()
 {
     qApp->removeEventFilter(this);
+    editor_->model().onDailyCountError = {};
     store_->onChanged = {};
     store_->onError = {};
     store_->onSaveAsNeeded = {};
     store_->onReadyToClose = {};
     store_->onPathChanged = {};
+    store_->captureMetadata = {};
+    store_->onPublished = {};
     bookmarks_->onChanged = {};
+    synonyms_->onChanged = {};
+    delete spelling_; // Its viewport callbacks belong to the still-live editor.
 }
 
 bool MainWindow::loadDocument(const QString &name, bool recovery)
@@ -149,8 +164,11 @@ bool MainWindow::loadDocument(const QString &name, bool recovery)
         trail_.clear();
         search_->reset();
         editor_->loadText(text);
+        const QString dailyError = editor_->model().openDailyCount(recovery ? name : store_->path());
+        if (!dailyError.isEmpty()) showNotice(dailyError);
         side_->reset();
-        if (!bookmarks_->openManuscript(store_->path(), &error)) showNotice(error);
+        side_->setTodayCount(editor_->model().todayCount());
+        updateCompanions(CompanionAction::Open, store_->path());
         if (recovery) showNotice("Recovered an unsaved manuscript. Use Save As to give it a filename.");
         prefs_.remember(store_->path());
     } else {
@@ -186,6 +204,7 @@ void MainWindow::applyPreferences()
         editor_->document()->setDefaultFont(font);
     }
     editor_->setSmartPunctuation(prefs_.enabled("smart-punctuation"));
+    spelling_->setEnabled(prefs_.enabled("spell-check"));
     store_->configureLiveSave(prefs_.enabled("live-save"), prefs_.saveDelay());
     side_->updateCurrent();
 }
@@ -205,7 +224,7 @@ void MainWindow::changeEvent(QEvent *e)
 void MainWindow::documentStateChanged()
 {
     const QString name = store_->path().isEmpty() ? QString("Untitled") : QFileInfo(store_->path()).fileName();
-    const bool pending = store_->isDirty() || bookmarks_->hasPending();
+    const bool pending = store_->isDirty() || companionsPending();
     const QString title = (pending ? QString("• ") : QString()) + name + " — Crumb Writer";
     if (title != windowTitle()) setWindowTitle(title);
     status_->setText(store_->status());
@@ -217,15 +236,6 @@ void MainWindow::showNotice(const QString &message)
 {
     notice_->setText(message);
     noticeBar_->setVisible(!message.isEmpty());
-}
-
-bool MainWindow::flushBookmarks()
-{
-    if (!bookmarks_->hasPending()) return true;
-    QString error;
-    if (bookmarks_->flush(&error)) return true;
-    showNotice(error);
-    return false;
 }
 
 void MainWindow::chooseFile(bool saving)
@@ -258,7 +268,7 @@ void MainWindow::save(bool asNew)
 {
     editor_->finishTyping();
     if (asNew || path().isEmpty()) { chooseFile(true); return; }
-    flushBookmarks();
+    updateCompanions(CompanionAction::Flush);
     store_->save();
 }
 
@@ -266,7 +276,7 @@ void MainWindow::closeEvent(QCloseEvent *e)
 {
     if (allowClose_) { e->accept(); return; }
     editor_->finishTyping();
-    if (!store_->needsCloseConfirmation() && !bookmarks_->hasPending()) {
+    if (!store_->needsCloseConfirmation() && !companionsPending()) {
         e->accept();
         return;
     }
@@ -295,7 +305,7 @@ void MainWindow::showCloseDialog()
             discarding_ = true;
             store_->discardAndClose();
         } else if (box->clickedButton() == saveButton) {
-            if (!path().isEmpty() && !flushBookmarks()) {
+            if (!path().isEmpty() && !updateCompanions(CompanionAction::Flush)) {
                 store_->keepEditing();
                 return;
             }
