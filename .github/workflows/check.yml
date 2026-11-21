@@ -38,7 +38,8 @@ jobs:
             test -s "$display_file"
             export DISPLAY=":$(cat "$display_file")" QT_QPA_PLATFORM=xcb
             export LC_ALL=en_US.UTF-8
-            make check
+            suite_status=0
+            make check || suite_status=$?
             pkg install -y dbus python3 xterm xdotool xclip xprop xwininfo xauth font-misc-misc
             # Plasma split the X11 window manager into its own package.
             if pkg rquery '%n' plasma6lts-kwin-x11 | grep -qx plasma6lts-kwin-x11; then
@@ -51,6 +52,7 @@ jobs:
             command -v kwin_x11
             dbus-uuidgen --ensure
             python3 tests/check-krohnkite.py --existing-display ./crumbwriter .ci-krohnkite
+            exit "$suite_status"
 
   linux:
     name: Linux

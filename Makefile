@@ -95,7 +95,9 @@ check-core: tests/test-crumb tests/test-storage
 	./tests/test-storage
 
 check-gui: $(QT_TESTS)
-	@set -e; for test_program in $(QT_TESTS); do echo "$$test_program"; "./$$test_program"; done
+	@result=0; for test_program in $(QT_TESTS); do \
+		echo "$$test_program"; "./$$test_program" || result=1; \
+	done; exit $$result
 
 check: check-core check-gui
 

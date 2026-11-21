@@ -564,6 +564,14 @@ measures a completed paint after typing in a moving
 window and checks the actual text and caret.
 The same Makefile supports FreeBSD base make and GNU make.
 
+The document-store test drives a Qt event loop during live saves. It checks
+Save and Close both before the worker acknowledges an automatic write and
+after the saved revision reaches the window. A timed-out check reports its
+name, condition, manuscript and recovery paths, current save state and last
+storage error.
+The Qt suites run independently. The FreeBSD job also exercises the
+tiled desktop when a component check fails and retains the failing status.
+
 With both side panels visible, the 2.1 Linux X11 test using Qt 6.8.2
 changed the manuscript width between 613 and 383 pixels while typing.
 Four runs on the release commit used 20 resizes and keystrokes per

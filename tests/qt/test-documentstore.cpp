@@ -2,7 +2,7 @@
 #include "qt/documentstore.h"
 
 #include <QCoreApplication>
-#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QTemporaryDir>
@@ -23,16 +23,31 @@ void check(bool passed, const char *where, int line)
 }
 #define CHECK(condition) check(bool(condition), #condition, __LINE__)
 
-void waitUntil(const std::function<bool()> &done)
+void waitFor(const DocumentStore &store, const QString &error, const std::function<bool()> &done,
+             const char *test, int line, const char *condition)
 {
-    QElapsedTimer limit;
-    limit.start();
-    while (!done() && limit.elapsed() < 10000) {
-        QCoreApplication::processEvents();
-        QThread::msleep(1);
+    if (done()) return;
+    QEventLoop loop;
+    QTimer poll, deadline;
+    poll.setInterval(10);
+    deadline.setSingleShot(true);
+    deadline.setTimerType(Qt::PreciseTimer);
+    QObject::connect(&poll, &QTimer::timeout, &loop, [&] { if (done()) loop.quit(); });
+    QObject::connect(&deadline, &QTimer::timeout, &loop, &QEventLoop::quit);
+    poll.start();
+    deadline.start(10000);
+    loop.exec();
+    if (!done()) {
+        const auto message = QStringLiteral("documentstore:%1:%2: timed out waiting for %3"
+                                             "\n  status=%4, dirty=%5, saving=%6, path=%7, draft=%8, error=%9\n")
+            .arg(QString::fromLatin1(test)).arg(line).arg(QString::fromLatin1(condition), store.status())
+            .arg(store.isDirty()).arg(store.isSaving()).arg(store.path(), store.draftPath(), error);
+        std::fputs(message.toUtf8().constData(), stderr);
+        std::exit(1);
     }
-    CHECK(done());
 }
+#define WAIT_FOR(store, error, condition) \
+    waitFor(store, error, [&] { return bool(condition); }, __func__, __LINE__, #condition)
 
 void writeFile(const QString &path, const QByteArray &bytes)
 {
@@ -70,7 +85,6 @@ struct Fixture {
     }
 
     void edit(const QString &value) { text = value; store.markEdited(); }
-    void idle() { waitUntil([this] { return !store.isSaving(); }); }
 
     QString path, text, error;
     int snapshots = 0, closures = 0;
@@ -94,7 +108,7 @@ void datedBackupAndLatestClose(const QString &path)
     f.store.beginCloseConfirmation();
     CHECK(f.store.needsCloseConfirmation());
     f.store.saveAndClose();
-    waitUntil([&] { return f.closures == 1; });
+    WAIT_FOR(f.store, f.error, f.closures == 1);
     CHECK(!f.store.isSaving() && !f.store.isDirty());
     CHECK(f.snapshots == 2);
     CHECK(contents(path) == QByteArray("Crumb 1: t: café\r\nCrumb 2: t: B"));
@@ -107,13 +121,13 @@ void oldSnapshotCannotMarkNewEditSaved(const QString &path)
     f.edit("two");
     f.store.save();
     f.edit("three");
-    f.idle();
+    WAIT_FOR(f.store, f.error, !f.store.isSaving());
     CHECK(contents(path) == "two");
     CHECK(f.store.isDirty() && f.store.needsCloseConfirmation());
     CHECK(f.published.size() == 1 && f.published[0].first == path && f.published[0].second == "two");
     f.store.beginCloseConfirmation();
     f.store.discardAndClose();
-    waitUntil([&] { return f.closures == 1; });
+    WAIT_FOR(f.store, f.error, f.closures == 1);
     CHECK(contents(path) == "two");
     CHECK(f.published.size() == 1);
 }
@@ -127,7 +141,7 @@ void closeWithNewerQueuedEdit(const QString &path)
     f.store.save();
     f.store.beginCloseConfirmation();
     f.store.discardAndClose();
-    waitUntil([&] { return f.closures == 1; });
+    WAIT_FOR(f.store, f.error, f.closures == 1);
     const QByteArray installed = contents(path);
     CHECK(installed == "old" || installed == "first write");
     CHECK(f.snapshots == 1);
@@ -161,7 +175,7 @@ void closedDialogSuspendsDeadline(const QString &path)
     f.store.beginCloseConfirmation();
     bool waited = false;
     QTimer::singleShot(1220, [&] { waited = true; });
-    waitUntil([&] { return waited; });
+    WAIT_FOR(f.store, f.error, waited);
     CHECK(contents(path) == "old" && f.snapshots == 0);
     f.store.keepEditing();
 
@@ -172,12 +186,13 @@ void closedDialogSuspendsDeadline(const QString &path)
         f.edit(QStringLiteral("ongoing %1").arg(++edits));
     });
     input.start(40);
-    waitUntil([&] { return contents(path).startsWith("ongoing"); });
+    WAIT_FOR(f.store, f.error, !f.published.isEmpty() && f.published.last().second.startsWith("ongoing"));
+    CHECK(contents(path).startsWith("ongoing"));
     input.stop();
     CHECK(edits > 0);
     f.store.beginCloseConfirmation();
     f.store.saveAndClose();
-    waitUntil([&] { return f.closures == 1; });
+    WAIT_FOR(f.store, f.error, f.closures == 1);
     CHECK(contents(path) == f.text.toUtf8());
 }
 
@@ -188,7 +203,7 @@ void conflictRecoveryAndSaveAs(const QString &path)
     writeFile(path, "external changes");
     f.store.beginCloseConfirmation();
     f.store.saveAndClose();
-    waitUntil([&] { return !f.error.isEmpty() && !f.store.isSaving(); });
+    WAIT_FOR(f.store, f.error, !f.error.isEmpty() && !f.store.isSaving());
     CHECK(f.closures == 0 && f.store.isDirty());
     CHECK(contents(path) == "external changes");
     const QString draft = f.store.draftPath();
@@ -207,7 +222,7 @@ void conflictRecoveryAndSaveAs(const QString &path)
     };
     f.store.saveAs(newName, true, true);
     f.edit("another change while Save As runs");
-    f.idle();
+    WAIT_FOR(f.store, f.error, !f.store.isSaving());
     QCoreApplication::processEvents();
     CHECK(pathChanges == 1 && f.closures == 0 && f.store.isDirty());
     CHECK(contents(newName) == "the author's new text");
@@ -215,8 +230,30 @@ void conflictRecoveryAndSaveAs(const QString &path)
     CHECK(contents(f.store.backupPath()) == "the previous destination");
     CHECK(!QFileInfo::exists(draft));
     f.store.saveAndClose();
-    waitUntil([&] { return f.closures == 1; });
+    WAIT_FOR(f.store, f.error, f.closures == 1);
     CHECK(f.published.size() == 3 && f.published[2].first == newName && f.published[2].second == f.text.toUtf8());
+}
+
+void closeDuringAutomaticSave(const QString &path)
+{
+    Fixture f(path, "original");
+    f.store.configureLiveSave(true, 1);
+    bool requested = false;
+    f.store.onChanged = [&] {
+        if (requested || !f.store.isSaving()) return;
+        requested = true;
+        // Dispatch notifies the GUI before its worker completion can run.
+        // Canceling here can precede or follow the worker's atomic rename.
+        CHECK(f.published.isEmpty());
+        f.edit("final edit while the automatic save is in flight");
+        f.store.beginCloseConfirmation();
+        f.store.saveAndClose();
+    };
+    f.edit("automatic snapshot");
+    WAIT_FOR(f.store, f.error, f.closures == 1);
+    CHECK(requested && f.snapshots == 2 && !f.store.isDirty());
+    CHECK(contents(path) == f.text.toUtf8());
+    CHECK(!f.published.isEmpty() && f.published.last().second == contents(path));
 }
 
 void queuedSaveAsRespectsChosenDestination(const QString &source, bool originallyPresent)
@@ -231,7 +268,7 @@ void queuedSaveAsRespectsChosenDestination(const QString &source, bool originall
     // loop runs. Change its destination after the equivalent of choosing Save.
     f.store.saveAs(target, true);
     writeFile(target, "someone else's newer text");
-    f.idle();
+    WAIT_FOR(f.store, f.error, !f.store.isSaving());
     CHECK(!f.error.isEmpty());
     CHECK(contents(target) == "someone else's newer text");
     CHECK(contents(source) == "finished manuscript" && f.store.path() == source);
@@ -243,9 +280,11 @@ void untitledAndRecovered(const QString &target)
     QString draft;
     {
         DocumentStore untitled;
+        QString error;
+        untitled.onError = [&](const QString &failure) { error = failure; };
         untitled.setSnapshotProvider([] { return QString::fromUtf8("Recovered 🙂\t\tword  "); });
         untitled.markEdited();
-        waitUntil([&] { return !untitled.draftPath().isEmpty() && !untitled.isSaving(); });
+        WAIT_FOR(untitled, error, !untitled.draftPath().isEmpty() && !untitled.isSaving());
         draft = untitled.draftPath();
         CHECK(untitled.isDirty() && contents(draft) == QByteArray("Recovered 🙂 word"));
         // An unplanned exit retains the draft.
@@ -256,6 +295,7 @@ void untitledAndRecovered(const QString &target)
     CHECK(recovered.openDraft(draft, &text, &error));
     CHECK(recovered.path().isEmpty() && recovered.needsCloseConfirmation());
     CHECK(text == QString::fromUtf8("Recovered 🙂 word"));
+    recovered.onError = [&](const QString &failure) { error = failure; };
     recovered.setSnapshotProvider([&] { return text; });
     int choose = 0, closed = 0;
     recovered.onSaveAsNeeded = [&] { ++choose; };
@@ -268,7 +308,7 @@ void untitledAndRecovered(const QString &target)
     recovered.saveAndClose();
     CHECK(choose == 2);
     recovered.saveAs(target, false);
-    waitUntil([&] { return closed == 1; });
+    WAIT_FOR(recovered, error, closed == 1);
     CHECK(contents(target) == text.toUtf8());
     CHECK(!QFileInfo::exists(draft));
 }
@@ -278,7 +318,7 @@ void rejectUnrepresentableSnapshot(const QString &path)
     Fixture f(path, "legible");
     f.edit(QString::fromLatin1("first\0second", 12));
     f.store.saveAndClose();
-    f.idle();
+    WAIT_FOR(f.store, f.error, !f.store.isSaving());
     CHECK(f.closures == 0 && !f.error.isEmpty());
     CHECK(f.published.isEmpty());
     CHECK(contents(path) == "legible");
@@ -297,6 +337,7 @@ int main(int argc, char **argv)
     closeWithNewerQueuedEdit(work.filePath("discard-queued.txt"));
     guardedDiscardBeforePublication(work.filePath("cancel.txt"));
     closedDialogSuspendsDeadline(work.filePath("deadline.txt"));
+    closeDuringAutomaticSave(work.filePath("automatic-close.txt"));
     conflictRecoveryAndSaveAs(work.filePath("conflict.txt"));
     queuedSaveAsRespectsChosenDestination(work.filePath("new-destination.txt"), false);
     queuedSaveAsRespectsChosenDestination(work.filePath("existing-destination.txt"), true);
