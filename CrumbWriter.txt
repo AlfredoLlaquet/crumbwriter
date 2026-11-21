@@ -11,25 +11,46 @@ KDE Plasma 6 or later. It also builds on Linux. Qt Widgets provides the
 editor and its windows. Qt Network handles local application activation.
 The C parser and disk modules use GLib/GIO. GLib also provides the PCRE
 search interface. FreeBSD's base C and C++ compilers and make build the
-program. Install the following packages as root.
+program. The qt6-base package supplies Qt Widgets, Qt Network and the rcc
+tool that embeds the application icon. The Makefile locates them through
+pkg-config, supplied by pkgconf.
+
+Upgrading from 1.4
+~~~~~~~~~~~~~~~~~~
+
+On a computer that already builds 1.4, install the new package as root.
+
+    pkg install qt6-base
+
+Save your work and close all Crumb Writer windows. As the desktop account,
+run the following commands in the existing crumbwriter checkout on main.
+The ordinary make command rebuilds it in place.
+
+    git pull --ff-only
+    make
+    ./crumbwriter --version
+    ./crumbwriter
+
+The version check should print "Crumb Writer 2.0". The last command runs
+the copy built in this directory. A Plasma launcher uses the installed
+copy. Repeat the installation described below to update that copy as well.
+
+First installation
+~~~~~~~~~~~~~~~~~~
+
+On a new computer, install the full package list as root.
 
     pkg install git pkgconf glib qt6-base
 
-For a first checkout, run these commands as the desktop account.
+Then check out the source, build and launch as the desktop account.
 
     git clone https://github.com/AlfredoLlaquet/crumbwriter.git
     cd crumbwriter
     make
     ./crumbwriter
 
-To update a checkout, close the running Crumb Writer windows first. From the
-existing repository directory, run the following commands. The Qt 6 package
-above is required when upgrading from version 1.4.
-
-    git pull --ff-only
-    make
-    ./crumbwriter --version
-    ./crumbwriter
+Opening a manuscript
+~~~~~~~~~~~~~~~~~~~~
 
 A path can be supplied directly. Several paths open separate manuscript
 windows. An explicit filename takes precedence over the last-document setting.
@@ -44,17 +65,24 @@ the preceding crumbs that fit in the editor. Opening the same file again
 raises its existing window and returns to that writing position.
 Launching again without a filename reactivates a window at its current caret.
 
-Run make install as root to install the executable, manual, Plasma launcher
-and icon under /usr/local. A per-account installation uses the following
-command, with $HOME/.local/bin on PATH.
+Installing or updating the Plasma launcher
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+From the rebuilt checkout, run the command for the original installation
+location. For a system-wide installation under /usr/local, run as root.
+
+    make install
+
+For a per-account installation, run as the desktop account with
+$HOME/.local/bin on PATH.
 
     make install PREFIX="$HOME/.local"
 
-Repeat the installation after upgrading an installed launcher. DESTDIR can
-stage either installation for packaging. Linux uses the same make targets
-with a C++17 compiler, pkg-config, Qt 6 base development tools and GLib/GIO
-development headers. The icon comes from the official Crumbs website's
-favicon. The Wayland application ID and desktop file share the identifier
+Both commands install the executable, manual, Plasma launcher and icon.
+DESTDIR can stage either installation for packaging. Linux uses the same
+make targets with a C++17 compiler, pkg-config, Qt 6 base development tools
+and GLib/GIO development headers. The icon comes from the official Crumbs
+website's favicon. The Wayland application ID and desktop file share the identifier
 org.thecrumbs.CrumbWriter. Installed icons and Qt's embedded icon contain
 the original sizes from 16 to 256 pixels.
 
@@ -143,10 +171,11 @@ belongs to the saved UTF-8 text.
 
 The visit list records crumbs in order of last visit and shows their numbers
 and titles. A visit points to the actual crumb and caret, so duplicate header
-numbers can have different destinations. Click an entry or press F6, type a
-title fragment, and press Enter. F2 and Shift+F2 move back and forward among
-deliberate jumps. One search records a single return position while its query
-is refined. Ctrl+Shift+J follows the reference under the caret in either
+numbers can have different destinations. Click an entry or press F6 from the
+manuscript, type a title fragment, and press Enter. Pressing F6 again in the
+sidebar returns focus to the manuscript. F2 and Shift+F2 move back and
+forward among deliberate jumps. Refining a search keeps the original
+return position. Ctrl+Shift+J follows the reference under the caret in either
 "crumb 200" or "see crumb 200". Matching ignores case and recognizes the
 current crumb's particular label. F2 returns to the original word.
 
@@ -366,6 +395,8 @@ adapter keeps file bytes, clipboard text and search positions consistent.
                                            genre list and back/forward marks
     src/qt/crumbmodel.*                    Per-line records, words, ranges,
                                            number and genre indices, warnings
+    src/qt/manuscripttext.*                Exact text transfer between Qt
+                                           paragraphs and manuscript strings
     src/qt/manuscripteditor.*              Qt writing control, formatting,
                                            crumb editing and caret commands
     src/qt/editorinput.cpp                 Key/IME input, paste, undo groups,
@@ -429,6 +460,12 @@ runs the model, document store, bookmarks, editor, search, window and resize
 tests. The resize test measures a completed paint after typing in a moving
 window and checks the actual text and caret.
 The same Makefile supports FreeBSD base make and GNU make.
+
+The 2.0 release built on FreeBSD 15.1 with Qt 6.11.3. In the native
+Plasma 6/Krohnkite test, the window widened from 640 to 1280 pixels while
+typing into the last of 3,371 crumbs. Every character reached the saved
+file. The same release passed the Linux X11 and Wayland checks.
+    https://github.com/AlfredoLlaquet/crumbwriter/actions/runs/44833558438
 
 For a counting change, compare each valid Qt model record against sed and
 wc in the target locale. tests/qt/test-model /path/to/Crumbs.txt prints

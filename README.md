@@ -6,13 +6,15 @@ Programmed by **ChatGPT** for Alfredo Llaquet-Alsina.
 
 ## Build and run on FreeBSD
 
-Install the dependencies as root. This step also applies when upgrading from version 1.4.
+### Upgrade from 1.4
+
+On a computer that already builds Crumb Writer 1.4, the new package is `qt6-base`. Install it as root.
 
 ~~~sh
-pkg install git pkgconf glib qt6-base
+pkg install qt6-base
 ~~~
 
-For an existing checkout, close the running editor and run these commands in the repository directory as the desktop account.
+Save your work and close all Crumb Writer windows. As your desktop account, run these commands in your existing `crumbwriter` checkout on `main`. FreeBSD’s standard `make` rebuilds it in place.
 
 ~~~sh
 git pull --ff-only
@@ -21,18 +23,30 @@ make
 ./crumbwriter
 ~~~
 
-For a first installation, start with a new checkout.
+The version check should print `Crumb Writer 2.0`. The last command starts that copy and reopens the last manuscript by default.
+
+### First installation
+
+Install the full package list as root.
+
+~~~sh
+pkg install git pkgconf glib qt6-base
+~~~
+
+Then build and launch as your desktop account.
 
 ~~~sh
 git clone https://github.com/AlfredoLlaquet/crumbwriter.git
 cd crumbwriter
 make
-./crumbwriter /path/to/Crumbs.txt
+./crumbwriter
 ~~~
 
-Launching without a filename reopens the last manuscript by default. Opening a file places the caret at the end of its content, before a final newline when present. **Ctrl+O** opens another file. Run `make check` in a graphical session to exercise the parser, storage, and editor controls.
+**Ctrl+O** opens a manuscript. You can also pass its path to `./crumbwriter` when launching. Opening places the caret at the end of the text, just before a final newline when present, with the preceding writing visible. Run `make check` in a graphical session to exercise the parser, storage, and editor controls. [FreeBSD 15.1, Plasma/Krohnkite, and Linux test results for version 2.0](https://github.com/AlfredoLlaquet/crumbwriter/actions/runs/44833558438)
 
-To install or update the Plasma launcher, run `make install` as root. A per-account installation uses `make install PREFIX="$HOME/.local"`. These install the application icon, desktop entry, and manual alongside the executable. For the per-account option, put `$HOME/.local/bin` on `PATH`.
+### Update the Plasma launcher
+
+If you launch from Plasma’s application menu, repeat the installation from the rebuilt directory, using the same location as before. For a system-wide install under `/usr/local`, run `make install` as root. For a per-account install, run `make install PREFIX="$HOME/.local"` as your desktop account with `$HOME/.local/bin` on `PATH`. Both commands install the executable, launcher, icon, and manual.
 
 ## Writing and navigation
 
@@ -40,8 +54,9 @@ To install or update the Plasma launcher, run `make install` as root. A per-acco
 | --- | --- |
 | Ctrl+N | Append the next crumb and start its body |
 | Ctrl+1 | Select and copy the header, such as `Crumb 42`, leaving it selected |
-| Ctrl+Q | Select and copy the entire crumb, excluding its ending newline |
+| Ctrl+Q | Select and copy the entire crumb, excluding its ending newline and any first-line work title |
 | Ctrl+Y | Delete the current crumb while the manuscript has focus |
+| Escape | Clear the text selection and close Find or Replace when open |
 | Tab / Shift+Tab | Next / previous header, title, or body |
 | Ctrl+Up / Ctrl+Down | Previous / next crumb |
 | Up / Down | Previous / next wrapped line, including virtual rows below the file |
@@ -53,7 +68,7 @@ To install or update the Plasma launcher, run `make install` as root. A per-acco
 | Ctrl+Shift+J | Follow a reference under the caret, such as `crumb 200` |
 | F2 / Shift+F2 | Back / forward to the exact caret position after a jump |
 | F4 / Shift+F4 | Next / previous numbering warning, with the expected and actual numbers |
-| F6 / F7 | Focus visit history / genres. Type a fragment and press Enter |
+| F6 / F7 | Focus visit history / genres from the manuscript. Type a fragment and press Enter. F6 returns focus to the manuscript |
 | F9 | Show or hide the sidebar |
 | Ctrl+B / Alt+B | Add a bookmark / open the separate Bookmarks window |
 | Ctrl+S / Ctrl+Shift+S | Save / Save As |
