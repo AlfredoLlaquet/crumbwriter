@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTemporaryDir>
@@ -203,6 +204,90 @@ void testDuplicateHistory(const QTemporaryDir &tmp)
     pressChoice(window, "Discard Unsaved Changes");
     CHECK(until([&] { return !window.isVisible(); }));
     CHECK(read(path) == bytes);
+}
+
+void testMentionCommands(const QTemporaryDir &tmp)
+{
+    const auto path = tmp.filePath("Goose.txt");
+    const QByteArray text = "Book//Cranolo 1: First: Inspector Goose writes.\n"
+                            "Cranolo 2: Next: The lunar auditor reads Cranolo 1.\n"
+                            "Cranolo 3: Last: Goose is at the desk.";
+    write(path, text);
+    write(path + ".characters", "Inspector Goose, The lunar auditor, Goose\n");
+    Preferences prefs(tmp.filePath("mention-shortcuts.ini"));
+    prefs.settings().setValue("editor/backup", false);
+    prefs.settings().setValue("editor/live-save", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.loadDocument(path));
+    window.activateManuscript(true);
+    auto *editor = window.editor();
+    CHECK(until([&] { return editor->hasFocus(); }));
+    const int origin = editor->textCursor().position();
+    const int first = text.indexOf("Inspector Goose");
+    const int second = text.indexOf("The lunar auditor");
+    const int third = text.lastIndexOf("Goose");
+    auto click = [&](int index, Qt::KeyboardModifiers mods) {
+        QTextCursor source(editor->document());
+        source.setPosition(index);
+        const auto point = editor->cursorRect(source).center() + QPoint(1, 0);
+        CHECK(editor->viewport()->rect().contains(point));
+        const auto global = editor->viewport()->mapToGlobal(point);
+        QMouseEvent press(QEvent::MouseButtonPress, point, global, Qt::LeftButton, Qt::LeftButton, mods);
+        QApplication::sendEvent(editor->viewport(), &press);
+        QMouseEvent release(QEvent::MouseButtonRelease, point, global, Qt::LeftButton, Qt::NoButton, mods);
+        QApplication::sendEvent(editor->viewport(), &release);
+    };
+    click(second + 3, Qt::ControlModifier);
+    CHECK(editor->textCursor().position() == first);
+    key(Qt::Key_Left, Qt::AltModifier);
+    CHECK(editor->textCursor().position() == origin);
+    key(Qt::Key_Right, Qt::AltModifier);
+    CHECK(editor->textCursor().position() == first);
+    key(Qt::Key_F6); // No earlier mention adds no jump.
+    CHECK(editor->textCursor().position() == first);
+    key(Qt::Key_F6, Qt::ShiftModifier);
+    CHECK(editor->textCursor().position() == second);
+    click(second + 3, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(editor->textCursor().position() == third);
+    key(Qt::Key_J, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(editor->textCursor().position() == second);
+    key(Qt::Key_F6);
+    CHECK(editor->textCursor().position() == first);
+    key(Qt::Key_F2);
+    CHECK(editor->textCursor().position() == second);
+    click(text.lastIndexOf("Cranolo 1") + 2, Qt::ControlModifier);
+    CHECK(editor->textCursor().blockNumber() == 0);
+    key(Qt::Key_F2);
+    CHECK(editor->textCursor().position() == second);
+    key(Qt::Key_U, Qt::ControlModifier);
+    auto *picker = window.findChild<QDialog *>("symbolPicker");
+    CHECK(picker && until([&] { return picker->findChild<QLineEdit *>("symbolSearch")->hasFocus(); }));
+    key(Qt::Key_Escape);
+    CHECK(until([&] { return !picker->isVisible(); }));
+
+    const auto generic = tmp.filePath("GooseNovel.txt");
+    write(generic, "The Goose Novel\nInspector Goose writes.\nThe lunar auditor reads.");
+    write(generic + ".characters", "Inspector Goose, The lunar auditor\n");
+    CHECK(window.loadDocument(generic));
+    window.activateManuscript(false);
+    CHECK(until([&] { return editor->hasFocus(); }));
+    editor->jumpTo(editor->manuscriptText().indexOf("lunar") + 1);
+    key(Qt::Key_J, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(editor->textCursor().position() == editor->manuscriptText().indexOf("Inspector"));
+    key(Qt::Key_F, Qt::ControlModifier);
+    auto *find = window.findChild<QLineEdit *>("cw-find");
+    find->setText("lunar auditor");
+    CHECK(until([&] { return editor->textCursor().selectedText() == "lunar auditor"; }));
+    const auto beforeAppend = editor->textCursor();
+    const int oldAnchor = beforeAppend.anchor();
+    const int oldPosition = beforeAppend.position();
+    key(Qt::Key_N, Qt::ControlModifier);
+    CHECK(editor->hasFocus() && !find->isVisibleTo(&window));
+    key(Qt::Key_Z, Qt::ControlModifier);
+    CHECK(editor->textCursor().selectedText() == "lunar auditor");
+    CHECK(editor->textCursor().anchor() == oldAnchor && editor->textCursor().position() == oldPosition);
+    if (!window.close()) pressChoice(window, "Discard Unsaved Changes");
 }
 
 void testWritingTools(const QTemporaryDir &tmp)
@@ -523,6 +608,7 @@ int main(int argc, char **argv)
     CHECK(tmp.isValid());
     testWindow(tmp);
     testDuplicateHistory(tmp);
+    testMentionCommands(tmp);
     testWritingTools(tmp);
     testGroupedLiveEdits(tmp);
     testKeyboardLayouts(tmp);

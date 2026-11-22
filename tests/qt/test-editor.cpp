@@ -215,10 +215,121 @@ void wholeWordDeletion(ManuscriptEditor &ed)
     ed.selectRange(lastStart, lastStart+4, false);
     ed.insertLiteral(QStringLiteral("new--name"));
     expect(ed, QString(text).replace(QStringLiteral("last"), QStringLiteral("new--name")));
-    require(QApplication::clipboard()->text() == QStringLiteral("clipboard") && !ed.textCursor().hasSelection(),
-            "literal insertion replaces the selection and preserves the clipboard");
+    require(QApplication::clipboard()->text() == QStringLiteral("last") && !ed.textCursor().hasSelection(),
+            "literal insertion copies the displaced selection");
     ed.undo();
     expect(ed, text);
+}
+
+void deletionClipboard(ManuscriptEditor &ed)
+{
+    auto *clipboard = QApplication::clipboard();
+    ed.loadText("A goose");
+    for (int i = 0; i < 5; ++i) press(ed, Qt::Key_Backspace);
+    require(clipboard->text() == "goose", "backward deletions accumulate in reading order");
+    ed.undo();
+    require(clipboard->text() == "goose", "undo preserves the last deliberate deletion");
+    ed.jumpTo(2, false);
+    press(ed, Qt::Key_Delete);
+    press(ed, Qt::Key_Delete);
+    require(clipboard->text() == "go", "forward deletions build a fresh clipboard entry");
+    press(ed, Qt::Key_Backspace);
+    require(clipboard->text() == " ", "reversing deletion direction starts a new entry");
+
+    ed.loadText("First red fox.\nAnother fox.");
+    ed.jumpTo(7, false);
+    press(ed, Qt::Key_W, Qt::ControlModifier);
+    require(clipboard->text() == "red", "word deletion copies the word without automatic space cleanup");
+    ed.undo();
+    ed.selectRange(6,9,false);
+    clipboard->setText("blue");
+    ed.paste();
+    expect(ed, "First blue fox.\nAnother fox.");
+    require(clipboard->text() == "red", "paste reads its input before publishing the displaced selection");
+    ed.selectRange(10,6,false);
+    type(ed,"gold");
+    require(clipboard->text() == "blue", "typing over a backward selection places it on the clipboard");
+    ed.jumpTo(0,false);
+    press(ed, Qt::Key_Y, Qt::ControlModifier);
+    require(clipboard->text() == "First gold fox.\n", "whole paragraph deletion includes its actual line break");
+    ed.undo();
+    ed.redo();
+    require(clipboard->text() == "First gold fox.\n", "replaying deletion does not change the clipboard");
+    ed.replaceRangeLiteral(0,7,"Second");
+    require(clipboard->text() == "Another", "a deliberate range replacement copies the source passage");
+
+    ed.loadText("The bill.");
+    ed.selectRange(4,8,false);
+    ime(ed, "beak");
+    require(clipboard->text() == "bill", "input method commits capture replaced selections");
+    clipboard->setText("keep");
+    ed.selectRange(4,8,false);
+    ed.setCopyDeletedText(false);
+    type(ed, "fee");
+    press(ed, Qt::Key_Backspace);
+    require(clipboard->text() == "keep", "disabling automatic copy preserves the clipboard");
+    ed.selectRange(0,3,false);
+    ed.cut();
+    require(clipboard->text() == "The", "explicit Cut still copies when automatic copy is off");
+    ed.setCopyDeletedText(true);
+    ed.loadText("A");
+    clipboard->setText("keep");
+    type(ed, " new--s ");
+    ed.jumpTo(0,false);
+    require(clipboard->text() == "keep", "smart punctuation and automatic trimming preserve the clipboard");
+}
+
+void appendUndoPosition(ManuscriptEditor &ed)
+{
+    ed.resize(360,265);
+    ed.show();
+    ed.setFocus();
+    for (int kind = 0; kind < 3; ++kind) {
+        const bool generic = kind == 2;
+        QString manuscript = generic ? QString() : QStringLiteral("Book//");
+        for (int i = 1; i <= 55; ++i) {
+            if (!generic) manuscript += QStringLiteral("Note %1: Haiku #%1: ").arg(i);
+            manuscript += QStringLiteral("The inspector audited a goose. ").repeated(5).trimmed() + u'\n';
+        }
+        ed.loadText(manuscript);
+        const int caret = ed.document()->findBlockByNumber(27).position() + 70;
+        const int anchor = caret + 9;
+        ed.selectRange(anchor,caret);
+        settle();
+        const auto cursorY = [&] { return ed.viewport()->mapTo(&ed, ed.cursorRect().center()).y(); };
+        const int initialY = cursorY();
+        const int top = ed.cursorForPosition(QPoint(4, 2)).position();
+        if (kind == 1) ed.appendCrumb("Haiku");
+        else press(ed, Qt::Key_N, Qt::ControlModifier);
+        const int body = ed.textCursor().position();
+        press(ed, Qt::Key_Z, Qt::ControlModifier);
+        settle();
+        expect(ed, manuscript);
+        require(ed.textCursor().position() == caret && ed.textCursor().anchor() == anchor,
+                "undo append restores the precise selection and its direction");
+        require(qAbs(initialY - cursorY()) <= 1 && ed.cursorForPosition(QPoint(4, 2)).position() == top,
+                "undo append restores the original viewport into a wrapped manuscript");
+        press(ed, Qt::Key_Z, Qt::ControlModifier | Qt::ShiftModifier);
+        require(ed.textCursor().position() == body && ed.textCursor().atBlockEnd() && !ed.textCursor().hasSelection(),
+                "redo append resumes at the new body or paragraph");
+        ed.undo();
+        type(ed,"a");
+        require(!ed.document()->isRedoAvailable(), "an edit after undo discards the old append position");
+    }
+    ed.loadText("Book//Leaf 1: : A");
+    press(ed, Qt::Key_Down);
+    press(ed, Qt::Key_Down);
+    ed.topCurrentCrumb();
+    press(ed, Qt::Key_N, Qt::ControlModifier);
+    ed.undo();
+    require(ed.virtualRows() == 2 && !ed.document()->isModified(),
+            "undo append restores a virtual writing row without adding manuscript data");
+    ed.redo();
+    press(ed, Qt::Key_Up, Qt::ControlModifier);
+    ed.undo();
+    ed.redo();
+    require(ed.textCursor().blockNumber() == 1 && ed.textCursor().atBlockEnd(),
+            "redo resumes at the appended body after its provisional space was trimmed");
 }
 
 void undoAndBoundaries(ManuscriptEditor &ed)
@@ -775,6 +886,8 @@ int main(int argc, char **argv)
     spacing(editor);
     rewritingLastWord(editor);
     wholeWordDeletion(editor);
+    deletionClipboard(editor);
+    appendUndoPosition(editor);
     undoAndBoundaries(editor);
     editRuns(editor);
     shiftNavigation(editor);

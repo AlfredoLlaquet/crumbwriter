@@ -3,6 +3,7 @@
 #include "mainwindow.h"
 #include "preferences.h"
 #include "spellwords.h"
+#include "symbolcatalog.h"
 #include "textcompanion.h"
 
 #include <QApplication>
@@ -54,6 +55,10 @@ int runPackageSmokeTest()
         return fail("The manuscript icon could not be decoded.");
     if (!readBytes(":/license/LICENSE").contains("WITHOUT WARRANTY"))
         return fail("The offline software license is missing.");
+    const auto &symbols = SymbolCatalog::instance();
+    const auto heart = symbols.search("U+2661");
+    if (heart.size() != 1 || symbols.at(heart.first()).text != QStringLiteral("♡"))
+        return fail("The offline symbol catalog could not be searched.");
     if (!SpellWords::available() || !SpellWords().issues(QStringLiteral("She’s writing in color")).isEmpty() ||
         SpellWords().issues("zzqzwrrp").isEmpty())
         return fail("The American English spelling dictionary is unusable.");

@@ -6,12 +6,15 @@
 #include "searchpanel.h"
 #include "spellcheck.h"
 #include "synonympanel.h"
+#include "synonymwriting.h"
 #include "textkeys.h"
+#include "windowlayout.h"
 
 #include <QApplication>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
+#include <QMouseEvent>
 #ifdef Q_OS_MACOS
 #include <QMenuBar>
 #endif
@@ -19,9 +22,27 @@
 #include <QSplitter>
 #include <QStyle>
 #include <QTextBlock>
+#include <QTextLayout>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+
+namespace {
+// cursorForPosition snaps to an insertion point even in the empty margin.
+// Look up the actual character so clicking unused paper cannot follow a name.
+int characterUnderPointer(ManuscriptEditor *editor, const QPoint &point)
+{
+    const auto cursor = editor->cursorForPosition(point);
+    const QRect caret = editor->cursorRect(cursor);
+    if (point.y() < caret.top() || point.y() > caret.bottom()) return -1;
+    const auto line = cursor.block().layout()->lineForTextPosition(cursor.positionInBlock());
+    if (!line.isValid()) return -1;
+    const qreal x = point.x() - caret.left() + line.cursorToX(cursor.positionInBlock());
+    const auto bounds = line.naturalTextRect();
+    if (x < bounds.left() || x >= bounds.right()) return -1;
+    return cursor.block().position() + line.xToCursor(x, QTextLine::CursorOnCharacter);
+}
+}
 
 void MainWindow::buildToolbar(QVBoxLayout *layout)
 {
@@ -74,6 +95,8 @@ void MainWindow::buildMenu()
     copyAction_ = add(edit, "Copy crumb", "Ctrl+Q", [this] { editor_->copyCrumb(); editor_->setFocus(); });
     deleteAction_ = add(edit, "Delete current crumb", "Ctrl+Y", [this] { editor_->deleteCrumb(); editor_->setFocus(); });
     add(edit, "Delete word or space", "Ctrl+W", [this] { editor_->deleteWord(); editor_->setFocus(); });
+    add(edit, "Insert Symbol…", "Ctrl+U", [this] { openSymbols(); });
+    add(edit, "Complete Name", "F5", [this] { editor_->setFocus(); synonymWriting_->complete(); });
     add(edit, "Next spelling issue…", "F8", [this] { spelling_->next(false); });
     add(edit, "Previous spelling issue…", "Shift+F8", [this] { spelling_->next(true); });
     add(edit, "Manuscript dictionary…", "Ctrl+Shift+D", [this] { spelling_->showDictionary(); });
@@ -95,9 +118,13 @@ void MainWindow::buildMenu()
     add(nav, "Find regular expression…", "Ctrl+R", [this] { search_->findInMode(cwsearch::Mode::Regex); });
     add(nav, "Find and Replace…", "Ctrl+H", [this] { search_->findReplace(); });
     goToNumberAction_ = add(nav, "Go to crumb number…", "Ctrl+L", [this] { search_->goToNumber(); });
-    add(nav, "Back", "F2", [this] { goBack(false); });
-    add(nav, "Forward", "Shift+F2", [this] { goBack(true); });
-    crumbOnlyActions_ << add(nav, "Follow crumb reference", "Ctrl+Shift+J", [this] { followReference(); });
+    add(nav, "Back", "F2 / Alt+Left", [this] { goBack(false); });
+    add(nav, "Forward", "Shift+F2 / Alt+Right", [this] { goBack(true); });
+    add(nav, "Follow Reference or Name", "Ctrl+Shift+J", [this] {
+        followAt(editor_->textCursor().position(), true);
+    });
+    add(nav, "Previous Mention", "F6", [this] { synonymWriting_->navigate(true); });
+    add(nav, "Next Mention", "Shift+F6", [this] { synonymWriting_->navigate(false); });
     crumbOnlyActions_ << add(nav, "Next numbering warning", "F4", [this] { numberingWarning(false); });
     crumbOnlyActions_ << add(nav, "Previous numbering warning", "Shift+F4", [this] { numberingWarning(true); });
     add(nav, "Add bookmark…", "Ctrl+B", [this] { bookmarks_->addCurrent(); });
@@ -108,10 +135,13 @@ void MainWindow::buildMenu()
     indexAction_ = add(nav, "Search genres", "Ctrl+Shift+4", [this] { focusNavigation(true); });
     sortAction_ = add(nav, "Change genre order", "Shift+F7", [this] { side_->toggleGenreOrder(); });
     menu_->addSeparator();
-    add(menu_, "Show or hide right panel", "F9", [this] { showSidebar(side_->isHidden()); });
-    add(menu_, "Show or hide left panel", "Shift+F9", [this] {
+    auto *view = menu_->addMenu("&View");
+    add(view, "Show or Hide Navigation", "F9", [this] { showSidebar(side_->isHidden()); });
+    add(view, "Show or Hide Synonym Lists", "Shift+F9", [this] {
         showPanel(synonyms_, synonyms_->isHidden(), synonymWidth_);
     });
+    add(view, "Arrange Panels and Columns…", "Ctrl+Shift+F10", [this] { layouts_->arrange(this); });
+    add(view, "Restore Default Layouts", {}, [this] { layouts_->restoreDefaults(); });
     add(menu_, "Manuscript statistics…", "Ctrl+Shift+I", [this] { showStatistics(); });
     add(menu_, "Settings…", "Ctrl+,", [this] { prefs_.show(this); });
     add(menu_, "Keyboard Shortcuts…", "F1", [this] { showShortcutHelp(this); });
@@ -181,8 +211,8 @@ void MainWindow::jump(int position)
 
 void MainWindow::appendCrumb()
 {
-    if (!search_->isHidden()) search_->closeSearch();
     editor_->appendCrumb();
+    if (!search_->isHidden()) search_->closeSearch(false);
     editor_->setFocus();
 }
 
@@ -212,10 +242,17 @@ void MainWindow::numberingWarning(bool backward)
                .arg(subject).arg(warn->line + 1).arg(warn->expected, warn->actual));
 }
 
-void MainWindow::followReference()
+bool MainWindow::followAt(int position, bool backward, bool mouse)
 {
-    const QTextCursor c = editor_->textCursor();
+    if (position < 0) return false;
+    QTextCursor c(editor_->document());
+    c.setPosition(position);
     const auto &record = editor_->model().record(c.blockNumber());
+    if (editor_->model().isGeneric() || (!mouse && editor_->virtualRows())) {
+        if ((mouse || !editor_->virtualRows()) && synonymWriting_->follow(position, backward, mouse)) return true;
+        if (!mouse) showNavigationStatus("Place the caret on a name from Characters or Recurring.");
+        return false;
+    }
     QString labels = "crumb";
     if (!record.label.isEmpty() && record.label.compare("crumb", Qt::CaseInsensitive) != 0)
         labels += "|" + QRegularExpression::escape(record.label);
@@ -227,19 +264,47 @@ void MainWindow::followReference()
     auto matches = expression.globalMatch(line);
     while (matches.hasNext()) {
         const auto match = matches.next();
-        if (here < match.capturedStart() || here > match.capturedEnd()) continue;
+        if (here < match.capturedStart() || here > match.capturedEnd() ||
+            (mouse && here == match.capturedEnd())) continue;
         bool ok;
         const quint64 number = match.captured(1).toULongLong(&ok);
         const int dest = ok ? editor_->model().findNumber(number, c.position(), false, true) : -1;
         if (dest >= 0) jump(dest);
         else showNotice(QString("Crumb %1 was not found.").arg(match.captured(1)));
-        return;
+        return true;
     }
-    showNotice("Place the caret on a reference such as “crumb 200”.");
+    if (synonymWriting_->follow(position, backward, mouse)) return true;
+    if (!mouse) showNavigationStatus("Place the caret on a name or a reference such as “crumb 200”.");
+    return false;
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *e)
 {
+    if (watched == qApp && e->type() == QEvent::ApplicationPaletteChange)
+        applyPreferences();
+    if (e->type() == QEvent::Polish) {
+        auto *child = qobject_cast<QWidget *>(watched);
+        if (child && child->isWindow()) {
+            for (auto *owner = child->parentWidget(); owner; owner = owner->parentWidget()) {
+                if (owner == this) {
+                    child->setAttribute(Qt::WA_WindowPropagation);
+                    break;
+                }
+            }
+        }
+    }
+    if (e->type() == QEvent::MouseButtonPress && watched == editor_->viewport()) {
+        const auto *click = static_cast<QMouseEvent *>(e);
+        const auto mods = click->modifiers() & ~Qt::ShiftModifier;
+        bool follow = mods == Qt::ControlModifier;
+#ifdef Q_OS_MACOS
+        follow |= mods == Qt::MetaModifier;
+#endif
+        if (click->button() == Qt::LeftButton && follow) {
+            const int position = characterUnderPointer(editor_, click->position().toPoint());
+            if (followAt(position, !click->modifiers().testFlag(Qt::ShiftModifier), true)) return true;
+        }
+    }
     if (e->type() != QEvent::KeyPress) return false;
     auto *key = static_cast<QKeyEvent *>(e);
 #ifdef Q_OS_MACOS
@@ -255,6 +320,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     if (isComposedTextKey(*key)) return false;
     const bool inSynonyms = widget == synonyms_ || synonyms_->isAncestorOf(widget);
     const bool inPanel = inSynonyms || widget == side_ || side_->isAncestorOf(widget);
+    if (widget == editor_ && key->key() == Qt::Key_Escape && !key->modifiers())
+        synonymWriting_->dismissHint();
     if (!inPanel && search_->handleKey(key)) return true;
     const auto mods = key->modifiers() & (Qt::ControlModifier | Qt::AltModifier |
                                            Qt::ShiftModifier | Qt::MetaModifier);
@@ -266,6 +333,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
         case Qt::Key_Comma: prefs_.show(this); return true;
         case Qt::Key_B: bookmarks_->addCurrent(); return true;
         case Qt::Key_N: appendCrumb(); return true;
+        case Qt::Key_U: openSymbols(); return true;
         default: break;
         }
     } else if (mods == (Qt::ControlModifier | Qt::ShiftModifier)) {
@@ -283,13 +351,15 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
         }
         if (code == Qt::Key_N) { if (newRequested) newRequested(); return true; }
         if (code == Qt::Key_S) { save(true); return true; }
-        if (code == Qt::Key_J && editor_->hasFocus() && !editor_->model().isGeneric()) { followReference(); return true; }
+        if (code == Qt::Key_J && editor_->hasFocus()) { followAt(editor_->textCursor().position(), true); return true; }
         if (code == Qt::Key_I) { showStatistics(); return true; }
         if (code == Qt::Key_D) { spelling_->showDictionary(); return true; }
     } else if (mods == Qt::AltModifier) {
         switch (code) {
         case Qt::Key_B: bookmarks_->showWindow(); return true;
         case Qt::Key_W: close(); return true;
+        case Qt::Key_Left:  if (editor_->hasFocus()) { goBack(false); return true; } break;
+        case Qt::Key_Right: if (editor_->hasFocus()) { goBack(true); return true; } break;
         default: break;
         }
     } else if (mods == Qt::ShiftModifier) {
@@ -310,6 +380,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     }
     if (editor_->hasFocus() && (mods == Qt::NoModifier || mods == Qt::ShiftModifier)) {
         if (code == Qt::Key_F2) { goBack(mods == Qt::ShiftModifier); return true; }
+        if (code == Qt::Key_F5 && !mods) { synonymWriting_->complete(); return true; }
+        if (code == Qt::Key_F6) { synonymWriting_->navigate(mods == Qt::NoModifier); return true; }
         if (code == Qt::Key_F4 && !editor_->model().isGeneric()) { numberingWarning(mods == Qt::ShiftModifier); return true; }
         if (code == Qt::Key_F8) { spelling_->next(mods == Qt::ShiftModifier); return true; }
     }

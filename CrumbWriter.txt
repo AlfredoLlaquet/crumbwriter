@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 2.4. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 2.5. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Build, update and launch
 ------------------------
@@ -140,7 +140,7 @@ application ID share the identifier org.thecrumbs.CrumbWriter.
 Update
 ~~~~~~
 
-Versions 2.1 through 2.3 already have the FreeBSD build dependencies for 2.4. Older
+Versions 2.1 through 2.4 already have the FreeBSD build dependencies for 2.5. Older
 checkouts can use the full package list above. Save the manuscript and close
 all Crumb Writer windows. In the existing checkout on main, update as the
 desktop account.
@@ -149,7 +149,7 @@ desktop account.
 
 Repeat the original make install command with the same account and prefix.
 Launch from the desktop menu. F10, then A, opens About and shows the installed
-version. The command crumbwriter --version also prints "Crumb Writer 2.4".
+version. The command crumbwriter --version also prints "Crumb Writer 2.5".
 
 Opening a manuscript
 ~~~~~~~~~~~~~~~~~~~~
@@ -324,13 +324,14 @@ A successful manuscript or recovery-draft save checkpoints the saved revision.
 Appearance and editing
 ----------------------
 
-The active crumb or paragraph has a very light blue band across its wrapped lines. A dark
-theme receives a subdued blue tint. A search selection has its own foreground
-and background. Focus in the sidebar, Find or Replace belongs to the manuscript
-window. When another window becomes active, this manuscript's paper turns
-light gray (#e5e5e5) with dark text. The active window restores its normal
-paper when focus returns. Settings offers Desktop, Light and Dark, a font
-family and a point size between 6 and 96. Font changes affect the display.
+The active crumb or paragraph has a pale blue band in a light theme. A dark
+theme uses a lighter neutral gray across the wrapped lines. When the main
+window loses focus, the whole manuscript takes a softer gray and the band
+disappears. Dark paper keeps light text. Focus in a side panel, Find, or
+Replace belongs to the main window. Selections, search matches, warnings,
+spelling marks, and synonym hints use colors appropriate to the chosen
+palette. Settings offers Follow desktop, Light, Dark, and a manuscript font
+from 6 to 96 points.
 
 In Crumb mode, Ctrl+N uses the last recognizable label and one greater
 than the largest valid header number. With no earlier label it uses Crumb.
@@ -338,7 +339,9 @@ An empty title produces "Crumb 42: : " with the caret after the final space.
 In a blank window, typing the work title and // switches to Crumb mode.
 Ctrl+N then creates the first header on that same line. Change Crumb to a
 particular label once and the next header reuses it. Existing terminal line
-breaks follow the newly appended crumb. One Undo removes the new record.
+breaks follow the newly appended crumb. One Undo removes the new record and
+restores the exact original selection, caret, and view. Redo returns to
+the newly appended body or paragraph. The Genres action uses the same edit.
 
 Typing "Haiku #" in a title completes the next number from the nearest
 earlier Haiku. The typed genre spelling is preserved. With no previous
@@ -386,15 +389,28 @@ the typing run. An automatic save may publish part of a run while typing
 continues. Undo still covers the complete run. Ctrl+Shift+Z replays the
 same edits, including typographic characters and genre-number completion.
 
+Settings → Writing → Copy deleted text to the clipboard is on by default.
+Backspace prepends each removed character and forward Delete appends it.
+Each uninterrupted deletion run thus leaves the removed text in reading order.
+Deleting a selected passage, word, or entire crumb also updates the regular
+system clipboard. Pasting over selected text reads the incoming clipboard
+first, then copies the displaced passage. Replace All and bulk spelling
+corrections copy their displaced passages in manuscript order, separated by LF.
+Automatic punctuation, whitespace cleanup, and undo/redo preserve the last
+deliberate clipboard entry. This preference applies to the manuscript.
+
 Visits are ordered most recent first. The list shows only titles in Crumb
 mode (Untitled for an empty title), or the opening text of paragraphs in
 Generic mode. Each visit carries its own caret position, so identical titles
 can lead to different passages. Click an entry or press Ctrl+Shift+3, type
 a fragment, and press Enter. Escape returns focus to the manuscript. F2
-and Shift+F2 move back and forward among deliberate jumps. Refining a search keeps the original
-return position. Ctrl+Shift+J follows the reference under the caret in either
-"crumb 200" or "see crumb 200". Matching ignores case and recognizes the
-current crumb's particular label. F2 returns to the original word.
+and Shift+F2 move back and forward among deliberate jumps. Alt+Left and
+Alt+Right do the same. Refining a search keeps its original return position.
+Ctrl+Shift+J and Ctrl+click follow a numbered reference in Crumb mode, or
+the previous mention of a synonym in either mode. Both "crumb 200" and
+"see Cranolo 200" work in a manuscript whose label is Cranolo. Numbered
+references take precedence. A mouse jump searches from the clicked word,
+and Back returns to the writer's caret before the click.
 
 Navigation and window keys
 --------------------------
@@ -421,12 +437,18 @@ Navigation and window keys
     Ctrl+C / Ctrl+V           Copy selection / paste
     Escape                   Clear the selection and close Find when visible
     F2 / Shift+F2             Back / forward after a deliberate jump
+    Alt+Left / Alt+Right      Back / forward through the same jump history
     F4 / Shift+F4             Next / previous numbering warning
-    Ctrl+Shift+J              Follow a reference in Crumb mode
+    Ctrl+Shift+J / Ctrl+click Follow a numbered reference or previous mention
+    F5 (manuscript)           Accept a name suggestion or show completions
+    F6 / Shift+F6             Previous / next mention of the same group
+    Ctrl+Shift+click          Next mention of the clicked name
+    Ctrl+U                    Insert Symbol
     Ctrl+L                   Find header number in Crumb mode or line in Generic mode
     Ctrl+Shift+3 / +4         Search Visit history / Genres or Titles
     Shift+F7                 Change Genres or Titles sort order
-    F9 / Shift+F9            Show or hide the right / left panel
+    F9 / Shift+F9            Show or hide navigation / synonym lists
+    Ctrl+Shift+F10           Arrange panels and columns for the current window
     Ctrl+Shift+1 / +2         Search Characters / Recurring
     F8 / Shift+F8            Review next / previous spelling issue
     Ctrl+Shift+D             Open the manuscript dictionary
@@ -483,6 +505,42 @@ supplies an insertion point for the next paragraph. Escape returns to the
 physical end. Ctrl+Enter centers the current wrapped line, including the
 last one. Alt+Enter places
 the current physical line's first wrapped row at the top while preserving its caret.
+
+Insert Symbol
+-------------
+
+Ctrl+U opens a modeless visual picker with Search focused. Search by an
+ordinary description, Unicode name, theme, the glyph itself, or a hex code
+such as U+2661. A search for "outline heart" finds ♡. Themes group
+punctuation, typography, music, arrows, mathematics, and other symbols.
+The catalog has 733 symbols in 17 themes. The preview shows the glyph,
+its name and code point. Space characters have a visible width guide.
+The catalog is built into the executable.
+The original themes and search terms accompany Unicode character names.
+The source and distribution notice for the names is in data/symbols.tsv.
+
+Alt+S focuses Search. Alt+T opens the theme selector. Down enters the
+grid. Use the arrows to browse, Enter or double-click to insert and close,
+or Ctrl+Enter to insert and continue browsing. Ctrl+D toggles Favorite.
+Escape closes. Favorites and the 32 most recently used symbols persist
+across manuscripts on this computer. Each insertion goes through the
+ordinary text-edit transaction and replaces any active selection.
+
+Window and panel layouts
+------------------------
+
+Windows remember their dimensions and arrangement in local settings.
+Ctrl+Shift+F10 opens Arrange Panels and Columns in a configurable window.
+Choose a panel or table column, use Space to toggle its visibility, and
+use the move and size controls to change its order and dimensions.
+Characters and Recurring can be arranged independently, as can the current
+information, visit history, and genres or titles. Previously saved layouts
+fit the available space when a window opens on another display. KDE and
+Krohnkite govern the outer placement and live size of tiled windows.
+
+View → Restore Default Layouts restores the original arrangements for
+the main and auxiliary windows. Layout preferences are per computer.
+The manuscript's companion files and its contents are independent.
 
 Live movement selections
 ------------------------
@@ -630,6 +688,31 @@ inside a quoted alias. For example, this line has three aliases.
 Matching is case-insensitive and literal. A search for Fox finds the name
 as a word. F5 reloads changes made to the list file in another editor.
 Save As copies the lists alongside the new manuscript.
+
+In Settings → Names each list offers Automatic, On demand, or Off for
+completion. The default minimum is three typed characters for an automatic
+suggestion. A unique match shows a faint ending. F5 accepts that ending
+as one undoable edit. If the ending would cover existing text or run off
+the page, the status bar shows it instead. F5 works from one typed character
+for on-demand lookup. F5 also opens a keyboard chooser when several names
+match. Arrows and Enter choose, Escape dismisses. Ordinary typing uses
+the alias the writer started, including multiword names.
+
+Each list offers All mentions, Current group only, or Off for its thin
+straight underline. A blank underline color follows the desktop or selected
+theme. Recognition uses complete names with Unicode word boundaries and
+treats straight and curly apostrophes as equivalent. A shorter alias
+contained in a longer mention contributes no extra hit. In "Inspector
+Goose saluted a goose", Inspector Goose and the second goose are two hits.
+
+F6 finds an earlier mention of any alias in the group under or immediately
+before the caret. Shift+F6 looks forward. Ctrl+Shift+click follows a name
+forward. macOS accepts Command+click and Command+Shift+click as well.
+An alias belonging to several groups offers a keyboard chooser. A successful
+jump centers its destination and records the departure in Back/Forward.
+Reaching the first or last mention shows a brief message and leaves the
+writer in place. Completion and underlining settings are independent of
+navigation and of F3 manuscript search.
 
 American English spelling
 -------------------------
@@ -836,6 +919,14 @@ adapter keeps file bytes, clipboard text and search positions consistent.
                                            and recovery from line fingerprints
     src/qt/synonympanel.*, synonymfile.*   Left panel, alias groups, CSV text
     src/qt/synonymresults.*                Results for complete aliases
+    src/qt/synonymmatch.*                  Shared alias index and per-block matches
+    src/qt/synonymwriting.*, synonymsettings.cpp
+                                           Inline hints, marks, jumps and settings
+    src/qt/symbolcatalog.*, symbolpicker.* Offline catalog lookup and visual picker
+    data/symbols.tsv                       Glyphs, names, search terms and themes
+    src/qt/editorcolors.h                  Theme-aware manuscript and interface colors
+    src/qt/windowlayout.*, layoutparts.*, layoutdialog.cpp
+                                           Saved layouts and keyboard arrangement
     src/qt/textcompanion.*                 Checked atomic reads and writes
                                            for lists and the user dictionary
     src/qt/spellcheck.*, spellwords.*      Spelling controller and word checks
@@ -873,6 +964,12 @@ the layout uses a small default font for empty separators, with body and
 heading sizes applied to the appropriate nonblank blocks.
 Whole-file regex scans and replacement planning can run in the background.
 Stale results are invalidated when the query or document changes.
+
+Characters and Recurring feed a shared case-folded prefix tree. Matching
+caches offsets within individual text blocks. Editing a paragraph invalidates
+that paragraph. Moving or wrapping a block at a new width can reuse its
+relative matches. The Occurrences window processes blocks in short batches
+and uses the same matches as underlining and navigation.
 
 Every typed or deleted character completes its own QTextCursor edit block
 so model observers, painting and autosave can see the new text immediately.
@@ -981,9 +1078,12 @@ Verification
 Use make check-core for the parser and storage tests without a display. In a
 graphical session, make check runs the core and Qt suites. make check-gui
 runs the model, document store, bookmarks, synonym lists, spelling,
-navigation, editor, live movement selections, search, window and resize
+navigation, editor, live movement selections, search, window, appearance,
+layout, symbol picker, interactive synonyms and resize
 tests. The resize test measures a completed paint after typing in a moving
-window and checks the actual text and caret.
+window with recognized aliases on every paragraph and checks the actual text
+and caret. The installed-package smoke test verifies the embedded symbol
+catalog by searching for U+2661.
 The same Makefile supports FreeBSD base make and GNU make.
 
 Check live movements with t-2 across crumbs, j then j2 followed by

@@ -1,4 +1,5 @@
 #include "synonymfile.h"
+#include "synonymmatch.h"
 #include "synonympanel.h"
 
 #include <QApplication>
@@ -12,6 +13,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTableView>
+#include <QTextBlock>
 #include <QTemporaryDir>
 #include <QThread>
 #include <QElapsedTimer>
@@ -238,14 +240,78 @@ void overlaps(const QString &dir)
     QPlainTextEdit editor;
     SynonymPanel panel(editor.document());
     const auto path = dir + "/overlaps";
-    write(path + ".characters", "A A, A, a\n");
-    editor.setPlainText("A A A");
+    write(path + ".characters", "A A, A, a, Goose\n");
+    write(path + ".recurring", "Inspector Goose\n");
+    editor.setPlainText("A A A. Inspector Goose fined that goose.");
     panel.openManuscript(path);
     panel.show();
     auto *search = panel.findChild<QLineEdit *>("charactersSearch");
     key(search, Qt::Key_Return);
     auto *view = panel.findChild<QTableView *>("synonymMatches");
-    check(waitFor([&] { return view->model()->rowCount() == 5; }), "overlapping aliases retained and identical spans deduplicated");
+    check(waitFor([&] { return view->model()->rowCount() == 3; }), "nested hits are suppressed across lists");
+    check(view->model()->index(0, 1).data() == "A A" && view->model()->index(1, 1).data() == "A A" &&
+          view->model()->index(2, 1).data() == "goose", "crossing spans and a separate short mention are retained");
+    // A split above an existing result updates its line and UTF-16 positions.
+    auto c = editor.textCursor();
+    c.setPosition(0);
+    c.insertText("Goose\n");
+    check(waitFor([&] { return view->model()->rowCount() == 4; }) && view->model()->index(3, 0).data() == 2 &&
+          view->model()->index(3, 1).data(Qt::UserRole) == editor.toPlainText().lastIndexOf("goose"),
+          "live occurrence table relocates existing rows");
+    c.setPosition(0);
+    c.setPosition(6, QTextCursor::KeepAnchor);
+    c.removeSelectedText();
+    check(waitFor([&] { return view->model()->rowCount() == 3; }) && view->model()->index(2, 0).data() == 1,
+          "merging away the inserted line updates the open table");
+}
+
+void matcher()
+{
+    QPlainTextEdit editor;
+    SynonymMatcher matches(editor.document());
+    matches.setGroups({{"Inspector Goose", "Goose", "O'Neil"}, {"Shared", "Alias"}},
+                      {{"Understudy", "Alias"}, {"His Feathered Excellency", "O’Neil"}});
+    editor.setPlainText("🪶 Inspector Goose saw a goose.\nO’NEIL met an alias, and Aliasing left.");
+    const auto first = matches.mentions(editor.document()->begin());
+    const auto second = matches.mentions(editor.document()->lastBlock());
+    check(first.size() == 2 && first.first().start == 3 && first.first().end == 18 &&
+          first.last().groups == QList<int>{0}, "nested alias is suppressed and supplementary offsets survive");
+    check(second.size() == 2 && second.first().groups == QList<int>({0, 3}) &&
+          second.last().groups == QList<int>({1, 2}), "whole words, apostrophes, and ambiguous groups");
+    check(matches.mentionAt(first.first().end)->start == first.first().start &&
+          matches.mentionAt(first.first().end + 1) == std::nullopt, "at and immediately after mentions");
+    const auto previous = matches.neighbor(second.first(), 0, true);
+    check(previous && previous->start == first.last().start && !matches.neighbor(first.first(), 0, true) &&
+          matches.neighbor(first.last(), 0, false)->start == second.first().start, "strict document-order navigation");
+
+    auto c = editor.textCursor();
+    c.setPosition(first.last().start);
+    c.setPosition(first.last().end, QTextCursor::KeepAnchor);
+    c.insertText("duck");
+    check(matches.mentions(editor.document()->begin()).size() == 1 &&
+          matches.mentions(editor.document()->lastBlock()).first().start == second.first().start - 1,
+          "only the edited block changes; later offsets follow the text");
+    editor.undo();
+    check(matches.mentions(editor.document()->begin()).size() == 2, "cached matches refresh on undo");
+
+    matches.setGroups({{"X", "the lunar auditor", "O'Neil"}}, {{"O’Neil", "lunar audience"}});
+    editor.setPlainText("the lunar aud");
+    auto candidates = matches.completions(13, true, true, 3);
+    check(candidates.size() == 1 && candidates.first().alias == "the lunar auditor" &&
+          candidates.first().start == 0 && candidates.first().suffix == "itor", "longest multiword prefix wins");
+    candidates = matches.completions(13, false, true, 3);
+    check(candidates.size() == 1 && candidates.first().start == 4 &&
+          candidates.first().suffix == "ience", "list filters apply before choosing the longest prefix");
+    editor.setPlainText("O’N");
+    candidates = matches.completions(3, true, true, 3);
+    check(candidates.size() == 1 && candidates.first().suffix == "eil", "equivalent spellings complete once");
+    check(matches.completions(3, true, true, 4).isEmpty() && matches.completions(2, true, true, 1).isEmpty(),
+          "minimum prefix and inside-word safeguards");
+    matches.setGroups({{"Greenfinch", "Greengage", "Green goose"}, {"Green room"}}, {});
+    editor.setPlainText("gre");
+    check(matches.completions(3, true, false, 3, 2).size() == 2 &&
+          matches.completions(3, true, false, 3).size() == 4,
+          "the quiet hint detects ambiguity early while the chooser lists every candidate");
 }
 }
 
@@ -258,5 +324,6 @@ int main(int argc, char **argv)
     persistence(dir.path());
     pane(dir.path());
     overlaps(dir.path());
+    matcher();
     std::puts("Synonym groups, companion files, keyboard operations and occurrence search passed.");
 }

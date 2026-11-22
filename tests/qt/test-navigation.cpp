@@ -81,6 +81,8 @@ int main(int argc, char **argv)
     check(displayedNames(list) == alphabetical && list->currentItem()->text(0) == "Haiku",
           "second toggle restores name order and the selection");
     auto *today = panel.findChild<QLabel *>("todayCount");
+    app.processEvents();
+    const int crumbInformationHeight = today->parentWidget()->height();
     const QString daily = today->text();
     panel.updateCurrent();
     check(daily.startsWith("New today") && today->text() == daily, "ordinary navigation preserves the daily count");
@@ -199,6 +201,10 @@ int main(int argc, char **argv)
     prefix.removeSelectedText();
     check(!order->isChecked() && displayedNames(list).first() == "Dawn" &&
           genreSearch->placeholderText() == "Search titles", "returning to generic mode restores the title order");
+
+    app.processEvents();
+    check(today->parentWidget()->height() < crumbInformationHeight,
+          "Generic mode gives the freed information-panel space to its navigation lists");
 
     QLocale::setDefault(QLocale(QLocale::Spanish, QLocale::Spain));
     editor.loadText(QStringLiteral("Book\n") + QStringLiteral("word ").repeated(1233) + "word");

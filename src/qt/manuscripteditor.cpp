@@ -1,5 +1,6 @@
 #include "manuscripteditor.h"
 #include "committedpunctuation.h"
+#include "editorcolors.h"
 #include "manuscripttext.h"
 #include "viselection.h"
 
@@ -51,6 +52,7 @@ public:
     {
         header_.setFontItalic(true);
         title_.setFontWeight(QFont::Bold);
+        warningInk_ = EditorColors::warning(editor_->palette().base().color());
         updateTypography();
         timer_.setSingleShot(true);
         connect(&timer_, &QTimer::timeout, this, [this] {
@@ -112,6 +114,18 @@ public:
             document()->setDefaultFont(defaultFont);
     }
 
+    void updateWarningInk()
+    {
+        const QColor next = EditorColors::warning(editor_->palette().base().color());
+        if (next == warningInk_) return;
+        warningInk_ = next;
+        if (model_.isGeneric()) return;
+        for (int line = 0; line < document()->blockCount(); ++line) {
+            if (!model_.record(line).warnings.isEmpty()) pending_.insert(line);
+        }
+        if (!pending_.isEmpty()) timer_.start(0);
+    }
+
     const QTextCharFormat &writingFormat(ParagraphRole role) const
     {
         if (role == ParagraphRole::DocumentTitle) return documentTitle_;
@@ -139,7 +153,7 @@ protected:
         for (const CrumbWarning &w : r.warnings) {
             auto warning = w.genre.isEmpty() ? header_ : title_;
             warning.setFontWeight(QFont::Bold);
-            warning.setForeground(QColor(202, 30, 45));
+            warning.setForeground(warningInk_);
             setFormat(w.start, w.end - w.start, warning);
         }
     }
@@ -148,6 +162,7 @@ private:
     ManuscriptEditor *editor_;
     CrumbModel &model_;
     QTextCharFormat header_, title_, body_, documentTitle_, chapterTitle_;
+    QColor warningInk_;
     QSet<int> pending_;
     QTimer timer_;
 };
@@ -224,6 +239,8 @@ void ManuscriptEditor::loadText(const QString &text)
 {
     QScopedValueRollback<bool> guard(editing_, true);
     editRun_ = EditRun::None;
+    deletionRun_.clear();
+    replayedAppend_ = nullptr;
     vi_->reset();
     pendingSpace_ = {};
     punctuation_->reset();
@@ -231,6 +248,7 @@ void ManuscriptEditor::loadText(const QString &text)
     clearAlignment();
     searchHighlights_.clear();
     spellingHighlights_.clear();
+    synonymHighlights_.clear();
     setExtraSelections({});
     ManuscriptText::load(document(), normalizeInsertion(text));
     model_->markOpened();
@@ -263,6 +281,7 @@ void ManuscriptEditor::finishTyping()
     if (editing_) return;
     const auto previous = editRun_;
     editRun_ = EditRun::None;
+    deletionRun_.clear();
     if (!punctuation_->pending()) return;
     QScopedValueRollback<bool> guard(editing_, true);
     auto c = textCursor();
@@ -328,13 +347,92 @@ void ManuscriptEditor::selectMatch(int start, int end)
 void ManuscriptEditor::setSearchHighlights(const QList<QTextEdit::ExtraSelection> &ranges)
 {
     searchHighlights_ = ranges;
-    setExtraSelections(spellingHighlights_ + searchHighlights_);
+    setExtraSelections(synonymHighlights_ + spellingHighlights_ + searchHighlights_);
 }
 
 void ManuscriptEditor::setSpellingHighlights(const QList<QTextEdit::ExtraSelection> &ranges)
 {
     spellingHighlights_ = ranges;
-    setExtraSelections(spellingHighlights_ + searchHighlights_);
+    setExtraSelections(synonymHighlights_ + spellingHighlights_ + searchHighlights_);
+}
+
+void ManuscriptEditor::setSynonymHighlights(const QList<QTextEdit::ExtraSelection> &ranges)
+{
+    synonymHighlights_ = ranges;
+    setExtraSelections(synonymHighlights_ + spellingHighlights_ + searchHighlights_);
+}
+
+// Qt owns this marker in the same transaction as the appended text. A joined
+// whitespace cleanup, undo/redo and disposal of a redo branch all follow it.
+class ManuscriptEditor::AppendUndoItem final : public QAbstractUndoItem {
+public:
+    explicit AppendUndoItem(ManuscriptEditor &editor)
+        : editor_(editor), anchor_(editor.textCursor().anchor()), position_(editor.textCursor().position()),
+          topBlock_(editor.firstVisibleBlock().blockNumber()),
+          topRow_(editor.verticalScrollBar()->value() - editor.firstVisibleBlock().firstLineNumber()),
+          inset_(editor.topInset_), virtualRows_(editor.rows_), virtualTop_(editor.virtualTop_),
+          alignment_(editor.alignment_), size_(editor.size()) {}
+
+    void undo() override { editor_.replayedAppend_ = this; }
+    void redo() override { editor_.replayedAppend_ = this; }
+
+    void restore(bool forward) const
+    {
+        if (forward) {
+            auto cursor = QTextCursor(editor_.document()->findBlockByNumber(bodyLine));
+            cursor.movePosition(QTextCursor::EndOfBlock);
+            editor_.setTextCursor(cursor);
+            editor_.ensureCursorVisible();
+            return;
+        }
+        auto cursor = editor_.at(anchor_);
+        cursor.setPosition(editor_.clampPosition(position_), QTextCursor::KeepAnchor);
+        editor_.setTextCursor(cursor);
+        editor_.setVirtualRows(virtualRows_);
+        const bool resized = editor_.size() != size_;
+        if (resized && (alignment_ != Alignment::Visible || virtualRows_)) {
+            editor_.align(alignment_);
+            return;
+        }
+        editor_.alignment_ = alignment_;
+        editor_.setTopInset(inset_);
+        const auto top = editor_.document()->findBlockByNumber(topBlock_);
+        if (top.isValid()) {
+            editor_.blockBoundingRect(top);
+            editor_.verticalScrollBar()->setValue(top.firstLineNumber() + topRow_);
+        }
+        editor_.virtualTop_ = virtualTop_;
+        if (resized && !editor_.viewport()->rect().contains(editor_.cursorRect().center()))
+            editor_.ensureCursorVisible();
+        editor_.viewport()->update();
+    }
+
+    int bodyLine = 0;
+private:
+    ManuscriptEditor &editor_;
+    int anchor_, position_, topBlock_, topRow_, inset_, virtualRows_, virtualTop_;
+    Alignment alignment_;
+    QSize size_;
+};
+
+void ManuscriptEditor::replayEdit(bool forward)
+{
+    QScopedValueRollback<bool> guard(replaying_, true);
+    editRun_ = EditRun::None;
+    punctuation_->reset();
+    pendingSpace_ = {};
+    clearVirtual();
+    clearAlignment();
+    replayedAppend_ = nullptr;
+    if (forward) QPlainTextEdit::redo();
+    else QPlainTextEdit::undo();
+    // Qt sets its own caret after replaying document commands. Restore the
+    // writing view once that native operation has returned.
+    if (replayedAppend_) {
+        replayedAppend_->restore(forward);
+        replayedAppend_ = nullptr;
+    }
+    trackSeparator(textCursor());
 }
 
 void ManuscriptEditor::appendCrumb(const QString &genre)
@@ -352,10 +450,12 @@ void ManuscriptEditor::appendCrumb(const QString &genre)
         if (header.isEmpty()) return;
     }
     finishTyping();
+    const bool recordView = document()->isUndoRedoEnabled() && (!generic || !document()->isEmpty());
+    auto view = recordView ? std::make_unique<AppendUndoItem>(*this) : nullptr;
     clearVirtual();
     clearAlignment();
     QScopedValueRollback<bool> guard(editing_, true);
-    QTextCursor c(document());
+    QTextCursor c = textCursor();
     c.beginEditBlock();
     trimPending(false);
     c.setPosition(writingEnd().position());
@@ -370,6 +470,10 @@ void ManuscriptEditor::appendCrumb(const QString &genre)
         const bool prefix = c.blockNumber() == 0 && !model_->record(0).valid &&
             ManuscriptText::blockText(c.block()).left(c.positionInBlock()).trimmed().endsWith(QStringLiteral("//"));
         ManuscriptText::insert(c, (c.atStart() || prefix ? QString() : QStringLiteral("\n")) + header);
+    }
+    if (view) {
+        view->bodyLine = c.blockNumber();
+        document()->appendUndoItem(view.release());
     }
     c.endEditBlock();
     setTextCursor(c);
@@ -431,6 +535,7 @@ void ManuscriptEditor::deleteCrumb()
     QScopedValueRollback<bool> guard(editing_, true);
     auto cursor = at(first);
     cursor.setPosition(end, QTextCursor::KeepAnchor);
+    const QString removed = removedSelection(cursor);
     cursor.beginEditBlock();
     replaceAt(cursor, {}, Input::Replacement);
     cursor.endEditBlock();
@@ -439,6 +544,7 @@ void ManuscriptEditor::deleteCrumb()
     setTextCursor(cursor);
     trackSeparator(cursor);
     ensureCursorVisible();
+    copyRemovedText(removed);
 }
 
 QTextBlock ManuscriptEditor::crumbEdgeBlock() const
@@ -530,6 +636,8 @@ void ManuscriptEditor::focusOutEvent(QFocusEvent *e)
 void ManuscriptEditor::changeEvent(QEvent *event)
 {
     QPlainTextEdit::changeEvent(event);
+    if (highlighter_ && event->type() == QEvent::PaletteChange)
+        highlighter_->updateWarningInk();
     if (highlighter_ && (event->type() == QEvent::FontChange || event->type() == QEvent::ApplicationFontChange)) {
         highlighter_->updateTypography();
         if (model_->isGeneric())

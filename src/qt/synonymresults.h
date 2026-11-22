@@ -2,26 +2,22 @@
 
 #include <QDialog>
 #include <QPointer>
-#include <QStringList>
-#include <QThreadPool>
 #include <QTimer>
-#include <atomic>
 #include <functional>
-#include <memory>
 
 class QLabel;
 class QPushButton;
 class QTableView;
 class QTextDocument;
+class SynonymMatcher;
 class SynonymMatchModel;
 
 // The result list belongs to one manuscript. Rows use UTF-16 manuscript
-// offsets and are invalidated as soon as its text changes.
+// offsets derived from the shared paragraph cache.
 class SynonymResults final : public QDialog {
 public:
-    SynonymResults(QTextDocument *document, QWidget *parent);
-    ~SynonymResults() override;
-    void showGroup(const QStringList &aliases);
+    SynonymResults(QTextDocument *document, SynonymMatcher *matcher, QWidget *parent);
+    void showGroup(int group);
     void reset();
     std::function<void(int, int)> jumpToMatch;
 
@@ -31,16 +27,19 @@ protected:
 
 private:
     void invalidate();
-    void search();
+    void scan();
+    void edited(int position, int removed, int added);
+    void showCount();
     void activate(int row);
     QPointer<QTextDocument> document_;
-    QStringList aliases_;
+    QPointer<SynonymMatcher> matcher_;
     SynonymMatchModel *model_;
     QTableView *view_;
     QLabel *status_;
     QPushButton *go_;
     QTimer timer_;
-    QThreadPool worker_;
-    std::shared_ptr<std::atomic_bool> cancel_;
+    int group_ = -1;
+    int nextLine_ = 0;
+    int lineCount_ = 0;
     bool current_ = false;
 };

@@ -25,6 +25,10 @@ public:
     void setPaperPalette(const QPalette &palette);
     void setPaperActive(bool active);
     void setSmartPunctuation(bool enabled);
+    void setCopyDeletedText(bool enabled);
+    bool copiesDeletedText() const { return copyDeleted_; }
+    void copyRemovedText(const QString &text);
+    std::function<void()> onTypedText;
     void finishTyping();
     void prepareSearch();
     void clearEditorSelection();
@@ -38,6 +42,7 @@ public:
     void selectMatch(int start, int end);
     void setSearchHighlights(const QList<QTextEdit::ExtraSelection> &ranges);
     void setSpellingHighlights(const QList<QTextEdit::ExtraSelection> &ranges);
+    void setSynonymHighlights(const QList<QTextEdit::ExtraSelection> &ranges);
     std::function<void(QMenu *, int)> spellingMenu;
     void centerCurrentLine();
     void topCurrentCrumb();
@@ -53,7 +58,7 @@ public:
     std::function<void()> onVirtualChanged;
 
     static QString normalizeInsertion(QString text, bool keepFinalSpace = false);
-    int replaceRangeLiteral(int start, int end, const QString &text);
+    int replaceRangeLiteral(int start, int end, const QString &text, bool copyRemoval = true);
     void undo();
     void redo();
     void cut();
@@ -79,6 +84,9 @@ private:
     enum class Alignment { Visible, Center, Top };
     enum class Input { Typed, Paste, Erase, Replacement };
     enum class EditRun { None, Typing, Backspace, Delete };
+    class AppendUndoItem;
+    QString removedSelection(const QTextCursor &cursor) const;
+    void copyDeletionRun(QString removed, EditRun run);
     int clampPosition(int value) const;
     QTextCursor at(int position) const;
     QTextCursor writingEnd() const;
@@ -93,7 +101,7 @@ private:
     void trackSeparator(const QTextCursor &cursor);
     void typeText(const QString &text, int replaceStart = 0, int replaceLength = 0);
     void showPreedit(QInputMethodEvent *event);
-    void removeByKey(QKeyEvent *event);
+    void removeByKey(bool backward, bool byWord);
     void beginInputBlock(QTextCursor &cursor, EditRun run);
     void eraseSelection(QTextCursor cursor, EditRun run = EditRun::None);
     void insertSelection(const QString &text, Input kind);
@@ -117,9 +125,13 @@ private:
     EditRun editRun_ = EditRun::None;
     CrumbHighlighter *highlighter_ = nullptr;
     QList<QTextEdit::ExtraSelection> searchHighlights_, spellingHighlights_;
+    QList<QTextEdit::ExtraSelection> synonymHighlights_;
+    QString deletionRun_;
+    AppendUndoItem *replayedAppend_ = nullptr;
     QPalette paper_;
     bool activePaper_ = true;
     bool smart_ = true;
+    bool copyDeleted_ = true;
     bool editing_ = false;
     bool aligning_ = false;
     bool replaying_ = false;

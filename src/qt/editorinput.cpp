@@ -135,6 +135,39 @@ void ManuscriptEditor::beginInputBlock(QTextCursor &cursor, EditRun run)
         cursor.beginEditBlock();
 }
 
+void ManuscriptEditor::setCopyDeletedText(bool enabled)
+{
+    if (copyDeleted_ == enabled) return;
+    finishTyping();
+    deletionRun_.clear();
+    copyDeleted_ = enabled;
+}
+
+QString ManuscriptEditor::removedSelection(const QTextCursor &cursor) const
+{
+    return copyDeleted_ && cursor.hasSelection() ? ManuscriptText::selectedText(cursor) : QString();
+}
+
+void ManuscriptEditor::copyRemovedText(const QString &text)
+{
+    if (copyDeleted_ && !text.isEmpty())
+        QGuiApplication::clipboard()->setText(text);
+}
+
+void ManuscriptEditor::copyDeletionRun(QString removed, EditRun run)
+{
+    if (removed.isEmpty()) return;
+    if (run == EditRun::None) {
+        deletionRun_.clear();
+        copyRemovedText(removed);
+        return;
+    }
+    if (run != editRun_) deletionRun_ = std::move(removed);
+    else if (run == EditRun::Backspace) deletionRun_.prepend(removed);
+    else deletionRun_.append(removed);
+    copyRemovedText(deletionRun_);
+}
+
 void ManuscriptEditor::typeText(const QString &text, int replaceStart, int replaceLength)
 {
     if (isReadOnly())
@@ -151,9 +184,13 @@ void ManuscriptEditor::typeText(const QString &text, int replaceStart, int repla
         c.movePosition(QTextCursor::End);
         ManuscriptText::insert(c, QString(count, u'\n'));
     }
+    QString selectionRemovedByIme;
+    const int selectionStart = c.selectionStart();
     if (replaceStart || replaceLength) {
-        if (c.hasSelection())
+        if (c.hasSelection()) {
+            selectionRemovedByIme = removedSelection(c);
             c.removeSelectedText();
+        }
         const int pos = clampPosition(c.position() + replaceStart);
         c.setPosition(pos);
         c.setPosition(clampPosition(pos + replaceLength), QTextCursor::KeepAnchor);
@@ -166,13 +203,23 @@ void ManuscriptEditor::typeText(const QString &text, int replaceStart, int repla
                 c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
         }
     }
+    // An input method may remove both the selection and a surrounding range.
+    // Reconstruct the original reading order before either is published.
+    QString removed = removedSelection(c);
+    if (!selectionRemovedByIme.isEmpty()) {
+        const int split = qBound(0, selectionStart - c.selectionStart(), int(removed.size()));
+        removed.insert(split, selectionRemovedByIme);
+    }
     // A discarded duplicate space creates no undo command to join later.
-    if (replaceAt(c, text, Input::Typed)) editRun_ = run;
+    const bool changed = replaceAt(c, text, Input::Typed);
+    if (changed) editRun_ = run;
     else if (editRun_ != run) editRun_ = EditRun::None;
     recordEditForHash(c, text);
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
+    copyRemovedText(removed);
+    if (changed && !text.isEmpty() && onTypedText) onTypedText();
 }
 
 void ManuscriptEditor::insertSelection(const QString &text, Input kind)
@@ -190,13 +237,15 @@ void ManuscriptEditor::insertSelection(const QString &text, Input kind)
         c.movePosition(QTextCursor::End);
         ManuscriptText::insert(c, QString(count, u'\n'));
     }
+    const QString removed = removedSelection(c);
     replaceAt(c, text, kind);
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
+    copyRemovedText(removed);
 }
 
-int ManuscriptEditor::replaceRangeLiteral(int start, int end, const QString &text)
+int ManuscriptEditor::replaceRangeLiteral(int start, int end, const QString &text, bool copyRemoval)
 {
     // Search may use this inside an outer edit block spanning many ranges.
     if (isReadOnly())
@@ -205,9 +254,11 @@ int ManuscriptEditor::replaceRangeLiteral(int start, int end, const QString &tex
     c.setPosition(clampPosition(end), QTextCursor::KeepAnchor);
     finishTyping();
     QScopedValueRollback<bool> guard(editing_, true);
+    const QString removed = copyRemoval ? removedSelection(c) : QString();
     c.beginEditBlock();
     replaceAt(c, text, Input::Replacement);
     c.endEditBlock();
+    copyRemovedText(removed);
     return c.position();
 }
 
@@ -234,51 +285,15 @@ void ManuscriptEditor::cut()
 {
     if (isReadOnly() || !textCursor().hasSelection())
         return;
-    QGuiApplication::clipboard()->setMimeData(createMimeDataFromSelection());
+    if (!copyDeleted_) QGuiApplication::clipboard()->setMimeData(createMimeDataFromSelection());
     insertSelection({}, Input::Erase);
-}
-
-void ManuscriptEditor::replayEdit(bool forward)
-{
-    QScopedValueRollback<bool> guard(replaying_, true);
-    editRun_ = EditRun::None;
-    punctuation_->reset();
-    pendingSpace_ = {};
-    clearVirtual();
-    clearAlignment();
-    QTextCursor restored;
-    // Undo can restore a provisional separator in an earlier crumb and
-    // remove an appended crumb in the same action. Qt's generic undo cursor
-    // points at the last insertion. Restore the actual writing position.
-    const auto observed = connect(document(), &QTextDocument::contentsChange, this,
-        [this, &restored](int pos, int, int added) {
-            const int end = clampPosition(pos + added);
-            for (auto block = document()->findBlock(pos); added && block.isValid()
-                 && block.position() <= end; block = block.next()) {
-                const int after = block.position() + block.length() - 1;
-                if (after > pos && after <= end && document()->characterAt(after-1) == u' ') {
-                    restored = at(after);
-                    break;
-                }
-            }
-        });
-    if (forward)
-        QPlainTextEdit::redo();
-    else
-        QPlainTextEdit::undo();
-    disconnect(observed);
-    if (!restored.isNull())
-        setTextCursor(restored);
-    trackSeparator(textCursor());
 }
 
 void ManuscriptEditor::undo() { replayEdit(false); }
 void ManuscriptEditor::redo() { replayEdit(true); }
 
-void ManuscriptEditor::removeByKey(QKeyEvent *event)
+void ManuscriptEditor::removeByKey(bool backward, bool byWord)
 {
-    const bool backward = event->key() == Qt::Key_Backspace;
-    const bool byWord = event->modifiers().testFlag(Qt::ControlModifier);
     auto c = textCursor();
     if (!c.hasSelection()) {
         const auto op = backward ? (byWord ? QTextCursor::PreviousWord : QTextCursor::PreviousCharacter)
@@ -328,11 +343,13 @@ void ManuscriptEditor::eraseSelection(QTextCursor c, EditRun run)
     QScopedValueRollback<bool> guard(editing_, true);
     clearAlignment();
     beginInputBlock(c, run);
+    const QString removed = removedSelection(c);
     replaceAt(c, {}, Input::Erase);
-    editRun_ = run;
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
+    copyDeletionRun(removed, run);
+    editRun_ = run;
 }
 
 void ManuscriptEditor::showPreedit(QInputMethodEvent *event)
@@ -497,7 +514,7 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
     }
     if ((key == Qt::Key_Delete || key == Qt::Key_Backspace) &&
         (mods == Qt::NoModifier || mods == Qt::ControlModifier)) {
-        removeByKey(e);
+        removeByKey(key == Qt::Key_Backspace, mods == Qt::ControlModifier);
         return;
     }
     if (enter && (mods == Qt::NoModifier || mods == Qt::ShiftModifier)) {
@@ -507,6 +524,32 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
     if (!e->text().isEmpty() && e->text().front().unicode() >= 0x20 &&
         !(mods & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
         typeText(e->text());
+        return;
+    }
+    // Include the platform's alternative editing keys, such as Option–Delete
+    // on macOS, in the same deletion and clipboard policy as the physical keys.
+    if (e->matches(QKeySequence::DeleteStartOfWord) || e->matches(QKeySequence::DeleteEndOfWord)) {
+        removeByKey(e->matches(QKeySequence::DeleteStartOfWord), true);
+        return;
+    }
+    if (e->matches(QKeySequence::Backspace) || e->matches(QKeySequence::Delete)) {
+        removeByKey(e->matches(QKeySequence::Backspace), false);
+        return;
+    }
+    if (e->matches(QKeySequence::DeleteEndOfLine) || e->matches(QKeySequence::DeleteCompleteLine)) {
+        auto c = textCursor();
+        if (!c.hasSelection()) {
+            if (e->matches(QKeySequence::DeleteCompleteLine)) {
+                c.movePosition(QTextCursor::StartOfBlock);
+                c.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+                c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+            } else if (c.atBlockEnd()) {
+                c.movePosition(QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
+            } else {
+                c.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+            }
+        }
+        eraseSelection(c);
         return;
     }
     QPlainTextEdit::keyPressEvent(e);

@@ -21,7 +21,10 @@ class Preferences;
 class SearchPanel;
 class SpellCheck;
 class StatisticsDialog;
+class SymbolPicker;
 class SynonymPanel;
+class SynonymWriting;
+class WindowLayouts;
 
 class MainWindow final : public QWidget {
 public:
@@ -54,7 +57,9 @@ private:
     void jump(int position);
     void goBack(bool forward);
     void numberingWarning(bool backward);
-    void followReference();
+    bool followAt(int position, bool backward, bool mouse = false);
+    void openSymbols();
+    void showNavigationStatus(const QString &message);
     void connectWritingTools();
     void showStatistics();
     void showAbout();
@@ -70,6 +75,9 @@ private:
     NavigationPanel *side_ = nullptr;
     SearchPanel *search_ = nullptr;
     SynonymPanel *synonyms_ = nullptr;
+    SynonymWriting *synonymWriting_ = nullptr;
+    WindowLayouts *layouts_ = nullptr;
+    QPointer<SymbolPicker> symbols_;
     SpellCheck *spelling_ = nullptr;
     Bookmarks *bookmarks_ = nullptr;
     DocumentStore *store_ = nullptr;
@@ -92,6 +100,7 @@ private:
     QPointer<QMessageBox> closeDialog_;
     QPointer<StatisticsDialog> statistics_;
     QPointer<QDialog> about_;
+    QString synonymHint_;
     JumpHistory trail_;
     bool loading_ = false;
     bool allowClose_ = false;

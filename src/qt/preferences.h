@@ -9,6 +9,7 @@
 
 class QDialog;
 class QWidget;
+struct SynonymWritingSettings;
 
 class Preferences {
 public:
@@ -18,12 +19,14 @@ public:
     int saveDelay() const;
     QFont manuscriptFont() const;
     QPalette paletteForDesktop() const;
+    SynonymWritingSettings synonymSettings() const;
     QString lastDocument() const;
     void remember(const QString &path);
     void show(QWidget *parent);
     std::function<void()> changed;
 private:
     void set(const QString &key, const QVariant &value);
+    QWidget *synonymPage(QWidget *parent);
     QSettings settings_;
     QPointer<QDialog> dialog_;
 };

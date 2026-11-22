@@ -331,6 +331,7 @@ ReplacementPlan Pattern::plan(const QString &text, const QString &replacement,
         return int(std::upper_bound(lines.begin(), lines.end(), at) - lines.begin()) - 1;
     };
     int first = -1, last = -1, copied = 0, changes = 0;
+    qsizetype priorRemovals = 0;
     QString output;
     auto flush = [&] {
         if (first < 0)
@@ -355,7 +356,11 @@ ReplacementPlan Pattern::plan(const QString &text, const QString &replacement,
             plan.affectedLines += lineAt(changed.end) - lineAt(changed.start) + 1;
             if (plan.examples.size() < 4)
                 plan.examples.append({first + 1, excerpt(before.toString(), prefix), excerpt(after, prefix)});
+        } else {
+            // Normalization can make every textual edit on these lines a no-op.
+            plan.removedMatches.resize(priorRemovals);
         }
+        priorRemovals = plan.removedMatches.size();
         first = last = -1;
         changes = 0;
     };
@@ -376,6 +381,7 @@ ReplacementPlan Pattern::plan(const QString &text, const QString &replacement,
         output.append(QStringView(text).mid(copied, hit.start - copied));
         output.append(expanded);
         copied = hit.end;
+        if (hit.end > hit.start) plan.removedMatches.append(hit);
         ++changes;
         return true;
     });

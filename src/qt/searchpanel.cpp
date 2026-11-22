@@ -1,4 +1,5 @@
 #include "searchpanel.h"
+#include "editorcolors.h"
 #include "crumbmodel.h"
 #include "manuscripteditor.h"
 #include "manuscripttext.h"
@@ -174,7 +175,7 @@ void SearchPanel::buildUi()
     connect(previous, &QPushButton::clicked, this, [this] { step(true); });
     connect(next, &QPushButton::clicked, this, [this] { step(options.mode == Mode::Number && backwards); });
     connect(recent, &QPushButton::clicked, this, &SearchPanel::showRecent);
-    connect(close, &QPushButton::clicked, this, &SearchPanel::closeSearch);
+    connect(close, &QPushButton::clicked, this, [this] { closeSearch(); });
 
     auto *toggles = new QHBoxLayout;
     toggles->setSpacing(6);
@@ -459,7 +460,7 @@ void SearchPanel::recall(int row)
         step(backwards);
 }
 
-void SearchPanel::closeSearch()
+void SearchPanel::closeSearch(bool settleCaret)
 {
     const bool selectedMatch = hit.found();
     if (!isHidden())
@@ -474,9 +475,9 @@ void SearchPanel::closeSearch()
     editor->setSearchHighlights({});
     {
         QScopedValueRollback<bool> guard(movingCursor, true);
-        editor->clearEditorSelection();
+        if (settleCaret) editor->clearEditorSelection();
         editor->setFocus(Qt::ShortcutFocusReason);
-        if (selectedMatch)
+        if (settleCaret && selectedMatch)
             editor->jumpTo(hit.start, true);
     }
     if (options.mode == Mode::Number) {
@@ -615,13 +616,14 @@ void SearchPanel::updateHighlights()
                 visible.append(*it);
         }
     }
-    if (visible == visibleHits)
+    const QColor background = EditorColors::searchPaper(editor->palette());
+    if (visible == visibleHits && background == highlightColor)
         return;
     visibleHits = visible;
+    highlightColor = background;
     QList<QTextEdit::ExtraSelection> selections;
-    const bool light = editor->palette().color(QPalette::Base).lightness() >= 128;
     QTextCharFormat format;
-    format.setBackground(light ? QColor(255, 224, 137) : QColor(103, 77, 25));
+    format.setBackground(background);
     for (Span range : visible) {
         QTextEdit::ExtraSelection mark;
         mark.cursor = QTextCursor(editor->document());
@@ -939,6 +941,16 @@ void SearchPanel::applyPreview()
     // Each patch already reconciles whitespace at both edges of its source lines.
     auto plan = std::move(*pendingReplacement);
     cancelPreview();
+    QString removed;
+    if (editor->copiesDeletedText()) {
+        const QString source = snapshot();
+        // A compact patch may include unchanged words between two matches.
+        // Only the actual matched passages belong on the clipboard.
+        for (const auto span : plan.removedMatches) {
+            if (!removed.isEmpty()) removed += u'\n';
+            removed += QStringView(source).mid(span.start, span.end - span.start);
+        }
+    }
     {
         QScopedValueRollback<bool> guard(replacing, true);
         QTextCursor transaction(editor->document());
@@ -951,6 +963,7 @@ void SearchPanel::applyPreview()
         }
         transaction.endEditBlock();
     }
+    editor->copyRemovedText(removed);
     origin = editor->textCursor();
     origin.clearSelection();
     rebuild(false);
@@ -965,7 +978,8 @@ QString SearchPanel::affectedUnits(int lines) const
 
 bool SearchPanel::eventFilter(QObject *object, QEvent *event)
 {
-    if (object == editor->viewport() && (event->type() == QEvent::Resize || event->type() == QEvent::Show))
+    if (object == editor->viewport() && (event->type() == QEvent::Resize || event->type() == QEvent::Show ||
+                                         event->type() == QEvent::PaletteChange))
         scheduleHighlights();
     if (event->type() == QEvent::KeyPress) {
         auto *key = static_cast<QKeyEvent *>(event);

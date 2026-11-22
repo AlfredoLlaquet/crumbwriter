@@ -1,4 +1,4 @@
-; ISCC /DAppVersion=2.4 /DPayloadDir=... /DOutputFolder=... setup.iss
+; ISCC /DAppVersion=2.5 /DPayloadDir=... /DOutputFolder=... setup.iss
 #ifndef AppVersion
   #error AppVersion is required
 #endif

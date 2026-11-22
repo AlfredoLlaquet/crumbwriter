@@ -1,4 +1,5 @@
 #include "manuscripteditor.h"
+#include "editorcolors.h"
 
 #include <QtCore/QScopedValueRollback>
 #include <QtCore/QTimer>
@@ -28,11 +29,14 @@ void ManuscriptEditor::applyPaper()
 {
     auto colors = paper_;
     for (auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled}) {
-        const QColor base = activePaper_ ? paper_.color(group, QPalette::Base) : QColor(229, 229, 229);
+        // The inactive cue is relative to the paper the writer was just using.
+        // Some desktop palettes already dim both Base and Text on deactivation.
+        const auto source = !activePaper_ && group == QPalette::Inactive ? QPalette::Active : group;
+        const QColor paper = paper_.color(source, QPalette::Base);
+        const QColor base = activePaper_ ? paper : EditorColors::inactivePaper(paper);
         colors.setColor(group, QPalette::Base, base);
         colors.setColor(group, QPalette::Window, base);
-        if (!activePaper_)
-            colors.setColor(group, QPalette::Text, QColor(34, 34, 34));
+        colors.setColor(group, QPalette::Text, paper_.color(source, QPalette::Text));
     }
     setPalette(colors);
     setAutoFillBackground(true);
@@ -65,7 +69,7 @@ void ManuscriptEditor::paintCrumbBackground(QPainter &p)
                 const auto first = layout->lineAt(0).rect();
                 const auto last = layout->lineAt(layout->lineCount()-1).rect();
                 p.fillRect(QRectF(0, y + first.top(), viewport()->width(), last.bottom() - first.top()),
-                           QColor(64, 140, 255, 31));
+                           EditorColors::currentPaper(palette().base().color()));
             }
             return;
         }

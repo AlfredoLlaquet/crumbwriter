@@ -6,6 +6,7 @@
 #include <functional>
 
 class QTextDocument;
+class SynonymMatcher;
 class SynonymResults;
 
 class SynonymPanel final : public QWidget {
@@ -18,6 +19,7 @@ public:
     bool flush(QString *error = nullptr);
     bool hasPending() const;
     QStringList allAliases() const;
+    SynonymMatcher *matcher() const { return matcher_; }
 
     std::function<void()> onChanged;
     std::function<QString()> manuscriptSelection;
@@ -27,9 +29,10 @@ public:
 
 private:
     class Section;
-    void showOccurrences(const QStringList &aliases);
+    void showOccurrences(bool recurring, int row);
     void changed();
     QPointer<QTextDocument> document_;
+    SynonymMatcher *matcher_;
     Section *characters_;
     Section *recurring_;
     SynonymResults *results_ = nullptr;

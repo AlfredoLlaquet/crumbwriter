@@ -4,6 +4,7 @@
 #include "spellwords.h"
 
 #include <QApplication>
+#include <QClipboard>
 #include <QDialog>
 #include <QElapsedTimer>
 #include <QFile>
@@ -157,6 +158,8 @@ void reviewAndPersistence(const QTemporaryDir &tmp)
     button("spellingReplaceAll")->click();
     until([&] { return ed.manuscriptText().count("receive")==2 && issue->text().contains("Qzorb"); },
           "replace all occurrences with a single review action");
+    require(QApplication::clipboard()->text() == "recieve\nrecieve",
+            "bulk spelling correction copies complete displaced spellings as one clipboard entry");
     ed.undo();
     require(ed.manuscriptText()==original, "one Undo restores all spelling replacements");
 

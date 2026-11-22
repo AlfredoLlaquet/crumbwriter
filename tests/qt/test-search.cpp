@@ -4,6 +4,7 @@
 #include "searchpanel.h"
 #include <QApplication>
 #include <QCheckBox>
+#include <QClipboard>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QKeyEvent>
@@ -294,6 +295,7 @@ void controlsAndReplace()
     check(f.query->hasFocus() && f.replacement->text() == QStringLiteral("entry   \\1"), "third Ctrl H returns to Find");
     auto *all = f.button("cw-replace-all");
     check(all->isEnabled(), "replace all available for regex");
+    QApplication::clipboard()->setText("previous clipboard");
     all->click();
     auto *preview = f.search->findChild<QPlainTextEdit *>(QStringLiteral("cw-replace-preview"));
     check(!preview->isHidden() && preview->toPlainText().contains(QStringLiteral("2 crumbs")) &&
@@ -301,10 +303,13 @@ void controlsAndReplace()
           "preview has affected count and normalized examples without modifying manuscript");
     f.replacement->setText(QStringLiteral("other \\1"));
     check(preview->isHidden(), "editing replacement invalidates stale confirmation");
+    check(QApplication::clipboard()->text() == "previous clipboard", "preview does not count as a deletion");
     all->click();
     all->click();
     check(f.editor->manuscriptText() == QString(text).replace(QStringLiteral("word"), QStringLiteral("other")),
           "confirmed regex bulk replacement preserves Unicode, headers, terminal newline");
+    check(QApplication::clipboard()->text() == "word 3\nword 12",
+          "bulk replacement copies complete changed matches in manuscript order");
     f.editor->undo();
     check(f.editor->manuscriptText() == text, "one Undo restores all replacements");
     f.key(Qt::Key_L, Qt::ControlModifier);

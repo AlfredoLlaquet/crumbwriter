@@ -1,4 +1,5 @@
 #include "spellcheck.h"
+#include "editorcolors.h"
 #include "manuscripteditor.h"
 #include "manuscripttext.h"
 #include "spellreview.h"
@@ -220,7 +221,7 @@ struct SpellCheck::State {
         QList<QTextEdit::ExtraSelection> selections;
         QTextCharFormat format;
         format.setUnderlineStyle(QTextCharFormat::WaveUnderline);
-        format.setUnderlineColor(QColor(205, 47, 55));
+        format.setUnderlineColor(EditorColors::warning(editor->palette().base().color()));
         for (auto block = top; block.isValid() && block.position() <= bottom.position(); block = block.next()) {
             for (const auto hit : issuesIn(block)) {
                 QTextCursor c(block);
@@ -334,14 +335,24 @@ struct SpellCheck::State {
         stopScan();
         if (!editor || editor->isReadOnly()) return;
         if (edits.isEmpty()) { review->setStatus(QObject::tr("No changes to apply."), true); return; }
+        QStringList removed;
+        if (editor->copiesDeletedText()) {
+            for (const auto &hit : edits) {
+                QTextCursor cursor(editor->document());
+                cursor.setPosition(hit.start);
+                cursor.setPosition(hit.end, QTextCursor::KeepAnchor);
+                removed.append(ManuscriptText::selectedText(cursor));
+            }
+        }
         {
             QScopedValueRollback<bool> guard(modifying, true);
             QTextCursor group(editor->document());
             group.beginEditBlock();
             for (auto it = edits.crbegin(); it != edits.crend(); ++it)
-                editor->replaceRangeLiteral(it->start, it->end, replacement);
+                editor->replaceRangeLiteral(it->start, it->end, replacement, false);
             group.endEditBlock();
         }
+        editor->copyRemovedText(removed.join(u'\n'));
         notify(QObject::tr("Replaced %1 spelling occurrences.").arg(edits.size()));
         current = {};
         startNavigation(reverse);
@@ -435,7 +446,8 @@ SpellCheck::~SpellCheck()
 bool SpellCheck::eventFilter(QObject *watched, QEvent *event)
 {
     if (d->editor && watched == d->editor->viewport() &&
-        (event->type() == QEvent::Show || event->type() == QEvent::Resize)) d->schedule();
+        (event->type() == QEvent::Show || event->type() == QEvent::Resize ||
+         event->type() == QEvent::PaletteChange)) d->schedule();
     return QObject::eventFilter(watched, event);
 }
 

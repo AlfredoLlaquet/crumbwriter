@@ -1,6 +1,7 @@
 #include "synonympanel.h"
 #include "panelsearch.h"
 #include "synonymfile.h"
+#include "synonymmatch.h"
 #include "synonymresults.h"
 
 #include <QAbstractListModel>
@@ -14,6 +15,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScreen>
+#include <QSplitter>
 #include <QTextDocument>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -70,6 +72,7 @@ public:
           search_(new PanelSearch(list_, this, Qt::UserRole)), notice_(new QLabel(this))
     {
         setObjectName(id_ + QStringLiteral("Section"));
+        setAccessibleName(title);
         auto *layout = new QVBoxLayout(this);
         layout->setContentsMargins(0, 0, 0, 0);
         layout->setSpacing(2);
@@ -205,7 +208,7 @@ private:
             owner_.insertSynonym(group.first());
         } else {
             if (!owner_.document_) return false;
-            owner_.showOccurrences(group);
+            owner_.showOccurrences(this == owner_.recurring_, row);
         }
         return true;
     }
@@ -343,7 +346,7 @@ private:
 };
 
 SynonymPanel::SynonymPanel(QTextDocument *document, QWidget *parent)
-    : QWidget(parent), document_(document),
+    : QWidget(parent), document_(document), matcher_(new SynonymMatcher(document, this)),
       characters_(new Section(*this, QStringLiteral("Characters"), QStringLiteral(".characters"), QStringLiteral("Ctrl+Shift+1"))),
       recurring_(new Section(*this, QStringLiteral("Recurring"), QStringLiteral(".recurring"), QStringLiteral("Ctrl+Shift+2")))
 {
@@ -351,29 +354,38 @@ SynonymPanel::SynonymPanel(QTextDocument *document, QWidget *parent)
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 0, 4, 0);
     layout->setSpacing(6);
-    layout->addWidget(characters_, 1);
-    layout->addWidget(recurring_, 1);
+    auto *split = new QSplitter(Qt::Vertical, this);
+    split->setObjectName(QStringLiteral("synonymSplitter"));
+    split->setAccessibleName(tr("Synonym panels"));
+    split->setChildrenCollapsible(false);
+    split->addWidget(characters_);
+    split->addWidget(recurring_);
+    split->setStretchFactor(0, 1);
+    split->setStretchFactor(1, 1);
+    layout->addWidget(split);
+    setAccessibleName(tr("Synonym lists"));
     setMinimumWidth(0);
 }
 
-void SynonymPanel::focusCharacters() { characters_->focusSearch(); }
-void SynonymPanel::focusRecurring() { recurring_->focusSearch(); }
+void SynonymPanel::focusCharacters() { characters_->show(); characters_->focusSearch(); }
+void SynonymPanel::focusRecurring() { recurring_->show(); recurring_->focusSearch(); }
 
-void SynonymPanel::showOccurrences(const QStringList &aliases)
+void SynonymPanel::showOccurrences(bool recurring, int row)
 {
     if (!document_) return;
     if (!results_) {
-        results_ = new SynonymResults(document_, this);
+        results_ = new SynonymResults(document_, matcher_, this);
         results_->jumpToMatch = [this](int start, int end) {
             if (jumpToMatch) jumpToMatch(start, end);
         };
     }
-    results_->showGroup(aliases);
+    results_->showGroup((recurring ? int(characters_->file.groups().size()) : 0) + row);
 }
 
 void SynonymPanel::changed()
 {
     if (results_) results_->reset();
+    matcher_->setGroups(characters_->file.groups(), recurring_->file.groups());
     if (onChanged) onChanged();
 }
 

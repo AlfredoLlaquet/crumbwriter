@@ -3,10 +3,14 @@
 #include "documentstore.h"
 #include "manuscripteditor.h"
 #include "manuscripttext.h"
+#include "preferences.h"
 #include "spellcheck.h"
 #include "statisticsdialog.h"
+#include "symbolpicker.h"
 #include "synonympanel.h"
+#include "synonymwriting.h"
 
+#include <QLabel>
 #include <QSplitter>
 
 void MainWindow::connectWritingTools()
@@ -19,7 +23,15 @@ void MainWindow::connectWritingTools()
     };
     synonyms_->onChanged = [this] {
         spelling_->setAliases(synonyms_->allAliases());
+        synonymWriting_->listsChanged();
         documentStateChanged();
+    };
+    synonymWriting_->jumpTo = [this](int position) { jump(position); };
+    synonymWriting_->onNotice = [this](const QString &message) { showNavigationStatus(message); };
+    synonymWriting_->onHint = [this](const QString &message) {
+        synonymHint_ = message;
+        if (!editor_->viSelectionActive())
+            status_->setText(message.isEmpty() ? store_->status() : message);
     };
     synonyms_->insertSynonym = [this](const QString &text) {
         editor_->setFocus();
@@ -33,6 +45,12 @@ void MainWindow::connectWritingTools()
         editor_->selectMatch(start, end);
         editor_->setFocus();
     };
+}
+
+void MainWindow::openSymbols()
+{
+    if (!symbols_) symbols_ = new SymbolPicker(editor_, prefs_.settings(), this);
+    symbols_->openPicker();
 }
 
 bool MainWindow::companionsPending() const
@@ -76,6 +94,7 @@ void MainWindow::showPanel(QWidget *panel, bool show, int &preferredWidth)
     if (show == !panel->isHidden()) return;
     if (!show) {
         preferredWidth = qMax(1, panel->width());
+        panel->setProperty("layoutRememberedSize", preferredWidth);
         panel->hide();
         editor_->setFocus();
         return;
@@ -83,7 +102,8 @@ void MainWindow::showPanel(QWidget *panel, bool show, int &preferredWidth)
     auto sizes = split_->sizes();
     const int index = split_->indexOf(panel);
     const int editorIndex = split_->indexOf(editor_);
-    const int width = qMin(preferredWidth, qMax(1, sizes[editorIndex] / 2));
+    const int savedWidth = panel->property("layoutRememberedSize").toInt();
+    const int width = qMin(savedWidth > 0 ? savedWidth : preferredWidth, qMax(1, sizes[editorIndex] / 2));
     sizes[index] = width;
     sizes[editorIndex] = qMax(1, sizes[editorIndex] - width);
     panel->show();

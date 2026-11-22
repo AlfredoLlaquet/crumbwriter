@@ -32,7 +32,7 @@ public:
     void findReplace();
     void goToNumber();
     void repeat(bool opposite = false);
-    void closeSearch();
+    void closeSearch(bool settleCaret = true);
     void reset();
     bool handleKey(QKeyEvent *event);
     // A new intentional search can produce many live previews, but one return point.
@@ -89,6 +89,7 @@ private:
     std::optional<cwsearch::ReplacementPlan> pendingReplacement;
     QVector<bool> pendingSteps;
     QVector<Span> visibleHits;
+    QColor highlightColor;
     QString paper;
     QString notice;
     QTextCursor origin;

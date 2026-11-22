@@ -45,6 +45,7 @@ struct Example {
 
 struct ReplacementPlan {
     QVector<Edit> edits;
+    QVector<Span> removedMatches;
     QVector<Example> examples;
     int affectedLines = 0;
     int changes = 0;

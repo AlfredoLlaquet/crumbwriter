@@ -23,7 +23,7 @@ EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o
                  src/qt/editorviewport.o src/qt/committedpunctuation.o src/qt/vimotion.o src/qt/viselection.o
 SEARCH_OBJECTS = $(EDITOR_OBJECTS) src/qt/searchpanel.o src/qt/searchengine.o src/qt/searchhistory.o
 BOOKMARK_OBJECTS = src/qt/bookmarks.o src/qt/bookmarkfile.o src/qt/bookmarkanchors.o src/qt/manuscripttext.o
-SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o src/qt/panelsearch.o
+SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o src/qt/synonymmatch.o src/qt/panelsearch.o
 SPELL_OBJECTS = src/qt/textcompanion.o src/qt/spellcheck.o src/qt/spellreview.o src/qt/spellwords.o
 STORE_OBJECTS = src/qt/documentstore.o
 QT_SOURCES != find src/qt -name '*.cpp' ! -name 'main.cpp' | sort
@@ -34,7 +34,8 @@ ICON_FILES = data/icons/*/apps/org.thecrumbs.CrumbWriter.png
 APP_OBJECTS = $(QT_OBJECTS) $(CORE_OBJECTS) $(RESOURCE)
 QT_TESTS = tests/qt/test-model tests/qt/test-documentstore tests/qt/test-bookmarks \
            tests/qt/test-editor tests/qt/test-search tests/qt/test-navigation tests/qt/test-synonyms tests/qt/test-spelling \
-           tests/qt/test-window tests/qt/test-vi tests/qt/test-resize
+           tests/qt/test-window tests/qt/test-vi tests/qt/test-resize tests/qt/test-symbols \
+           tests/qt/test-synonymwriting tests/qt/test-appearance tests/qt/test-layout
 
 all: crumbwriter
 
@@ -50,7 +51,7 @@ crumbwriter: src/qt/main.o $(APP_OBJECTS)
 $(CORE_OBJECTS): $(CORE_HEADERS)
 src/qt/main.o $(QT_OBJECTS): $(QT_HEADERS) $(CORE_HEADERS)
 
-data/qt-icons.cpp: data/crumbwriter.qrc $(ICON_FILES) LICENSE
+data/qt-icons.cpp: data/crumbwriter.qrc data/symbols.tsv $(ICON_FILES) LICENSE
 	$(RCC) --name crumbwriter -o $@ data/crumbwriter.qrc
 
 tests/test-crumb: tests/test-crumb.c src/crumb.o
@@ -91,6 +92,13 @@ tests/qt/test-window: tests/qt/test-window.cpp $(APP_OBJECTS)
 	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
 
 tests/qt/test-resize: tests/qt/test-resize.cpp $(APP_OBJECTS)
+	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
+
+tests/qt/test-symbols: tests/qt/test-symbols.cpp
+tests/qt/test-synonymwriting: tests/qt/test-synonymwriting.cpp
+tests/qt/test-appearance: tests/qt/test-appearance.cpp
+tests/qt/test-layout: tests/qt/test-layout.cpp
+tests/qt/test-symbols tests/qt/test-synonymwriting tests/qt/test-appearance tests/qt/test-layout: $(APP_OBJECTS)
 	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
 
 check-core: tests/test-crumb tests/test-storage

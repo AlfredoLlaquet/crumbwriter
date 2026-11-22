@@ -74,6 +74,15 @@ static bool exercise(PaintTimer &app, const QString &directory, int count, bool 
     if (!fixture.open(QIODevice::WriteOnly) || fixture.write(original) != original.size())
         return false;
     fixture.close();
+    // Give every paragraph several visible, overlapping alias matches while
+    // resizing and typing. A whole-document rescan here would scale with count.
+    QFile names(path + ".characters");
+    QFile terms(path + ".recurring");
+    if (!names.open(QIODevice::WriteOnly) || names.write("Proportional text, text\n") < 0 ||
+        !terms.open(QIODevice::WriteOnly) || terms.write("visual lines, lines\n") < 0)
+        return false;
+    names.close();
+    terms.close();
 
     Preferences prefs(directory + "/settings.ini");
     prefs.settings().setValue("editor/backup", false);

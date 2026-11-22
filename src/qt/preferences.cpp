@@ -1,4 +1,5 @@
 #include "preferences.h"
+#include "editorcolors.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -13,6 +14,7 @@
 #include <QScreen>
 #include <QSpinBox>
 #include <QStandardPaths>
+#include <QTabWidget>
 #include <QTreeWidget>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -54,16 +56,24 @@ constexpr HelpRow shortcuts[] = {
     {"Movement selection","t-2 · ; / ,","Up to the second hyphen, excluding it · repeat the last character find / reverse it"},
     {"Movement selection","q / Q · qth*2","Through the forward / backward phrase, ignoring case. qth*2 reaches the second th. Type \\* for a literal asterisk."},
     {"Manuscript","Ctrl+Enter / Alt+Enter","Center the current visual line / move the start of this crumb or paragraph to the top"},
-    {"Navigation","F2 / Shift+F2","Back / forward to the exact caret position after a jump"},
+    {"Navigation","F2 or Alt+Left / Shift+F2 or Alt+Right","Go back / forward in the shared history of references, names, bookmarks, and search results"},
     {"Crumb mode","F4 / Shift+F4","Next / previous numbering warning"},
-    {"Crumb mode","Ctrl+Shift+J","Follow the crumb reference under the caret"},
+    {"Navigation","Ctrl+Shift+J / Ctrl+click","Follow a numbered reference in Crumb mode or find the preceding mention of a name in either mode. Back returns to the original writing position"},
+    {"Names","F6 / Shift+F6","Previous / next mention of any synonym in the group under the caret. Ctrl+Shift+click follows a name forward"},
+    {"Names","F5 in manuscript","Accept a suggested ending or open name completions. Use arrows and Enter to choose. Escape dismisses"},
+    {"Names","Ctrl+, → Names","Choose completion and underlining for Characters and Recurring, the prefix length, and the underline color"},
+    {"Symbols","Ctrl+U","Open Insert Symbol. Search by description, theme, symbol, or Unicode code point"},
+    {"Insert Symbol","Alt+S / Alt+T / Down","Focus Search / Theme / the grid. Browse symbols with the arrow keys"},
+    {"Insert Symbol","Enter / Ctrl+Enter / Ctrl+D","Insert and close / insert and continue browsing / toggle Favorite. Escape closes"},
+    {"Editing","Ctrl+, → Writing","Copy deleted text to the clipboard is on by default. Each run of Backspaces or Deletes builds a word in reading order"},
     {"Navigation","Ctrl+L","Go to a crumb number in Crumb mode or a physical line in Generic mode"},
     {"Panels","Ctrl+Shift+1 / Ctrl+Shift+2","Search Characters / Recurring by any synonym"},
     {"Panels","Ctrl+Shift+3 / Ctrl+Shift+4","Search visit history / genres or manuscript titles"},
     {"Panels","Type in Search · Up / Down","Highlight the first matching entry. Move among matches while every entry stays visible"},
     {"History, Genres, Titles","Enter / Ctrl+Enter","Clear the search and visit the selected entry. In Genres, append the next crumb in the selected genre"},
     {"Navigation","Shift+F7","Switch between alphabetical and genre-number order, or alphabetical and document order for titles"},
-    {"Navigation","F9 / Shift+F9","Show or hide the right / left panel"},
+    {"Panels","F9 / Shift+F9","Show or hide navigation / synonym lists"},
+    {"Layout","Ctrl+Shift+F10","Arrange panels and columns in the current window. The View menu can restore all default layouts"},
     {"Synonym lists","Insert / F2 / Delete","Add from the manuscript selection / edit / remove a synonym group"},
     {"Synonym lists","Enter / Ctrl+Enter","Find all occurrences / insert the first synonym at the manuscript caret. Both clear the panel search"},
     {"Synonym lists","F5 / Escape","Reload the list from disk / return to the manuscript"},
@@ -99,6 +109,7 @@ constexpr HelpRow shortcuts[] = {
     {"Mac keyboard","Command+N / O / S / Shift+S / F","New window / open / save / Save As / find"},
     {"Mac keyboard","Command+,","Open Settings"},
     {"Mac keyboard","Command+W / Command+Q","Close this window / quit Crumb Writer, with normal save confirmation"},
+    {"Mac navigation","Command+click / Command+Shift+click","Follow a reference or the previous / next mention of a name"},
     {"Mac keyboard","Control+Shift+B / Control+Shift+W","Open Bookmarks / toggle Wrap in Find. Option combinations can still type special characters"},
     {"Mac synonym lists","Control+I","Add a group from the manuscript selection while Characters or Recurring has focus. Works in its search field or list"},
     {"Mac lists","Backspace","Remove the selected entry in a focused synonym, bookmark, or manuscript dictionary list. In search and edit fields, Backspace edits the text"},
@@ -135,22 +146,7 @@ QPalette Preferences::paletteForDesktop() const
     const QString choice = settings_.value("editor/theme", "desktop").toString();
     QPalette p = QApplication::palette();
     if (choice != "light" && choice != "dark") return p;
-    const bool dark = choice == "dark";
-    const QColor window(dark ? "#2b2d30" : "#f5f5f5");
-    const QColor text(dark ? "#f2f2f2" : "#242424");
-    p.setColor(QPalette::Window, window);
-    p.setColor(QPalette::WindowText, text);
-    p.setColor(QPalette::Base, QColor(dark ? "#202124" : "#ffffff"));
-    p.setColor(QPalette::AlternateBase, window);
-    p.setColor(QPalette::Text, text);
-    p.setColor(QPalette::Button, window);
-    p.setColor(QPalette::ButtonText, text);
-    p.setColor(QPalette::Highlight, QColor(dark ? "#406895" : "#3b70ac"));
-    p.setColor(QPalette::HighlightedText, Qt::white);
-    p.setColor(QPalette::PlaceholderText, QColor(dark ? "#b1b2b5" : "#60666b"));
-    for (auto role : {QPalette::Text, QPalette::WindowText, QPalette::ButtonText})
-        p.setColor(QPalette::Disabled, role, QColor(dark ? "#95979a" : "#737678"));
-    return p;
+    return EditorColors::explicitTheme(p, choice == "dark");
 }
 
 QString Preferences::lastDocument() const
@@ -178,8 +174,15 @@ void Preferences::show(QWidget *parent)
     auto *dialog = new QDialog(parent);
     dialog_ = dialog;
     dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->setObjectName("preferencesDialog");
     dialog->setWindowTitle("Crumb Writer Settings");
-    auto *form = new QFormLayout(dialog);
+    auto *outer = new QVBoxLayout(dialog);
+    auto *tabs = new QTabWidget(dialog);
+    auto *writing = new QWidget(tabs);
+    auto *form = new QFormLayout(writing);
+    tabs->addTab(writing, "&Writing");
+    tabs->addTab(synonymPage(tabs), "&Names");
+    outer->addWidget(tabs);
     auto *family = new QFontComboBox(dialog);
     family->setCurrentFont(manuscriptFont());
     form->addRow("Font &family", family);
@@ -210,13 +213,14 @@ void Preferences::show(QWidget *parent)
         QObject::connect(check, &QCheckBox::toggled, dialog, [this, key](bool on) { set(key, on); });
     };
     toggle("Use smart &punctuation", "smart-punctuation");
+    toggle("&Copy deleted text to the clipboard", "copy-deleted");
     toggle("Check American English &spelling", "spell-check");
     toggle("Make a &backup before editing", "backup");
     toggle("Save &live while typing", "live-save");
     spin("Save &interval (seconds)", "save-delay", saveDelay(), 1, 30);
     toggle("&Reopen the last manuscript at startup", "reopen-last");
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
-    form->addRow(buttons);
+    outer->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::close);
     dialog->show();
 }
@@ -237,6 +241,7 @@ void showShortcutHelp(QWidget *parent)
     filter->setPlaceholderText("Filter shortcuts");
     filter->setAccessibleName("Filter shortcuts");
     auto *list = new QTreeWidget(dialog);
+    list->setObjectName("shortcutTable");
     list->setRootIsDecorated(false);
     list->setWordWrap(true);
     list->setHeaderLabels({"Context", "Keys", "Action"});

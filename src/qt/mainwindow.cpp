@@ -6,6 +6,8 @@
 #include "searchpanel.h"
 #include "spellcheck.h"
 #include "synonympanel.h"
+#include "synonymwriting.h"
+#include "windowlayout.h"
 
 #include <QApplication>
 #include <QCloseEvent>
@@ -20,6 +22,7 @@
 #include <QScreen>
 #include <QSplitter>
 #include <QTextBlock>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 
@@ -113,6 +116,7 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
             if (block.isValid()) jump(block.position());
         });
     spelling_ = new SpellCheck(editor_, this);
+    synonymWriting_ = new SynonymWriting(editor_, synonyms_->matcher());
     connectWritingTools();
     editor_->model().onDailyCountError = [this](const QString &error) { showNotice(error); };
     store_->onChanged = [this] { documentStateChanged(); };
@@ -158,6 +162,7 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     split_->setSizes({left, qMax(1, width() - left - right), right});
     qApp->installEventFilter(this);
     applyPreferences();
+    layouts_ = new WindowLayouts(this, prefs_.settings());
     documentStateChanged();
     editor_->setFocus();
 }
@@ -176,6 +181,7 @@ MainWindow::~MainWindow()
     store_->onPublished = {};
     bookmarks_->onChanged = {};
     synonyms_->onChanged = {};
+    delete synonymWriting_; // Disconnect from the matcher while both panels are alive.
     delete spelling_; // Its viewport callbacks belong to the still-live editor.
 }
 
@@ -226,6 +232,8 @@ void MainWindow::applyPreferences()
     if (editor_->font() != font)
         editor_->setFont(font);
     editor_->setSmartPunctuation(prefs_.enabled("smart-punctuation"));
+    editor_->setCopyDeletedText(prefs_.enabled("copy-deleted"));
+    synonymWriting_->applySettings(prefs_.synonymSettings());
     spelling_->setEnabled(prefs_.enabled("spell-check"));
     store_->configureLiveSave(prefs_.enabled("live-save"), prefs_.saveDelay());
     side_->updateCurrent();
@@ -238,8 +246,6 @@ void MainWindow::changeEvent(QEvent *e)
     if (e->type() == QEvent::ActivationChange) {
         editor_->setPaperActive(isActiveWindow());
         if (isActiveWindow() && !loading_) prefs_.remember(store_->path());
-    } else if (e->type() == QEvent::ApplicationPaletteChange) {
-        applyPreferences();
     }
 }
 
@@ -249,7 +255,8 @@ void MainWindow::documentStateChanged()
     const bool pending = store_->isDirty() || companionsPending();
     const QString title = (pending ? QString("• ") : QString()) + name + " — Crumb Writer";
     if (title != windowTitle()) setWindowTitle(title);
-    if (!editor_->viSelectionActive()) status_->setText(store_->status());
+    if (!editor_->viSelectionActive())
+        status_->setText(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
     status_->setToolTip(store_->backupPath().isEmpty() ? store_->path()
                        : store_->path() + "\nStartup backup: " + store_->backupPath());
 }
@@ -258,6 +265,15 @@ void MainWindow::showNotice(const QString &message)
 {
     notice_->setText(message);
     noticeBar_->setVisible(!message.isEmpty());
+}
+
+void MainWindow::showNavigationStatus(const QString &message)
+{
+    status_->setText(message);
+    QTimer::singleShot(2500, this, [this, message] {
+        if (status_->text() == message && !editor_->viSelectionActive())
+            status_->setText(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
+    });
 }
 
 void MainWindow::chooseFile(bool saving)

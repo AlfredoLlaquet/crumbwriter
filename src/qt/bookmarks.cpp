@@ -1,4 +1,5 @@
 #include "bookmarks.h"
+#include "layoutcolumns.h"
 #include "bookmarkfile.h"
 
 #include <QtCore/QFileInfo>
@@ -307,7 +308,7 @@ public:
         items->setUpdatesEnabled(false);
         items->clear();
         items->setRootIsDecorated(tree);
-        items->setColumnHidden(1, tree);
+        LayoutColumns::setOptionalColumn(items, 1, !tree);
         items->setHeaderLabels({tree ? QStringLiteral("Category / Bookmark") : QStringLiteral("Category"),
                                 QStringLiteral("Name"), QStringLiteral("Line"), QStringLiteral("Manuscript text")});
         QMap<QString, QList<BookmarkRow>> rows;

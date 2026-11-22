@@ -1,0 +1,805 @@
+# Crumb Writer symbol catalog
+# UCD 15.0.0 character names and code points. The themes, friendly labels, and
+# search terms were selected for Crumb Writer. Rows follow their @theme.
+# Theme rows: @name<TAB>search terms. Symbol rows:
+# hexadecimal code point<TAB>Unicode name<TAB>optional label<TAB>terms separated by |.
+# Source: https://www.unicode.org/Public/15.0.0/ucd/UnicodeData.txt
+# COPYRIGHT AND PERMISSION NOTICE
+# Copyright © 1991-2022 Unicode, Inc. All rights reserved.
+# Distributed under the Terms of Use in https://www.unicode.org/copyright.html.
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of the Unicode data files and any associated documentation
+# (the "Data Files") or Unicode software and any associated documentation
+# (the "Software") to deal in the Data Files or Software
+# without restriction, including without limitation the rights to use,
+# copy, modify, merge, publish, distribute, and/or sell copies of
+# the Data Files or Software, and to permit persons to whom the Data Files
+# or Software are furnished to do so, provided that either
+# (a) this copyright and permission notice appear with all copies
+# of the Data Files or Software, or
+# (b) this copyright and permission notice appear in associated
+# Documentation.
+#
+# THE DATA FILES AND SOFTWARE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF
+# ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+# WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+# NONINFRINGEMENT OF THIRD PARTY RIGHTS.
+# IN NO EVENT SHALL THE COPYRIGHT HOLDER OR HOLDERS INCLUDED IN THIS
+# NOTICE BE LIABLE FOR ANY CLAIM, OR ANY SPECIAL INDIRECT OR CONSEQUENTIAL
+# DAMAGES, OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE,
+# DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+# TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+# PERFORMANCE OF THE DATA FILES OR SOFTWARE.
+#
+# Except as contained in this notice, the name of a copyright holder
+# shall not be used in advertising or otherwise to promote the sale,
+# use or other dealings in these Data Files or Software without prior
+# written authorization of the copyright holder.
+
+@Punctuation	typography punctuation writing prose quotation dialogue quotes stops dashes
+2014	EM DASH	Em dash	long dash|double hyphen|--
+2013	EN DASH	En dash	range dash|medium dash
+2026	HORIZONTAL ELLIPSIS	Ellipsis	three dots|suspension points|...
+2018	LEFT SINGLE QUOTATION MARK	Opening single quotation mark	single quote|curly quote|left quote
+2019	RIGHT SINGLE QUOTATION MARK	Closing single quotation mark	apostrophe|possessive|contraction|right quote|curly quote
+201C	LEFT DOUBLE QUOTATION MARK	Opening double quotation mark	double quote|left quote|curly quotes|speech
+201D	RIGHT DOUBLE QUOTATION MARK	Closing double quotation mark	double quote|right quote|curly quotes|speech
+00AB	LEFT-POINTING DOUBLE ANGLE QUOTATION MARK	Opening guillemet	French quote|angle quote|chevron|double
+00BB	RIGHT-POINTING DOUBLE ANGLE QUOTATION MARK	Closing guillemet	French quote|angle quote|chevron|double
+2039	SINGLE LEFT-POINTING ANGLE QUOTATION MARK	Opening single guillemet	angle quote|chevron|inline footnote
+203A	SINGLE RIGHT-POINTING ANGLE QUOTATION MARK	Closing single guillemet	angle quote|chevron|inline footnote
+201A	SINGLE LOW-9 QUOTATION MARK		low quotation mark|quotes|dialogue
+201E	DOUBLE LOW-9 QUOTATION MARK		low quotation mark|quotes|dialogue
+2010	HYPHEN	Hyphen	word break
+2011	NON-BREAKING HYPHEN	Nonbreaking hyphen	non breaking|non-breaking|nonbreaking hyphen|word join
+2012	FIGURE DASH	Figure dash	numeric dash
+2015	HORIZONTAL BAR	Horizontal bar	dialogue dash|quotation dash
+00B7	MIDDLE DOT	Middle dot	Catalan|punt volat|interpunct|centered dot
+2022	BULLET	Bullet	list marker|dot
+2023	TRIANGULAR BULLET		list bullet|list marker
+2043	HYPHEN BULLET		list bullet|list marker
+25E6	WHITE BULLET		list bullet|list marker
+2E3A	TWO-EM DASH		em dash|long dash
+2E3B	THREE-EM DASH		em dash|long dash
+203D	INTERROBANG	Interrobang	question and exclamation|surprise|?!
+00A1	INVERTED EXCLAMATION MARK		inverted punctuation|Spanish|question exclamation
+00BF	INVERTED QUESTION MARK		inverted punctuation|Spanish|question exclamation
+203C	DOUBLE EXCLAMATION MARK		double punctuation|question exclamation
+2047	DOUBLE QUESTION MARK		double punctuation|question exclamation
+2048	QUESTION EXCLAMATION MARK		double punctuation|question exclamation
+2049	EXCLAMATION QUESTION MARK		double punctuation|question exclamation
+2032	PRIME		prime|feet inches|minutes seconds
+2033	DOUBLE PRIME		prime|feet inches|minutes seconds
+2034	TRIPLE PRIME		prime|feet inches|minutes seconds
+2035	REVERSED PRIME		reversed prime|back prime
+2036	REVERSED DOUBLE PRIME		reversed prime|back prime
+203B	REFERENCE MARK	Reference mark	annotation|footnote|komejirushi
+2038	CARET	Insertion caret	editorial mark|insert
+
+@Editorial and legal	publishing book manuscript proofreading editorial legal print editing law
+00A7	SECTION SIGN	Section sign	legal section|silcrow|section mark
+00B6	PILCROW SIGN	Pilcrow	paragraph mark|paragraph sign
+2020	DAGGER	Dagger	footnote|obelisk|obelus|cross
+2021	DOUBLE DAGGER	Double dagger	footnote|diesis
+2042	ASTERISM	Asterism	section break|scene break|three stars
+2055	FLOWER PUNCTUATION MARK	Flower punctuation mark	fleuron|asterisk|floral|ornament
+2766	FLORAL HEART		fleuron|floral|ornament|scene break|leaf
+2767	ROTATED FLORAL HEART BULLET		fleuron|floral|ornament|scene break|leaf
+2619	REVERSED ROTATED FLORAL HEART BULLET		fleuron|floral|ornament|scene break|leaf
+2051	TWO ASTERISKS ALIGNED VERTICALLY		asterisk|footnote|note
+204E	LOW ASTERISK		asterisk|footnote|note
+00A9	COPYRIGHT SIGN	Copyright sign	rights|intellectual property
+00AE	REGISTERED SIGN	Registered trademark	registered trade mark
+2122	TRADE MARK SIGN	Trademark	trade mark
+2120	SERVICE MARK	Service mark	trademark
+2117	SOUND RECORDING COPYRIGHT	Sound recording copyright	phonogram|music copyright
+2116	NUMERO SIGN	Numero sign	number sign|no
+2105	CARE OF	Care of	address|c/o
+2106	CADA UNA	Cada una	each
+211E	PRESCRIPTION TAKE	Prescription	medical|rx
+212E	ESTIMATED SYMBOL	Estimated quantity	packaging|estimated sign
+2123	VERSICLE		verse|response|liturgy
+211F	RESPONSE		verse|response|liturgy
+0026	AMPERSAND	Ampersand	and sign|logogram
+0023	NUMBER SIGN	Number sign	hash|pound sign|hashtag|octothorpe
+0040	COMMERCIAL AT	At sign	at symbol|email address
+
+@Spacing	invisible characters spacing typesetting typography blank width
+00A0	NO-BREAK SPACE	Nonbreaking space	nbsp|non breaking space|non-breaking space|keep words together
+202F	NARROW NO-BREAK SPACE	Narrow nonbreaking space	nnbsp|non breaking narrow space|French punctuation
+2009	THIN SPACE	Thin space	thinsp|fine space
+200A	HAIR SPACE	Hair space	hairline|very thin space
+2007	FIGURE SPACE	Figure space	digit width|tabular numbers
+2002	EN SPACE	En space	half em
+2003	EM SPACE	Em space	full em
+2004	THREE-PER-EM SPACE	Three-per-em space	one third em|thick space
+2005	FOUR-PER-EM SPACE	Four-per-em space	one quarter em|mid space
+2006	SIX-PER-EM SPACE	Six-per-em space	one sixth em
+2008	PUNCTUATION SPACE	Punctuation space	period width
+200B	ZERO WIDTH SPACE	Zero-width space	zwsp|soft line break|invisible break
+2060	WORD JOINER	Word joiner	wj|zero width no break
+00AD	SOFT HYPHEN	Soft hyphen	shy|discretionary hyphen|optional hyphen
+
+@Arrows	arrows direction movement navigation pointers
+2190	LEFTWARDS ARROW	Left arrow	leftward|back|<-
+2192	RIGHTWARDS ARROW	Right arrow	rightward|forward|to|->
+2191	UPWARDS ARROW	Up arrow	upward|north
+2193	DOWNWARDS ARROW	Down arrow	downward|south
+2194	LEFT RIGHT ARROW	Left-right arrow	both directions|horizontal|<->
+2195	UP DOWN ARROW	Up-down arrow	both directions|vertical
+2196	NORTH WEST ARROW		diagonal|compass
+2197	NORTH EAST ARROW		diagonal|compass
+2198	SOUTH EAST ARROW		diagonal|compass
+2199	SOUTH WEST ARROW		diagonal|compass
+21D0	LEFTWARDS DOUBLE ARROW		double line|logic|implication
+21D1	UPWARDS DOUBLE ARROW		double line|logic|implication
+21D2	RIGHTWARDS DOUBLE ARROW		double line|logic|implication
+21D3	DOWNWARDS DOUBLE ARROW		double line|logic|implication
+21D4	LEFT RIGHT DOUBLE ARROW		double line|logic|implication
+21D5	UP DOWN DOUBLE ARROW		double line|logic|implication
+219A	LEFTWARDS ARROW WITH STROKE		negated|stroked
+219B	RIGHTWARDS ARROW WITH STROKE		negated|stroked
+21AE	LEFT RIGHT ARROW WITH STROKE		negated|stroked
+219E	LEFTWARDS TWO HEADED ARROW		two headed
+219F	UPWARDS TWO HEADED ARROW		two headed
+21A0	RIGHTWARDS TWO HEADED ARROW		two headed
+21A1	DOWNWARDS TWO HEADED ARROW		two headed
+21A2	LEFTWARDS ARROW WITH TAIL		tailed
+21A3	RIGHTWARDS ARROW WITH TAIL		tailed
+21A4	LEFTWARDS ARROW FROM BAR		maps to|from bar
+21A5	UPWARDS ARROW FROM BAR		maps to|from bar
+21A6	RIGHTWARDS ARROW FROM BAR		maps to|from bar
+21A7	DOWNWARDS ARROW FROM BAR		maps to|from bar
+21A9	LEFTWARDS ARROW WITH HOOK		hook|reply|return
+21AA	RIGHTWARDS ARROW WITH HOOK		hook|reply|return
+21AB	LEFTWARDS ARROW WITH LOOP		loop
+21AC	RIGHTWARDS ARROW WITH LOOP		loop
+21B0	UPWARDS ARROW WITH TIP LEFTWARDS		turn|bent
+21B1	UPWARDS ARROW WITH TIP RIGHTWARDS		turn|bent
+21B2	DOWNWARDS ARROW WITH TIP LEFTWARDS		turn|bent
+21B3	DOWNWARDS ARROW WITH TIP RIGHTWARDS		turn|bent
+21B5	DOWNWARDS ARROW WITH CORNER LEFTWARDS	Return arrow	carriage return|enter|newline
+21B6	ANTICLOCKWISE TOP SEMICIRCLE ARROW		circular|turn|rotate|undo|redo
+21B7	CLOCKWISE TOP SEMICIRCLE ARROW		circular|turn|rotate|undo|redo
+21BA	ANTICLOCKWISE OPEN CIRCLE ARROW		circular|turn|rotate|undo|redo
+21BB	CLOCKWISE OPEN CIRCLE ARROW		circular|turn|rotate|undo|redo
+27F2	ANTICLOCKWISE GAPPED CIRCLE ARROW		circular|turn|rotate|undo|redo
+27F3	CLOCKWISE GAPPED CIRCLE ARROW		circular|turn|rotate|undo|redo
+21BC	LEFTWARDS HARPOON WITH BARB UPWARDS		harpoon|chemistry
+21BD	LEFTWARDS HARPOON WITH BARB DOWNWARDS		harpoon|chemistry
+21BE	UPWARDS HARPOON WITH BARB RIGHTWARDS		harpoon|chemistry
+21BF	UPWARDS HARPOON WITH BARB LEFTWARDS		harpoon|chemistry
+21C0	RIGHTWARDS HARPOON WITH BARB UPWARDS		harpoon|chemistry
+21C1	RIGHTWARDS HARPOON WITH BARB DOWNWARDS		harpoon|chemistry
+21C2	DOWNWARDS HARPOON WITH BARB RIGHTWARDS		harpoon|chemistry
+21C3	DOWNWARDS HARPOON WITH BARB LEFTWARDS		harpoon|chemistry
+21C4	RIGHTWARDS ARROW OVER LEFTWARDS ARROW		equilibrium|reaction|exchange
+21C6	LEFTWARDS ARROW OVER RIGHTWARDS ARROW		equilibrium|reaction|exchange
+21CB	LEFTWARDS HARPOON OVER RIGHTWARDS HARPOON		equilibrium|reaction|exchange
+21CC	RIGHTWARDS HARPOON OVER LEFTWARDS HARPOON		equilibrium|reaction|exchange
+21C7	LEFTWARDS PAIRED ARROWS		paired
+21C8	UPWARDS PAIRED ARROWS		paired
+21C9	RIGHTWARDS PAIRED ARROWS		paired
+21CA	DOWNWARDS PAIRED ARROWS		paired
+21E6	LEFTWARDS WHITE ARROW		hollow|outline
+21E7	UPWARDS WHITE ARROW		hollow|outline
+21E8	RIGHTWARDS WHITE ARROW		hollow|outline
+21E9	DOWNWARDS WHITE ARROW		hollow|outline
+21E4	LEFTWARDS ARROW TO BAR		keyboard|tab|page
+21E5	RIGHTWARDS ARROW TO BAR		keyboard|tab|page
+21DE	UPWARDS ARROW WITH DOUBLE STROKE		keyboard|tab|page
+21DF	DOWNWARDS ARROW WITH DOUBLE STROKE		keyboard|tab|page
+27F5	LONG LEFTWARDS ARROW		long arrow
+27F6	LONG RIGHTWARDS ARROW		long arrow
+27F7	LONG LEFT RIGHT ARROW		long arrow
+27F8	LONG LEFTWARDS DOUBLE ARROW		long arrow
+27F9	LONG RIGHTWARDS DOUBLE ARROW		long arrow
+27FA	LONG LEFT RIGHT DOUBLE ARROW		long arrow
+2794	HEAVY WIDE-HEADED RIGHTWARDS ARROW		decorative|pointer
+279C	HEAVY ROUND-TIPPED RIGHTWARDS ARROW		decorative|pointer
+279D	TRIANGLE-HEADED RIGHTWARDS ARROW		decorative|pointer
+279E	HEAVY TRIANGLE-HEADED RIGHTWARDS ARROW		decorative|pointer
+279F	DASHED TRIANGLE-HEADED RIGHTWARDS ARROW		decorative|pointer
+27A0	HEAVY DASHED TRIANGLE-HEADED RIGHTWARDS ARROW		decorative|pointer
+27A1	BLACK RIGHTWARDS ARROW		decorative|pointer
+27A2	THREE-D TOP-LIGHTED RIGHTWARDS ARROWHEAD		decorative|pointer
+27A4	BLACK RIGHTWARDS ARROWHEAD		decorative|pointer
+27A5	HEAVY BLACK CURVED DOWNWARDS AND RIGHTWARDS ARROW		decorative|pointer
+27A6	HEAVY BLACK CURVED UPWARDS AND RIGHTWARDS ARROW		decorative|pointer
+27B3	WHITE-FEATHERED RIGHTWARDS ARROW		decorative|pointer
+27B5	BLACK-FEATHERED RIGHTWARDS ARROW		decorative|pointer
+27B8	HEAVY BLACK-FEATHERED RIGHTWARDS ARROW		decorative|pointer
+27BA	TEARDROP-BARBED RIGHTWARDS ARROW		decorative|pointer
+27BB	HEAVY TEARDROP-SHANKED RIGHTWARDS ARROW		decorative|pointer
+261A	BLACK LEFT POINTING INDEX		pointing hand|index finger|manicule
+261B	BLACK RIGHT POINTING INDEX		pointing hand|index finger|manicule
+261C	WHITE LEFT POINTING INDEX		pointing hand|index finger|manicule
+261D	WHITE UP POINTING INDEX		pointing hand|index finger|manicule
+261E	WHITE RIGHT POINTING INDEX		pointing hand|index finger|manicule
+261F	WHITE DOWN POINTING INDEX		pointing hand|index finger|manicule
+
+@Mathematics and logic	math mathematics arithmetic algebra logic geometry calculus sets operators equation
+00B1	PLUS-MINUS SIGN	Plus or minus	plus minus|+/-
+2213	MINUS-OR-PLUS SIGN	Minus or plus	minus plus|-/+
+2212	MINUS SIGN	Minus sign	subtract|subtraction|true minus
+00D7	MULTIPLICATION SIGN	Multiplication sign	multiply|times|product
+00F7	DIVISION SIGN	Division sign	divide|obelus
+2260	NOT EQUAL TO	Not equal to	unequal|not equal|!=|/=
+2248	ALMOST EQUAL TO	Approximately equal	about equal|almost equal|approximately|approx
+2243	ASYMPTOTICALLY EQUAL TO		approximately equal|equivalence
+2245	APPROXIMATELY EQUAL TO		approximately equal|equivalence
+224A	ALMOST EQUAL OR EQUAL TO		approximately equal|equivalence
+224D	EQUIVALENT TO		approximately equal|equivalence
+2261	IDENTICAL TO	Identical to	equivalent|triple equals
+2262	NOT IDENTICAL TO		negated equality
+2241	NOT TILDE		negated equality
+2244	NOT ASYMPTOTICALLY EQUAL TO		negated equality
+2264	LESS-THAN OR EQUAL TO	Less than or equal to	less than or equal|at most|<=
+2265	GREATER-THAN OR EQUAL TO	Greater than or equal to	greater than or equal|at least|>=
+226A	MUCH LESS-THAN		inequality|compare
+226B	MUCH GREATER-THAN		inequality|compare
+226E	NOT LESS-THAN		inequality|compare
+226F	NOT GREATER-THAN		inequality|compare
+2270	NEITHER LESS-THAN NOR EQUAL TO		inequality|compare
+2271	NEITHER GREATER-THAN NOR EQUAL TO		inequality|compare
+221E	INFINITY	Infinity	unbounded|forever
+221D	PROPORTIONAL TO	Proportional to	proportion
+221A	SQUARE ROOT	Square root	radical|sqrt
+221B	CUBE ROOT		root|radical
+221C	FOURTH ROOT		root|radical
+2211	N-ARY SUMMATION	Summation	sum|sigma
+220F	N-ARY PRODUCT	Product	multiply|pi
+2210	N-ARY COPRODUCT		calculus|integrals
+222B	INTEGRAL		calculus|integrals
+222C	DOUBLE INTEGRAL		calculus|integrals
+222D	TRIPLE INTEGRAL		calculus|integrals
+222E	CONTOUR INTEGRAL		calculus|integrals
+2202	PARTIAL DIFFERENTIAL		derivative|gradient|nabla
+2207	NABLA		derivative|gradient|nabla
+2206	INCREMENT	Increment	change|delta|triangle
+2220	ANGLE		geometry|angle|lines|perpendicular
+2221	MEASURED ANGLE		geometry|angle|lines|perpendicular
+221F	RIGHT ANGLE		geometry|angle|lines|perpendicular
+22A5	UP TACK		geometry|angle|lines|perpendicular
+2225	PARALLEL TO		geometry|angle|lines|perpendicular
+2226	NOT PARALLEL TO		geometry|angle|lines|perpendicular
+22C5	DOT OPERATOR		product|multiply|operator
+2219	BULLET OPERATOR		product|multiply|operator
+2217	ASTERISK OPERATOR		product|multiply|operator
+2218	RING OPERATOR		product|multiply|operator
+2234	THEREFORE	Therefore	conclusion|three dots
+2235	BECAUSE	Because	reason|three dots
+2200	FOR ALL	For all	universal quantifier|for every
+2203	THERE EXISTS	There exists	existential|exists
+2204	THERE DOES NOT EXIST		logic|boolean|proof
+2227	LOGICAL AND		logic|boolean|proof
+2228	LOGICAL OR		logic|boolean|proof
+00AC	NOT SIGN		logic|boolean|proof
+22BB	XOR		logic|boolean|proof
+22BC	NAND		logic|boolean|proof
+22BD	NOR		logic|boolean|proof
+22A4	DOWN TACK		logic|boolean|proof
+22A2	RIGHT TACK		logic|boolean|proof
+22A3	LEFT TACK		logic|boolean|proof
+22A8	TRUE		logic|boolean|proof
+2208	ELEMENT OF		set theory|sets|membership
+2209	NOT AN ELEMENT OF		set theory|sets|membership
+220B	CONTAINS AS MEMBER		set theory|sets|membership
+220C	DOES NOT CONTAIN AS MEMBER		set theory|sets|membership
+2205	EMPTY SET		set theory|sets|membership
+2282	SUBSET OF		set theory|sets|membership
+2283	SUPERSET OF		set theory|sets|membership
+2286	SUBSET OF OR EQUAL TO		set theory|sets|membership
+2287	SUPERSET OF OR EQUAL TO		set theory|sets|membership
+2284	NOT A SUBSET OF		set theory|sets|membership
+2285	NOT A SUPERSET OF		set theory|sets|membership
+2288	NEITHER A SUBSET OF NOR EQUAL TO		set theory|sets|membership
+2289	NEITHER A SUPERSET OF NOR EQUAL TO		set theory|sets|membership
+228A	SUBSET OF WITH NOT EQUAL TO		set theory|sets|membership
+228B	SUPERSET OF WITH NOT EQUAL TO		set theory|sets|membership
+222A	UNION		set theory|sets|membership
+2229	INTERSECTION		set theory|sets|membership
+2216	SET MINUS		set theory|sets|membership
+228E	MULTISET UNION		set theory|sets|membership
+2295	CIRCLED PLUS		circled|boxed|operation
+2296	CIRCLED MINUS		circled|boxed|operation
+2297	CIRCLED TIMES		circled|boxed|operation
+2298	CIRCLED DIVISION SLASH		circled|boxed|operation
+2299	CIRCLED DOT OPERATOR		circled|boxed|operation
+229A	CIRCLED RING OPERATOR		circled|boxed|operation
+229E	SQUARED PLUS		circled|boxed|operation
+229F	SQUARED MINUS		circled|boxed|operation
+22A0	SQUARED TIMES		circled|boxed|operation
+22A1	SQUARED DOT OPERATOR		circled|boxed|operation
+2308	LEFT CEILING		bracket|delimiter|floor ceiling
+2309	RIGHT CEILING		bracket|delimiter|floor ceiling
+230A	LEFT FLOOR		bracket|delimiter|floor ceiling
+230B	RIGHT FLOOR		bracket|delimiter|floor ceiling
+27E8	MATHEMATICAL LEFT ANGLE BRACKET		bracket|delimiter|floor ceiling
+27E9	MATHEMATICAL RIGHT ANGLE BRACKET		bracket|delimiter|floor ceiling
+27E6	MATHEMATICAL LEFT WHITE SQUARE BRACKET		bracket|delimiter|floor ceiling
+27E7	MATHEMATICAL RIGHT WHITE SQUARE BRACKET		bracket|delimiter|floor ceiling
+22EF	MIDLINE HORIZONTAL ELLIPSIS		dots|ellipsis|matrix
+22EE	VERTICAL ELLIPSIS		dots|ellipsis|matrix
+22F0	UP RIGHT DIAGONAL ELLIPSIS		dots|ellipsis|matrix
+22F1	DOWN RIGHT DIAGONAL ELLIPSIS		dots|ellipsis|matrix
+002B	PLUS SIGN	Plus sign	addition|add
+003D	EQUALS SIGN	Equals sign	equality|equal to
+003C	LESS-THAN SIGN	Less than	inequality|smaller than|left angle
+003E	GREATER-THAN SIGN	Greater than	inequality|larger than|right angle
+0025	PERCENT SIGN	Percent sign	per cent|per hundred|percentage
+
+@Numbers and fractions	numbers numeric fractions superscripts subscripts indices exponents powers
+00BD	VULGAR FRACTION ONE HALF	One half	1/2|fraction half
+00BC	VULGAR FRACTION ONE QUARTER	One quarter	1/4|one fourth
+00BE	VULGAR FRACTION THREE QUARTERS	Three quarters	3/4|three fourths
+2153	VULGAR FRACTION ONE THIRD	One third	1/3
+2154	VULGAR FRACTION TWO THIRDS	Two thirds	2/3
+2155	VULGAR FRACTION ONE FIFTH	One fifth	1/5
+2156	VULGAR FRACTION TWO FIFTHS	Two fifths	2/5
+2157	VULGAR FRACTION THREE FIFTHS	Three fifths	3/5
+2158	VULGAR FRACTION FOUR FIFTHS	Four fifths	4/5
+2159	VULGAR FRACTION ONE SIXTH	One sixth	1/6
+215A	VULGAR FRACTION FIVE SIXTHS	Five sixths	5/6
+215B	VULGAR FRACTION ONE EIGHTH	One eighth	1/8
+215C	VULGAR FRACTION THREE EIGHTHS	Three eighths	3/8
+215D	VULGAR FRACTION FIVE EIGHTHS	Five eighths	5/8
+215E	VULGAR FRACTION SEVEN EIGHTHS	Seven eighths	7/8
+2150	VULGAR FRACTION ONE SEVENTH	One seventh	1/7
+2151	VULGAR FRACTION ONE NINTH	One ninth	1/9
+2152	VULGAR FRACTION ONE TENTH	One tenth	1/10
+2044	FRACTION SLASH	Fraction slash	numerator|denominator
+2070	SUPERSCRIPT ZERO		exponent|power|superscript|raised
+00B9	SUPERSCRIPT ONE		exponent|power|superscript|raised
+00B2	SUPERSCRIPT TWO		exponent|power|superscript|raised
+00B3	SUPERSCRIPT THREE		exponent|power|superscript|raised
+2074	SUPERSCRIPT FOUR		exponent|power|superscript|raised
+2075	SUPERSCRIPT FIVE		exponent|power|superscript|raised
+2076	SUPERSCRIPT SIX		exponent|power|superscript|raised
+2077	SUPERSCRIPT SEVEN		exponent|power|superscript|raised
+2078	SUPERSCRIPT EIGHT		exponent|power|superscript|raised
+2079	SUPERSCRIPT NINE		exponent|power|superscript|raised
+207A	SUPERSCRIPT PLUS SIGN		superscript|raised
+207B	SUPERSCRIPT MINUS		superscript|raised
+207C	SUPERSCRIPT EQUALS SIGN		superscript|raised
+207D	SUPERSCRIPT LEFT PARENTHESIS		superscript|raised
+207E	SUPERSCRIPT RIGHT PARENTHESIS		superscript|raised
+207F	SUPERSCRIPT LATIN SMALL LETTER N		superscript|raised
+2080	SUBSCRIPT ZERO		subscript|lowered
+2081	SUBSCRIPT ONE		subscript|lowered
+2082	SUBSCRIPT TWO		subscript|lowered
+2083	SUBSCRIPT THREE		subscript|lowered
+2084	SUBSCRIPT FOUR		subscript|lowered
+2085	SUBSCRIPT FIVE		subscript|lowered
+2086	SUBSCRIPT SIX		subscript|lowered
+2087	SUBSCRIPT SEVEN		subscript|lowered
+2088	SUBSCRIPT EIGHT		subscript|lowered
+2089	SUBSCRIPT NINE		subscript|lowered
+208A	SUBSCRIPT PLUS SIGN		subscript|lowered
+208B	SUBSCRIPT MINUS		subscript|lowered
+208C	SUBSCRIPT EQUALS SIGN		subscript|lowered
+208D	SUBSCRIPT LEFT PARENTHESIS		subscript|lowered
+208E	SUBSCRIPT RIGHT PARENTHESIS		subscript|lowered
+2460	CIRCLED DIGIT ONE		circled number|enumeration
+2461	CIRCLED DIGIT TWO		circled number|enumeration
+2462	CIRCLED DIGIT THREE		circled number|enumeration
+2463	CIRCLED DIGIT FOUR		circled number|enumeration
+2464	CIRCLED DIGIT FIVE		circled number|enumeration
+2465	CIRCLED DIGIT SIX		circled number|enumeration
+2466	CIRCLED DIGIT SEVEN		circled number|enumeration
+2467	CIRCLED DIGIT EIGHT		circled number|enumeration
+2468	CIRCLED DIGIT NINE		circled number|enumeration
+2469	CIRCLED NUMBER TEN		circled number|enumeration
+00AA	FEMININE ORDINAL INDICATOR		ordinal|Spanish|ordinal indicator
+00BA	MASCULINE ORDINAL INDICATOR		ordinal|Spanish|ordinal indicator
+
+@Currency	money currency currencies coins prices financial market
+20AC	EURO SIGN	Euro	euros|european currency|EUR
+00A3	POUND SIGN	Pound sterling	British pounds|GBP
+00A5	YEN SIGN	Yen or yuan	Japanese yen|Chinese yuan|JPY|CNY
+00A2	CENT SIGN	Cent	cents|penny
+00A4	CURRENCY SIGN	Currency sign	generic currency|scarab
+20B9	INDIAN RUPEE SIGN	Indian rupee	rupees|INR
+20A9	WON SIGN	South Korean won	KRW
+20BD	RUBLE SIGN	Russian ruble	rouble|RUB
+20BF	BITCOIN SIGN	Bitcoin	crypto|BTC
+20BA	TURKISH LIRA SIGN	Turkish lira	TRY
+20AA	NEW SHEQEL SIGN	Israeli new shekel	sheqel|ILS
+20AB	DONG SIGN	Vietnamese dong	VND
+20B4	HRYVNIA SIGN	Ukrainian hryvnia	UAH
+20B1	PESO SIGN	Philippine peso	PHP
+0E3F	THAI CURRENCY SYMBOL BAHT	Thai baht	THB
+20A1	COLON SIGN	Costa Rican colón	colon|CRC
+20A6	NAIRA SIGN	Nigerian naira	NGN
+20B2	GUARANI SIGN	Paraguayan guaraní	guarani|PYG
+20B5	CEDI SIGN	Ghanaian cedi	GHS
+20B8	TENGE SIGN	Kazakhstani tenge	KZT
+20A3	FRENCH FRANC SIGN		currency
+20A7	PESETA SIGN		currency
+20A4	LIRA SIGN		currency
+20A2	CRUZEIRO SIGN		currency
+20B3	AUSTRAL SIGN		currency
+20A5	MILL SIGN		currency
+20A8	RUPEE SIGN		currency
+20AD	KIP SIGN		currency
+20AE	TUGRIK SIGN		currency
+20BC	MANAT SIGN		currency
+20BE	LARI SIGN		currency
+0024	DOLLAR SIGN	Dollar sign	dollars|USD|CAD|AUD
+
+@Units and science	measurement units science engineering physics temperature length weight
+00B0	DEGREE SIGN	Degree sign	degrees|temperature|angle
+2103	DEGREE CELSIUS	Degrees Celsius	centigrade|temperature
+2109	DEGREE FAHRENHEIT	Degrees Fahrenheit	temperature
+212A	KELVIN SIGN	Kelvin sign	temperature
+00B5	MICRO SIGN	Micro sign	micron|millionth|micro prefix
+2126	OHM SIGN	Ohm sign	electrical resistance|ohms
+212B	ANGSTROM SIGN	Angstrom sign	ångström|length
+2030	PER MILLE SIGN	Per mille	per thousand|permille
+2031	PER TEN THOUSAND SIGN	Per ten thousand	basis point|per myriad
+210F	PLANCK CONSTANT OVER TWO PI	Reduced Planck constant	h bar|physics|quantum
+2113	SCRIPT SMALL L	Script liter	litre|liter
+2127	INVERTED OHM SIGN	Conductance	mho|inverted ohm
+2697	ALEMBIC	Alembic	chemistry|distillation|alchemy
+269B	ATOM SYMBOL	Atom	atomic|physics|science
+2622	RADIOACTIVE SIGN	Radioactive	radioactivity|radiation|hazard
+2623	BIOHAZARD SIGN	Biohazard	biological hazard|safety
+
+@Hearts and feelings	hearts love affection romance emotions faces
+2661	WHITE HEART SUIT	Outline heart	white heart|hollow heart|empty heart|love|card suit
+2665	BLACK HEART SUIT	Filled heart	black heart|solid heart|love|card suit
+2764	HEAVY BLACK HEART	Heavy heart	red heart|love
+2763	HEAVY HEART EXCLAMATION MARK ORNAMENT	Heart exclamation mark	love|punctuation
+2765	ROTATED HEAVY BLACK HEART BULLET		heart|decoration
+2639	WHITE FROWNING FACE	Frowning face	sad|unhappy|frown
+263A	WHITE SMILING FACE	Smiling face	smile|happy|white smiley
+263B	BLACK SMILING FACE	Filled smiling face	black smiley|happy
+
+@Stars and ornaments	stars ornaments decorations dividers motifs flourishes dingbats
+2605	BLACK STAR	Filled star	black star|favorite|favourite
+2606	WHITE STAR	Outline star	hollow star|white star|favorite|favourite
+2726	BLACK FOUR POINTED STAR		star|ornament
+2727	WHITE FOUR POINTED STAR		star|ornament
+2729	STRESS OUTLINED WHITE STAR		star|ornament
+272A	CIRCLED WHITE STAR		star|ornament
+272B	OPEN CENTRE BLACK STAR		star|ornament
+272C	BLACK CENTRE WHITE STAR		star|ornament
+272D	OUTLINED BLACK STAR		star|ornament
+272E	HEAVY OUTLINED BLACK STAR		star|ornament
+272F	PINWHEEL STAR		star|ornament
+2730	SHADOWED WHITE STAR		star|ornament
+2731	HEAVY ASTERISK		flower|star|asterisk|rosette
+2732	OPEN CENTRE ASTERISK		flower|star|asterisk|rosette
+2733	EIGHT SPOKED ASTERISK		flower|star|asterisk|rosette
+2734	EIGHT POINTED BLACK STAR		flower|star|asterisk|rosette
+2735	EIGHT POINTED PINWHEEL STAR		flower|star|asterisk|rosette
+2736	SIX POINTED BLACK STAR		flower|star|asterisk|rosette
+2737	EIGHT POINTED RECTILINEAR BLACK STAR		flower|star|asterisk|rosette
+2738	HEAVY EIGHT POINTED RECTILINEAR BLACK STAR		flower|star|asterisk|rosette
+2739	TWELVE POINTED BLACK STAR		flower|star|asterisk|rosette
+273A	SIXTEEN POINTED ASTERISK		flower|star|asterisk|rosette
+273B	TEARDROP-SPOKED ASTERISK		flower|star|asterisk|rosette
+273C	OPEN CENTRE TEARDROP-SPOKED ASTERISK		flower|star|asterisk|rosette
+273D	HEAVY TEARDROP-SPOKED ASTERISK		flower|star|asterisk|rosette
+273E	SIX PETALLED BLACK AND WHITE FLORETTE		flower|star|asterisk|rosette
+273F	BLACK FLORETTE		flower|star|asterisk|rosette
+2740	WHITE FLORETTE		flower|star|asterisk|rosette
+2741	EIGHT PETALLED OUTLINED BLACK FLORETTE		flower|star|asterisk|rosette
+2742	CIRCLED OPEN CENTRE EIGHT POINTED STAR		flower|star|asterisk|rosette
+2743	HEAVY TEARDROP-SPOKED PINWHEEL ASTERISK		flower|star|asterisk|rosette
+2748	HEAVY SPARKLE		flower|star|asterisk|rosette
+2749	BALLOON-SPOKED ASTERISK		flower|star|asterisk|rosette
+274A	EIGHT TEARDROP-SPOKED PROPELLER ASTERISK		flower|star|asterisk|rosette
+274B	HEAVY EIGHT TEARDROP-SPOKED PROPELLER ASTERISK		flower|star|asterisk|rosette
+2722	FOUR TEARDROP-SPOKED ASTERISK		ornament|cross
+2723	FOUR BALLOON-SPOKED ASTERISK		ornament|cross
+2724	HEAVY FOUR BALLOON-SPOKED ASTERISK		ornament|cross
+2725	FOUR CLUB-SPOKED ASTERISK		ornament|cross
+2720	MALTESE CROSS	Maltese cross	decoration|heraldry
+2059	FIVE DOT PUNCTUATION		decorative dots|divider
+2058	FOUR DOT PUNCTUATION		decorative dots|divider
+2E2A	TWO DOTS OVER ONE DOT PUNCTUATION		decorative dots|divider
+2E2C	SQUARED FOUR DOT PUNCTUATION		decorative dots|divider
+
+@Geometry	shapes geometric figures diagrams patterns fill outline
+25CF	BLACK CIRCLE		circle|disc|disk|round
+25CB	WHITE CIRCLE		circle|disc|disk|round
+25C9	FISHEYE		circle|disc|disk|round
+25CE	BULLSEYE		circle|disc|disk|round
+25CC	DOTTED CIRCLE		circle|disc|disk|round
+25CD	CIRCLE WITH VERTICAL FILL		circle|disc|disk|round
+25D0	CIRCLE WITH LEFT HALF BLACK		circle|disc|disk|round
+25D1	CIRCLE WITH RIGHT HALF BLACK		circle|disc|disk|round
+25D2	CIRCLE WITH LOWER HALF BLACK		circle|disc|disk|round
+25D3	CIRCLE WITH UPPER HALF BLACK		circle|disc|disk|round
+25D4	CIRCLE WITH UPPER RIGHT QUADRANT BLACK		circle|disc|disk|round
+25D5	CIRCLE WITH ALL BUT UPPER LEFT QUADRANT BLACK		circle|disc|disk|round
+25D6	LEFT HALF BLACK CIRCLE		circle|disc|disk|round
+25D7	RIGHT HALF BLACK CIRCLE		circle|disc|disk|round
+25EF	LARGE CIRCLE		circle|disc|disk|round
+2B24	BLACK LARGE CIRCLE		circle|ellipse|oval
+2B2D	WHITE HORIZONTAL ELLIPSE		circle|ellipse|oval
+2B2F	WHITE VERTICAL ELLIPSE		circle|ellipse|oval
+25A0	BLACK SQUARE		square|box
+25A1	WHITE SQUARE		square|box
+25A2	WHITE SQUARE WITH ROUNDED CORNERS		square|box
+25A3	WHITE SQUARE CONTAINING BLACK SMALL SQUARE		square|box
+25A4	SQUARE WITH HORIZONTAL FILL		square|box
+25A5	SQUARE WITH VERTICAL FILL		square|box
+25A6	SQUARE WITH ORTHOGONAL CROSSHATCH FILL		square|box
+25A7	SQUARE WITH UPPER LEFT TO LOWER RIGHT FILL		square|box
+25A8	SQUARE WITH UPPER RIGHT TO LOWER LEFT FILL		square|box
+25A9	SQUARE WITH DIAGONAL CROSSHATCH FILL		square|box
+25AA	BLACK SMALL SQUARE		square|box
+25AB	WHITE SMALL SQUARE		square|box
+25E7	SQUARE WITH LEFT HALF BLACK		square|box
+25E8	SQUARE WITH RIGHT HALF BLACK		square|box
+25E9	SQUARE WITH UPPER LEFT DIAGONAL HALF BLACK		square|box
+25EA	SQUARE WITH LOWER RIGHT DIAGONAL HALF BLACK		square|box
+25EB	WHITE SQUARE WITH VERTICAL BISECTING LINE		square|box
+2B1B	BLACK LARGE SQUARE		square|box
+2B1C	WHITE LARGE SQUARE		square|box
+25AC	BLACK RECTANGLE		rectangle|bar
+25AD	WHITE RECTANGLE		rectangle|bar
+25AE	BLACK VERTICAL RECTANGLE		rectangle|bar
+25AF	WHITE VERTICAL RECTANGLE		rectangle|bar
+25B0	BLACK PARALLELOGRAM		rectangle|bar
+25B1	WHITE PARALLELOGRAM		rectangle|bar
+25B2	BLACK UP-POINTING TRIANGLE		triangle|pointer
+25B3	WHITE UP-POINTING TRIANGLE		triangle|pointer
+25B4	BLACK UP-POINTING SMALL TRIANGLE		triangle|pointer
+25B5	WHITE UP-POINTING SMALL TRIANGLE		triangle|pointer
+25B6	BLACK RIGHT-POINTING TRIANGLE		triangle|pointer
+25B7	WHITE RIGHT-POINTING TRIANGLE		triangle|pointer
+25B8	BLACK RIGHT-POINTING SMALL TRIANGLE		triangle|pointer
+25B9	WHITE RIGHT-POINTING SMALL TRIANGLE		triangle|pointer
+25BC	BLACK DOWN-POINTING TRIANGLE		triangle|pointer
+25BD	WHITE DOWN-POINTING TRIANGLE		triangle|pointer
+25BE	BLACK DOWN-POINTING SMALL TRIANGLE		triangle|pointer
+25BF	WHITE DOWN-POINTING SMALL TRIANGLE		triangle|pointer
+25C0	BLACK LEFT-POINTING TRIANGLE		triangle|pointer
+25C1	WHITE LEFT-POINTING TRIANGLE		triangle|pointer
+25C2	BLACK LEFT-POINTING SMALL TRIANGLE		triangle|pointer
+25C3	WHITE LEFT-POINTING SMALL TRIANGLE		triangle|pointer
+25E2	BLACK LOWER RIGHT TRIANGLE		triangle|pointer
+25E3	BLACK LOWER LEFT TRIANGLE		triangle|pointer
+25E4	BLACK UPPER LEFT TRIANGLE		triangle|pointer
+25E5	BLACK UPPER RIGHT TRIANGLE		triangle|pointer
+25C6	BLACK DIAMOND		diamond|rhombus
+25C7	WHITE DIAMOND		diamond|rhombus
+25C8	WHITE DIAMOND CONTAINING BLACK SMALL DIAMOND		diamond|rhombus
+2B16	DIAMOND WITH LEFT HALF BLACK		diamond|rhombus
+2B17	DIAMOND WITH RIGHT HALF BLACK		diamond|rhombus
+2B18	DIAMOND WITH TOP HALF BLACK		diamond|rhombus
+2B19	DIAMOND WITH BOTTOM HALF BLACK		diamond|rhombus
+2B1F	BLACK PENTAGON		polygon|pentagon|hexagon
+2B20	WHITE PENTAGON		polygon|pentagon|hexagon
+2B21	WHITE HEXAGON		polygon|pentagon|hexagon
+2B22	BLACK HEXAGON		polygon|pentagon|hexagon
+2B23	HORIZONTAL BLACK HEXAGON		polygon|pentagon|hexagon
+2571	BOX DRAWINGS LIGHT DIAGONAL UPPER RIGHT TO LOWER LEFT		box drawing|line
+2572	BOX DRAWINGS LIGHT DIAGONAL UPPER LEFT TO LOWER RIGHT		box drawing|line
+2573	BOX DRAWINGS LIGHT DIAGONAL CROSS		box drawing|line
+2500	BOX DRAWINGS LIGHT HORIZONTAL		box drawing|line
+2502	BOX DRAWINGS LIGHT VERTICAL		box drawing|line
+250C	BOX DRAWINGS LIGHT DOWN AND RIGHT		box drawing|line
+2510	BOX DRAWINGS LIGHT DOWN AND LEFT		box drawing|line
+2514	BOX DRAWINGS LIGHT UP AND RIGHT		box drawing|line
+2518	BOX DRAWINGS LIGHT UP AND LEFT		box drawing|line
+251C	BOX DRAWINGS LIGHT VERTICAL AND RIGHT		box drawing|line
+2524	BOX DRAWINGS LIGHT VERTICAL AND LEFT		box drawing|line
+252C	BOX DRAWINGS LIGHT DOWN AND HORIZONTAL		box drawing|line
+2534	BOX DRAWINGS LIGHT UP AND HORIZONTAL		box drawing|line
+253C	BOX DRAWINGS LIGHT VERTICAL AND HORIZONTAL		box drawing|line
+2588	FULL BLOCK		block|shade|shading
+2580	UPPER HALF BLOCK		block|shade|shading
+2584	LOWER HALF BLOCK		block|shade|shading
+2591	LIGHT SHADE		block|shade|shading
+2592	MEDIUM SHADE		block|shade|shading
+2593	DARK SHADE		block|shade|shading
+
+@Games	games play playing cards suits board games chess dice
+2660	BLACK SPADE SUIT		playing card|suit|bridge|poker
+2664	WHITE SPADE SUIT		playing card|suit|bridge|poker
+2663	BLACK CLUB SUIT		playing card|suit|bridge|poker
+2667	WHITE CLUB SUIT		playing card|suit|bridge|poker
+2666	BLACK DIAMOND SUIT		playing card|suit|bridge|poker
+2662	WHITE DIAMOND SUIT		playing card|suit|bridge|poker
+2654	WHITE CHESS KING		chess|board game
+2655	WHITE CHESS QUEEN		chess|board game
+2656	WHITE CHESS ROOK		chess|board game
+2657	WHITE CHESS BISHOP		chess|board game
+2658	WHITE CHESS KNIGHT		chess|board game
+2659	WHITE CHESS PAWN		chess|board game
+265A	BLACK CHESS KING		chess|board game
+265B	BLACK CHESS QUEEN		chess|board game
+265C	BLACK CHESS ROOK		chess|board game
+265D	BLACK CHESS BISHOP		chess|board game
+265E	BLACK CHESS KNIGHT		chess|board game
+265F	BLACK CHESS PAWN		chess|board game
+2680	DIE FACE-1		dice|die|pips
+2681	DIE FACE-2		dice|die|pips
+2682	DIE FACE-3		dice|die|pips
+2683	DIE FACE-4		dice|die|pips
+2684	DIE FACE-5		dice|die|pips
+2685	DIE FACE-6		dice|die|pips
+1F0A1	PLAYING CARD ACE OF SPADES		ace|playing card
+1F0B1	PLAYING CARD ACE OF HEARTS		ace|playing card
+1F0C1	PLAYING CARD ACE OF DIAMONDS		ace|playing card
+1F0D1	PLAYING CARD ACE OF CLUBS		ace|playing card
+1F0CF	PLAYING CARD BLACK JOKER	Joker	playing card|wild card
+
+@Music	music notation notes instruments sound tuning rhythm
+2669	QUARTER NOTE	Quarter note	crotchet|music note
+266A	EIGHTH NOTE	Eighth note	quaver|music note
+266B	BEAMED EIGHTH NOTES	Beamed eighth notes	quavers|music notes
+266C	BEAMED SIXTEENTH NOTES	Beamed sixteenth notes	semiquavers|music notes
+266D	MUSIC FLAT SIGN	Musical flat	accidental|lower pitch
+266E	MUSIC NATURAL SIGN	Musical natural	accidental|cancel flat sharp
+266F	MUSIC SHARP SIGN	Musical sharp	accidental|raise pitch
+1D11E	MUSICAL SYMBOL G CLEF	Treble clef	G clef|music staff
+1D122	MUSICAL SYMBOL F CLEF	Bass clef	F clef|music staff
+1D121	MUSICAL SYMBOL C CLEF	C clef	alto clef|tenor clef
+1D100	MUSICAL SYMBOL SINGLE BARLINE		bar line|repeat
+1D101	MUSICAL SYMBOL DOUBLE BARLINE		bar line|repeat
+1D102	MUSICAL SYMBOL FINAL BARLINE		bar line|repeat
+1D103	MUSICAL SYMBOL REVERSE FINAL BARLINE		bar line|repeat
+1D106	MUSICAL SYMBOL LEFT REPEAT SIGN		bar line|repeat
+1D107	MUSICAL SYMBOL RIGHT REPEAT SIGN		bar line|repeat
+1D110	MUSICAL SYMBOL FERMATA		music mark|notation
+1D12A	MUSICAL SYMBOL DOUBLE SHARP		music mark|notation
+1D12B	MUSICAL SYMBOL DOUBLE FLAT		music mark|notation
+1D13B	MUSICAL SYMBOL WHOLE REST		rest|silence
+1D13C	MUSICAL SYMBOL HALF REST		rest|silence
+1D13D	MUSICAL SYMBOL QUARTER REST		rest|silence
+1D13E	MUSICAL SYMBOL EIGHTH REST		rest|silence
+1D13F	MUSICAL SYMBOL SIXTEENTH REST		rest|silence
+1D15D	MUSICAL SYMBOL WHOLE NOTE		musical note|duration
+1D15E	MUSICAL SYMBOL HALF NOTE		musical note|duration
+1D15F	MUSICAL SYMBOL QUARTER NOTE		musical note|duration
+1D160	MUSICAL SYMBOL EIGHTH NOTE		musical note|duration
+1D161	MUSICAL SYMBOL SIXTEENTH NOTE		musical note|duration
+
+@Sky and weather	astronomy planets astrology sky weather nature constellations zodiac
+2600	BLACK SUN WITH RAYS		sun|sunlight|sunshine|solar
+263C	WHITE SUN WITH RAYS		sun|sunlight|sunshine|solar
+2609	SUN		sun|sunlight|sunshine|solar
+2601	CLOUD	Cloud	cloudy|weather
+2602	UMBRELLA		rain|storm|lightning|comet
+2614	UMBRELLA WITH RAIN DROPS		rain|storm|lightning|comet
+2607	LIGHTNING		rain|storm|lightning|comet
+2608	THUNDERSTORM		rain|storm|lightning|comet
+2604	COMET		rain|storm|lightning|comet
+2603	SNOWMAN	Snowman	snow|winter
+2744	SNOWFLAKE		snow|snowflake|winter
+2745	TIGHT TRIFOLIATE SNOWFLAKE		snow|snowflake|winter
+2746	HEAVY CHEVRON SNOWFLAKE		snow|snowflake|winter
+263D	FIRST QUARTER MOON		crescent|moon|lunar
+263E	LAST QUARTER MOON		crescent|moon|lunar
+1F311	NEW MOON SYMBOL		moon phase|lunar
+1F312	WAXING CRESCENT MOON SYMBOL		moon phase|lunar
+1F313	FIRST QUARTER MOON SYMBOL		moon phase|lunar
+1F314	WAXING GIBBOUS MOON SYMBOL		moon phase|lunar
+1F315	FULL MOON SYMBOL		moon phase|lunar
+1F316	WANING GIBBOUS MOON SYMBOL		moon phase|lunar
+1F317	LAST QUARTER MOON SYMBOL		moon phase|lunar
+1F318	WANING CRESCENT MOON SYMBOL		moon phase|lunar
+263F	MERCURY		planet|solar system
+2640	FEMALE SIGN		planet|solar system
+2641	EARTH		planet|solar system
+2642	MALE SIGN		planet|solar system
+2643	JUPITER		planet|solar system
+2644	SATURN		planet|solar system
+2645	URANUS		planet|solar system
+2646	NEPTUNE		planet|solar system
+2647	PLUTO		planet|solar system
+2648	ARIES		zodiac|horoscope
+2649	TAURUS		zodiac|horoscope
+264A	GEMINI		zodiac|horoscope
+264B	CANCER		zodiac|horoscope
+264C	LEO		zodiac|horoscope
+264D	VIRGO		zodiac|horoscope
+264E	LIBRA		zodiac|horoscope
+264F	SCORPIUS		zodiac|horoscope
+2650	SAGITTARIUS		zodiac|horoscope
+2651	CAPRICORN		zodiac|horoscope
+2652	AQUARIUS		zodiac|horoscope
+2653	PISCES		zodiac|horoscope
+
+@Signs and objects	signs objects symbols pictographs warnings everyday life
+2713	CHECK MARK	Check mark	tick|yes|done|checkmark
+2714	HEAVY CHECK MARK	Heavy check mark	tick|yes|done|checkmark
+2717	BALLOT X		cross mark|wrong|no|ex|cancel
+2718	HEAVY BALLOT X		cross mark|wrong|no|ex|cancel
+2715	MULTIPLICATION X		cross mark|wrong|no|ex|cancel
+2716	HEAVY MULTIPLICATION X		cross mark|wrong|no|ex|cancel
+2610	BALLOT BOX	Empty checkbox	ballot box|unchecked|unticked|check box
+2611	BALLOT BOX WITH CHECK	Checked box	ballot box|checkbox|tick
+2612	BALLOT BOX WITH X	Crossed box	ballot box|checkbox|x mark
+26A0	WARNING SIGN	Warning	caution|danger|attention
+26D4	NO ENTRY	No entry	stop|prohibited|traffic
+2620	SKULL AND CROSSBONES	Skull and crossbones	pirate|poison|death|danger
+2691	BLACK FLAG		flag|tools|travel|equipment
+2690	WHITE FLAG		flag|tools|travel|equipment
+2693	ANCHOR		flag|tools|travel|equipment
+26F5	SAILBOAT		flag|tools|travel|equipment
+2699	GEAR		flag|tools|travel|equipment
+2692	HAMMER AND PICK		flag|tools|travel|equipment
+2696	SCALES		flag|tools|travel|equipment
+2694	CROSSED SWORDS		flag|tools|travel|equipment
+26D3	CHAINS		flag|tools|travel|equipment
+260F	WHITE TELEPHONE		stationery|communication|writing tools
+260E	BLACK TELEPHONE		stationery|communication|writing tools
+2709	ENVELOPE		stationery|communication|writing tools
+2702	BLACK SCISSORS		stationery|communication|writing tools
+2704	WHITE SCISSORS		stationery|communication|writing tools
+2706	TELEPHONE LOCATION SIGN		stationery|communication|writing tools
+270E	LOWER RIGHT PENCIL		stationery|communication|writing tools
+270F	PENCIL		stationery|communication|writing tools
+2710	UPPER RIGHT PENCIL		stationery|communication|writing tools
+2711	WHITE NIB		stationery|communication|writing tools
+2712	BLACK NIB		stationery|communication|writing tools
+231B	HOURGLASS		hourglass|clock|watch|time
+231A	WATCH		hourglass|clock|watch|time
+23F3	HOURGLASS WITH FLOWING SAND		hourglass|clock|watch|time
+23F0	ALARM CLOCK		hourglass|clock|watch|time
+1F4D6	OPEN BOOK	Open book	reading|literature|novel
+270D	WRITING HAND	Writing hand	author|pen|manuscript
+267B	BLACK UNIVERSAL RECYCLING SYMBOL		recycling|recycle
+2672	UNIVERSAL RECYCLING SYMBOL		recycling|recycle
+2673	RECYCLING SYMBOL FOR TYPE-1 PLASTICS		recycling|recycle
+2674	RECYCLING SYMBOL FOR TYPE-2 PLASTICS		recycling|recycle
+2675	RECYCLING SYMBOL FOR TYPE-3 PLASTICS		recycling|recycle
+2676	RECYCLING SYMBOL FOR TYPE-4 PLASTICS		recycling|recycle
+2677	RECYCLING SYMBOL FOR TYPE-5 PLASTICS		recycling|recycle
+2678	RECYCLING SYMBOL FOR TYPE-6 PLASTICS		recycling|recycle
+2679	RECYCLING SYMBOL FOR TYPE-7 PLASTICS		recycling|recycle
+
+@Culture and beliefs	culture religion mythology faith peace spiritual belief
+262E	PEACE SYMBOL	Peace sign	pacifism|peace
+262F	YIN YANG	Yin yang	balance|tao
+2625	ANKH	Ankh	Egypt|life
+2624	CADUCEUS	Caduceus	staff|hermes|medicine
+2695	STAFF OF AESCULAPIUS	Rod of Asclepius	medicine|medical|snake
+2627	CHI RHO	Chi Rho	Christianity|christogram
+2626	ORTHODOX CROSS		Christian cross
+2628	CROSS OF LORRAINE		Christian cross
+2629	CROSS OF JERUSALEM		Christian cross
+271A	HEAVY GREEK CROSS		Christian cross
+271B	OPEN CENTRE CROSS		Christian cross
+271C	HEAVY OPEN CENTRE CROSS		Christian cross
+271D	LATIN CROSS		Christian cross
+271E	SHADOWED WHITE LATIN CROSS		Christian cross
+271F	OUTLINED LATIN CROSS		Christian cross
+2721	STAR OF DAVID	Star of David	Judaism|hexagram
+262A	STAR AND CRESCENT	Star and crescent	Islam
+2638	WHEEL OF DHARMA	Wheel of dharma	Buddhism|wheel
+1F549	OM SYMBOL	Om sign	Hinduism|sacred
+269C	FLEUR-DE-LIS	Fleur-de-lis	heraldry|fleur de lys|lily
+2618	SHAMROCK	Shamrock	clover|Irish
+
+@Keyboard and media	technology keyboard computing interface audio media playback controls
+2318	PLACE OF INTEREST SIGN	Command key	cmd|Mac|place of interest
+2325	OPTION KEY	Option key	alt|Mac
+2303	UP ARROWHEAD	Control key	ctrl|up arrowhead
+232B	ERASE TO THE LEFT	Backspace key	delete left
+2326	ERASE TO THE RIGHT	Forward Delete key	delete right
+238B	BROKEN CIRCLE WITH NORTHWEST ARROW	Escape key	esc
+23CE	RETURN SYMBOL	Return key	enter
+21EA	UPWARDS WHITE ARROW FROM BAR	Caps Lock	capital letters|keyboard
+2328	KEYBOARD	Keyboard	typing
+23CF	EJECT SYMBOL	Eject	media player
+23DA	EARTH GROUND	Earth ground	electronics|grounding
+23FB	POWER SYMBOL	Power	on off|standby
+23F4	BLACK MEDIUM LEFT-POINTING TRIANGLE		media playback|player
+23F5	BLACK MEDIUM RIGHT-POINTING TRIANGLE		media playback|player
+23F6	BLACK MEDIUM UP-POINTING TRIANGLE		media playback|player
+23F7	BLACK MEDIUM DOWN-POINTING TRIANGLE		media playback|player
+23F8	DOUBLE VERTICAL BAR		media playback|player
+23F9	BLACK SQUARE FOR STOP		media playback|player
+23FA	BLACK CIRCLE FOR RECORD		media playback|player
+23ED	BLACK RIGHT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR		media playback|player
+23EE	BLACK LEFT-POINTING DOUBLE TRIANGLE WITH VERTICAL BAR		media playback|player
+23E9	BLACK RIGHT-POINTING DOUBLE TRIANGLE		media playback|player
+23EA	BLACK LEFT-POINTING DOUBLE TRIANGLE		media playback|player

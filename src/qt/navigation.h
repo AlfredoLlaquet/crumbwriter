@@ -34,6 +34,8 @@ public:
     void focusGenres();
     void toggleGenreOrder();
     std::function<void(int)> jumpTo;
+protected:
+    void changeEvent(QEvent *event) override;
 private:
     void updateMode();
     void updateToday();
@@ -52,7 +54,7 @@ private:
     QLabel *genreHeading_;
     QToolButton *genreOrder_;
     QTreeWidget *visits_;
-    QTreeWidget *genres_;
+    QTreeWidget *genres_ = nullptr;
     PanelSearch *historySearch_;
     PanelSearch *genresSearch_;
     QHash<int, QTreeWidgetItem *> visitedLines_;

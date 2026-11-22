@@ -12,9 +12,6 @@ import sys
 import tempfile
 import time
 
-INACTIVE_PAPER = (229, 229, 229)
-
-
 def output(*args):
     return subprocess.check_output(args, text=True, timeout=8).strip()
 
@@ -71,13 +68,17 @@ def expect_paper(window, expected, context):
         raise AssertionError(f'{context}: rendered {paper_color(window)}, expected {expected}') from error
 
 
-def restored_paper(window):
+def stable_paper(window):
     color = paper_color(window)
-    if color != INACTIVE_PAPER:
-        time.sleep(.2)
-        if paper_color(window) == color:
-            return color
-    return None
+    time.sleep(.2)
+    return color if paper_color(window) == color else None
+
+
+def inactive_paper(base):
+    red, green, blue = base
+    dark = (11 * red + 16 * green + 5 * blue) // 32 < 128
+    overlay, opacity = (255, 10) if dark else (0, 26)
+    return tuple((channel * (255 - opacity) + overlay * opacity + 127) // 255 for channel in base)
 
 
 def tiles(clients, screen):
@@ -152,11 +153,13 @@ def session(app, run):
                     else:
                         assert old == new, f'manuscript tile changed: {old} -> {new}'
 
-            output('xdotool', 'windowactivate', '--sync', peer)
-            expect_paper(alpha, INACTIVE_PAPER, 'other application active')
             key(alpha, 'Escape')
-            normal_paper = wait_for('reactivated manuscript returns to its theme color',
-                                    lambda: restored_paper(alpha))
+            normal_paper = wait_for('active manuscript paper', lambda: stable_paper(alpha))
+            away_paper = inactive_paper(normal_paper)
+            output('xdotool', 'windowactivate', '--sync', peer)
+            expect_paper(alpha, away_paper, 'other application active')
+            key(alpha, 'Escape')
+            expect_paper(alpha, normal_paper, 'reactivated manuscript returns to its theme color')
             for chord in ('ctrl+shift+3', 'ctrl+shift+4', 'Escape', 'shift+F7', 'ctrl+p', 'e', 'Return', 'alt+Down', 'Escape',
                           'Escape', 'ctrl+r', 'ctrl+l', 'Escape', 'ctrl+h', 'Escape', 'F10', 'Escape'):
                 key(alpha, chord)
@@ -236,8 +239,8 @@ def session(app, run):
             for active, inactive in [(beta, alpha), (alpha, beta)]:
                 output('xdotool', 'windowactivate', '--sync', active)
                 expect_paper(active, normal_paper, 'active manuscript')
-                expect_paper(inactive, INACTIVE_PAPER, 'neighboring manuscript')
-            print('Rendered manuscript colors: active', normal_paper, 'inactive', INACTIVE_PAPER, flush=True)
+                expect_paper(inactive, away_paper, 'neighboring manuscript')
+            print('Rendered manuscript colors: active', normal_paper, 'inactive', away_paper, flush=True)
             short = min((alpha, beta), key=lambda win: rectangle(win)[3])
             assert rectangle(short)[3] < screen[1] * .7, 'the layout must exercise a short editor tile'
             for chord in ('ctrl+f', 'Escape', 'ctrl+h', 'Escape'):

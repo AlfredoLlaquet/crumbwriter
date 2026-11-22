@@ -1,4 +1,7 @@
 #include "navigation.h"
+#include "layoutcolumns.h"
+#include "editorcolors.h"
+#include <QEvent>
 #include "manuscripteditor.h"
 #include "manuscriptnumbers.h"
 #include "panelsearch.h"
@@ -11,12 +14,50 @@
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QTextBlock>
+#include <QTimer>
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 #include <algorithm>
 
 namespace {
+// The default information panel fits its text. A saved manual height takes
+// precedence, including when a manuscript switches between writing modes.
+class InformationPanel final : public QWidget {
+public:
+    explicit InformationPanel(QSplitter *split) : QWidget(split), split_(split) {}
+protected:
+    bool event(QEvent *event) override
+    {
+        const bool result = QWidget::event(event);
+        if ((event->type() == QEvent::LayoutRequest || event->type() == QEvent::Resize ||
+             event->type() == QEvent::Show) && !queued_ && isVisible()) {
+            queued_ = true;
+            QTimer::singleShot(0, this, [this] {
+                queued_ = false;
+                if (!isVisible() || !layout() || split_->property("layoutManualSizes").toBool()) return;
+                const int me = split_->indexOf(this);
+                auto sizes = split_->sizes();
+                const int target = layout()->hasHeightForWidth()
+                    ? layout()->totalHeightForWidth(width()) : layout()->totalSizeHint().height();
+                const int difference = sizes[me] - target;
+                if (!difference) return;
+                for (int i = 0; i < sizes.size(); ++i) {
+                    if (i == me || sizes[i] + difference <= 0 || split_->widget(i)->isHidden()) continue;
+                    sizes[me] = target;
+                    sizes[i] += difference;
+                    split_->setSizes(sizes);
+                    break;
+                }
+            });
+        }
+        return result;
+    }
+private:
+    QSplitter *split_;
+    bool queued_ = false;
+};
+
 class SidebarList final : public QTreeWidget {
 public:
     explicit SidebarList(QWidget *parent) : QTreeWidget(parent)
@@ -56,8 +97,7 @@ void markNumber(QTreeWidgetItem *item, int column, bool warning, const QPalette 
     QFont font = item->font(column);
     font.setBold(warning);
     item->setFont(column, font);
-    const bool dark = palette.color(QPalette::Base).lightness() < 128;
-    item->setForeground(column, warning ? QBrush(QColor(dark ? "#ff8488" : "#bc102a")) : QBrush());
+    item->setForeground(column, warning ? QBrush(EditorColors::warning(palette.base().color())) : QBrush());
 }
 
 QTextCursor insertionPoint(QTextCursor c)
@@ -110,28 +150,39 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
     : QWidget(parent), editor_(editor), settings_(settings)
 {
     setObjectName("sidebar");
+    setAccessibleName(tr("Navigation"));
     setMinimumSize(1, 1);
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(8, 6, 8, 6);
     layout->setSizeConstraint(QLayout::SetNoConstraint);
-    number_ = label(this, true);
+    auto *split = new QSplitter(Qt::Vertical, this);
+    split->setObjectName("navigationSplitter");
+    split->setAccessibleName(tr("Navigation panels"));
+    split->setChildrenCollapsible(false);
+    auto *info = new InformationPanel(split);
+    info->setObjectName("currentInfo");
+    info->setAccessibleName(tr("Manuscript information"));
+    auto *infoLayout = new QVBoxLayout(info);
+    infoLayout->setContentsMargins(0, 0, 0, 0);
+    number_ = label(info, true);
     number_->setObjectName("currentCrumb");
     QFont numberFont = number_->font();
     numberFont.setPointSizeF(qMax(12.0, numberFont.pointSizeF() * 1.25));
     number_->setFont(numberFont);
-    title_ = label(this);
+    title_ = label(info);
     title_->setObjectName("crumbTitle");
     title_->setWordWrap(true);
     title_->setMaximumHeight(title_->fontMetrics().lineSpacing() * 4);
-    words_ = label(this);
+    words_ = label(info);
     words_->setObjectName("wordCount");
-    today_ = label(this);
+    today_ = label(info);
     today_->setObjectName("todayCount");
-    for (auto *widget : {number_, title_, words_, today_}) layout->addWidget(widget);
-
-    auto *split = new QSplitter(Qt::Vertical, this);
+    for (auto *widget : {number_, title_, words_, today_}) infoLayout->addWidget(widget);
+    split->addWidget(info);
     auto addList = [this, split](const QString &caption, const QString &name, bool genres) {
         auto *section = new QWidget(split);
+        section->setObjectName(name + "Section");
+        section->setAccessibleName(genres ? tr("Genres or titles") : caption);
         auto *column = new QVBoxLayout(section);
         column->setContentsMargins(0, 2, 0, 0);
         column->setSpacing(3);
@@ -182,6 +233,9 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
     };
     visits_ = addList(tr("Visit history"), "visitHistory", false);
     genres_ = addList(tr("Genres"), "genreList", true);
+    split->setStretchFactor(0, 0);
+    split->setStretchFactor(1, 1);
+    split->setStretchFactor(2, 1);
     connect(genreOrder_, &QToolButton::toggled, this, [this](bool byNumber) {
         settings_->setValue(orderPreference(editor_->model().isGeneric()), byNumber);
         settings_->sync();
@@ -220,13 +274,14 @@ void NavigationPanel::updateMode()
     genreHeading_->setText(caption);
     genres_->setAccessibleName(caption);
     genres_->headerItem()->setText(0, generic ? tr("Title") : tr("Genre"));
-    genres_->setColumnHidden(1, generic);
+    LayoutColumns::setOptionalColumn(genres_, 1, !generic);
     visits_->headerItem()->setText(0, generic ? tr("Paragraph") : tr("Title"));
     genresSearch_->setPlaceholderText(generic ? tr("Search titles") : tr("Search genres"));
     genresSearch_->setAccessibleName(genresSearch_->placeholderText());
     genresSearch_->setToolTip(generic ?
         tr("Search titles (Ctrl+Shift+4). Up and Down move between matches. Enter goes to the title.") :
         tr("Search genres (Ctrl+Shift+4). Up and Down move between matches. Enter adds the next crumb in the genre."));
+    genreOrder_->setProperty("layoutDefaultOrder", generic);
     const QSignalBlocker blocked(genreOrder_);
     genreOrder_->setChecked(settings_->value(orderPreference(generic), generic).toBool());
 }
@@ -276,8 +331,7 @@ void NavigationPanel::updateCurrent()
         words_->setText(QString("Words   %1").arg(virtualRows ? 0 : record.words));
         QPalette colors = palette();
         if (valid && record.headerWarning)
-            colors.setColor(QPalette::WindowText, colors.color(QPalette::Window).lightness() < 128
-                                                  ? QColor("#ff8488") : QColor("#bc102a"));
+            colors.setColor(QPalette::WindowText, EditorColors::warning(colors.window().color()));
         if (number_->palette() != colors) number_->setPalette(colors);
     }
     if (virtualRows || editor_->viSelectionActive() || !isVisitLine(row)) return;
@@ -299,6 +353,20 @@ void NavigationPanel::updateCurrent()
         }
     }
     updateVisit(item);
+}
+
+void NavigationPanel::changeEvent(QEvent *event)
+{
+    QWidget::changeEvent(event);
+    if (event->type() != QEvent::PaletteChange || !genres_ || editor_->model().isGeneric()) return;
+    updateCurrent();
+    // Existing rows carry explicit warning ink. Recolor in place to preserve
+    // the current row, its scroll position, and the keyboard search.
+    for (int row = 0; row < genres_->topLevelItemCount(); ++row) {
+        auto *item = genres_->topLevelItem(row);
+        if (item->data(1, Qt::ForegroundRole).isValid())
+            markNumber(item, 1, true, palette());
+    }
 }
 
 void NavigationPanel::updateModel(const CrumbChange &change)
@@ -425,10 +493,12 @@ bool NavigationPanel::openGenreOrTitle()
 
 void NavigationPanel::focusHistory()
 {
+    visits_->parentWidget()->show();
     historySearch_->focusSearch();
 }
 
 void NavigationPanel::focusGenres()
 {
+    genres_->parentWidget()->show();
     genresSearch_->focusSearch();
 }

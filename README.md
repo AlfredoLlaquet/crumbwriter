@@ -1,12 +1,12 @@
 # Crumb Writer
 
-Crumb Writer 2.4 is a keyboard-driven Qt 6 editor for FreeBSD with KDE Plasma, Ubuntu, Windows, and macOS. Use **Crumb mode** for a numbered collection of short pieces or **Generic mode** for a novel, an essay, or other paragraph-based prose. Both write plain UTF-8 without a byte order mark (BOM) and wrap the text to the full width of the writing area.
+Crumb Writer 2.5 is a keyboard-driven Qt 6 editor for FreeBSD with KDE Plasma, Ubuntu, Windows, and macOS. Use **Crumb mode** for a numbered collection of short pieces or **Generic mode** for a novel, an essay, or other paragraph-based prose. Both write plain UTF-8 without a byte order mark (BOM) and wrap the text to the full width of the writing area.
 
 Programmed by **ChatGPT** for Alfredo Llaquet-Alsina.
 
 ## Download Crumb Writer
 
-Crumb Writer is free to download and use.
+Crumb Writer is free to download and use. The installer links below open the latest published release. Its release page gives the version. The build instructions use the current source.
 
 | Platform | Download or build |
 | --- | --- |
@@ -82,7 +82,7 @@ For a personal installation, run `make install PREFIX="$HOME/.local"` as your de
 
 ### Update
 
-An installation that already builds version 2.1, 2.2, or 2.3 has the dependencies for 2.4. For older checkouts, run the package command under First installation. Save the manuscript, close all Crumb Writer windows, and update the existing checkout as your desktop account.
+An installation that already builds versions 2.1 through 2.4 has the dependencies for 2.5. For older checkouts, run the package command under First installation. Save the manuscript, close all Crumb Writer windows, and update the existing checkout as your desktop account.
 
 ~~~sh
 cd crumbwriter
@@ -193,12 +193,18 @@ On a Mac, **Ctrl** means the physical **Control** key and **Alt** means **Option
 | Ctrl+Enter / Alt+Enter | Center the current visual line / place the current crumb or paragraph at the top |
 | Ctrl+L | Go to a header number in Crumb mode or a physical line number in Generic mode |
 | Ctrl+P / Ctrl+R | Start plain-text / regular-expression Find from the caret |
-| Ctrl+Shift+J | Follow a reference under the caret, such as `crumb 200` |
-| F2 / Shift+F2 | Back / forward to the exact caret position after a jump |
+| Ctrl+U | Open Insert Symbol with the search field focused |
+| F5 in the manuscript | Accept a suggested name ending or open a list of completions |
+| F6 / Shift+F6 | Previous / next mention of the same character or recurring term |
+| Ctrl+Shift+J / Ctrl+click | Follow a numbered crumb reference or find the previous mention of a synonym |
+| Ctrl+Shift+click | Find the next mention of the clicked name |
+| F2 or Alt+Left | Go back to the exact writing position before a jump |
+| Shift+F2 or Alt+Right | Go forward in the same history |
 | F4 / Shift+F4 | Next / previous numbering warning, with the expected and actual numbers |
 | Ctrl+Shift+3 / Ctrl+Shift+4 | Search Visit history / Genres or Titles |
 | Shift+F7 | Change genre order (name or last number) or title order (document or alphabetical) |
-| F9 / Shift+F9 | Show or hide the right / left panel |
+| F9 / Shift+F9 | Show or hide navigation / synonym lists |
+| Ctrl+Shift+F10 | Arrange panels and columns in the current window |
 | Ctrl+Shift+1 / Ctrl+Shift+2 | Search Characters / Recurring |
 | F8 / Shift+F8 | Next / previous spelling issue |
 | Ctrl+Shift+D / Ctrl+Shift+I | Manuscript dictionary / live statistics |
@@ -209,13 +215,29 @@ On a Mac, **Ctrl** means the physical **Control** key and **Alt** means **Option
 | Ctrl+, / F10 / F1 | Settings / document menu / searchable keyboard reference |
 | F10, then A | About Crumb Writer. Enter opens the repository link. Alt+L opens the license offline |
 
-A light blue background follows the current crumb or paragraph across its wrapped lines. The writing area turns gray when the manuscript window loses focus. The editor follows the desktop appearance by default. Settings also offers Light, Dark, and a choice of font family and size.
+A light blue band follows the current crumb or paragraph in a light theme. Dark themes use a slightly lighter neutral gray across its wrapped lines. When another window becomes active, the whole writing area changes to a softer gray. Search and the side panels belong to the active manuscript window. Settings offers Follow desktop, Light, Dark, and a choice of font family and size.
 
 Smart punctuation writes curly quotes and apostrophes, em dashes, and ellipses into the manuscript as typing supplies context. Paste cleans tabs, repeated spaces, and trailing spaces in one undoable operation. Backspacing over the last word leaves its preceding space at the caret for the replacement word, even through an autosave. Saved files omit trailing spaces and use UTF-8 without a BOM.
 
 Consecutive typing forms one undo step, including spaces, pauses, automatic punctuation, and live saves. Consecutive Backspaces and consecutive forward Deletes each form their own step. Moving the caret, pressing Enter, pasting, or switching between typing and deletion starts another step.
 
+**Copy deleted text to the clipboard** is enabled in **Settings → Writing**. Backspacing through `goose` or deleting it forward leaves `goose` ready to paste. Deleting a word, selection, or whole crumb copies the removed text. Pasting over a selection first inserts the incoming clipboard contents, then puts the displaced passage on the clipboard. Replace All collects the removed passages in manuscript order, separated by line breaks. Automatic punctuation, whitespace cleanup, and Undo/Redo preserve that clipboard entry.
+
+Undo immediately after **Ctrl+N** returns the caret, selection, and view to their positions before the new crumb or paragraph was appended. Redo takes the caret back to the new writing position.
+
 Visit history displays crumb titles or the beginnings of generic paragraphs. An empty crumb title appears as *Untitled*. Each entry returns to its last caret position.
+
+### Insert a Unicode symbol
+
+Press **Ctrl+U** to open **Insert Symbol**. Type `outline heart`, `music`, a literal symbol, or a code point such as `U+2661`. The grid searches 733 symbols in 17 themes. The preview shows the selected glyph in the manuscript font, its name, and its code point. Themes narrow the selection to related symbols, including typography, mathematics, arrows, and music.
+
+**Alt+S** focuses Search. **Alt+T** opens the theme selector. **Down** moves from Search into the grid, where the arrow keys browse. **Enter** or a double-click inserts and closes. **Ctrl+Enter** inserts and keeps the picker open. **Ctrl+D** toggles a favorite, and **Escape** closes. Favorites and recently used symbols are available across manuscripts on the same computer. A chosen symbol is inserted as ordinary Unicode text in one undo step. [Catalog and Unicode data notice](data/symbols.tsv)
+
+### Arrange panels and columns
+
+Use **View → Arrange Panels and Columns** or **Ctrl+Shift+F10** in a configurable window. Choose a panel or column, press **Space** to show or hide it, and use the move and size controls to adjust its position or dimensions. The editor remembers the arrangement for each kind of window on that computer. Tiled windows use the space assigned by KDE or its window manager.
+
+**View → Restore Default Layouts** restores the original arrangements across windows. Manuscript text, bookmarks, dictionaries, and writing preferences keep their own settings.
 
 ### Live movement selections
 
@@ -261,6 +283,12 @@ On a compact Mac keyboard, **Control+I** opens Add while either the Characters o
 The right panel follows the same search convention. **Ctrl+Shift+3** searches visits. **Ctrl+Shift+4** searches genres or titles. In either field, **Enter** or **Ctrl+Enter** activates the highlighted row and clears the search text. A visit or title opens its passage. A genre starts its next crumb.
 
 Each group occupies one line in `Crumbs.txt.characters` or `Crumbs.txt.recurring`. The first alias determines the alphabetical order. For example, `"Fox, Captain", Red Fox, Captain Fox` has three aliases. Double quotes protect a comma inside an alias.
+
+In the manuscript, a unique name completion appears faintly after three typed characters. Type `Inspector Goo` and press **F5** to accept the suggested ending of `Inspector Goose`. With several possibilities, **F5** opens a list. Arrow keys and **Enter** choose one, and **Escape** dismisses it. **Settings → Names** controls completion for each list independently (**Automatic**, **On demand**, **Off**). The minimum prefix length and underline color are adjustable. Underlining offers **All mentions**, **Current group only**, and **Off** separately for each list.
+
+With the caret on or immediately after a name, **F6** finds the nearest earlier mention of any alias in its group. **Shift+F6** finds the next. A shared alias opens a group chooser. **Ctrl+Shift+J** or **Ctrl+click** follows a numbered reference such as `Cranolo 200` in Crumb mode, or follows a name backward in either mode. **Ctrl+Shift+click** follows a name forward. On a Mac, **Command+click** and **Command+Shift+click** also work. Jumps stop at the first or last mention. **Alt+Left** or **F2** returns to the typing position, even when the clicked word was several lines away. **Alt+Right** or **Shift+F2** moves forward again.
+
+Whole names match regardless of case or curly versus straight apostrophes. A longer name covers any shorter alias inside the same occurrence. With both `Inspector Goose` and `Goose` listed, “Inspector Goose saluted a goose” has two occurrences. The results table, underlines, and navigation use this rule.
 
 American English spelling is enabled by default. In Generic mode it checks ordinary prose throughout the document, including words on a line that happens to resemble a numbered crumb header. **F8** opens a correction with suggestions, Replace, Replace All, Ignore Once, Ignore All, and Add to Dictionary. **Ctrl+Shift+D** opens the manuscript’s dictionary. Each entry in `Crumbs.txt.dictionary` is one word, matched case-insensitively. Complete aliases in either list are accepted. A shorter name can be added as its own alias. Straight and curly apostrophes work in contractions. **Ctrl+,** opens Settings to switch spelling on or off.
 
