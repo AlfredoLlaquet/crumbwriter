@@ -113,11 +113,18 @@ static int capture(const QDir &out, const QString &theme)
 
 int main(int argc, char **argv)
 {
+    QCoreApplication::setOrganizationName("TheCrumbs");
+    QCoreApplication::setApplicationName("CrumbWriter");
+    QCoreApplication::setApplicationVersion("2.5");
 #ifdef Q_OS_MACOS
     QApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
 #endif
     QApplication app(argc, argv);
     QApplication::setApplicationDisplayName("Crumb Writer");
+    QApplication::setDesktopFileName("org.thecrumbs.CrumbWriter");
+    QIcon icon(":/icons/crumbwriter.png");
+    for (int size : {16, 24, 32, 48, 64, 128}) icon.addFile(QString(":/icons/%1.png").arg(size));
+    QApplication::setWindowIcon(QIcon::fromTheme("org.thecrumbs.CrumbWriter", icon));
     const auto args = app.arguments();
     if (args.size() != 3 || args.at(1) != app.platformName()) return 1;
     for (const QString &theme : {"light", "dark"}) {
