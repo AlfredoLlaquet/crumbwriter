@@ -149,7 +149,7 @@ desktop account.
 
 Repeat the original make install command with the same account and prefix.
 Launch from the desktop menu. F10, then A, opens About and shows the installed
-version. The command crumbwriter --version also prints "Crumb Writer 2.5".
+version. The command crumbwriter --version also prints "Crumb Writer 2.5.1".
 
 Opening a manuscript
 ~~~~~~~~~~~~~~~~~~~~
@@ -350,6 +350,16 @@ paints the background and foreground together. Follow desktop restores
 the desktop style and system dialogs. FreeBSD and Linux keep their
 desktop widget style. Opening another manuscript clears the previous
 file's notice before displaying any warning about the newly opened file.
+The close and confirmation buttons in an explicit theme use their text
+labels. Confirmation dialogs display the full question and its choices.
+Follow desktop honors the desktop's standard button and dialog icons.
+The built-in Open and Save As dialogs draw their Back, Forward, and
+Parent Directory arrows in the color of the active theme. Search fields
+in both sidebars, Bookmarks, and Insert Symbol show a clear button when
+they contain text. Clearing a field keeps the keyboard in that field.
+The manuscript font applies to the writing area. Context
+menus, spelling suggestions and the name list keep the interface font,
+including when the manuscript is set to 96 points.
 
 In Crumb mode, Ctrl+N uses the last recognizable label and one greater
 than the largest valid header number. With no earlier label it uses Crumb.
@@ -912,6 +922,8 @@ adapter keeps file bytes, clipboard text and search positions consistent.
     src/qt/preferences.*                   Shared settings and F1 reference
     src/qt/commandicons.*                  Scalable toolbar icons and keyboard
                                            handling for the three menu buttons
+    src/qt/controltheme.*                  Application palette, desktop style
+                                           restoration and standard button icons
     src/qt/navigation.*                    Mode-specific metrics, visits, Genres
                                            or Titles, and back/forward marks
     src/qt/panelsearch.*                   Shared in-place list search, keyboard
@@ -970,6 +982,9 @@ adapter keeps file bytes, clipboard text and search positions consistent.
     packaging/shared                      Dictionary, notices and package sources
     packaging/release                     Asset checks, release notes and publishing
     .github/workflows/                    Native builds, tests and public releases
+    tests/qt/test-gui-audit.cpp           Native rendering, contrast measurements
+                                          and screenshot reports
+    tests/qt/gui-audit-windows.cpp        Editor, dialog and popup keyboard paths
 
 The first spelling request loads the US dictionary on a background thread.
 The Windows and macOS installers supply SCOWL's US English dictionary in
@@ -1137,14 +1152,22 @@ the Qt version, platform, measured contrast, and failed checks. Review
 the rendered images as well as the numbers. A readable menu can still
 show the wrong symbol, and an offscreen test can miss native painting.
 
-For a new window or a change to shared icons, styles, or palettes, run
-the full audit on Windows, macOS, FreeBSD, and Linux. Inspect the main
+For a new or changed control or window, repeat the focused check on
+Windows, macOS, FreeBSD, and Linux. For changes to shared icons,
+styles, or palettes, run the full audit on all four. Inspect the main
 window, both manuscript modes, the search and panel menus, and every
 auxiliary window. The native CI jobs preserve the pictures and reports
 as gui-audit artifacts, including available evidence from a failed run.
 Correct each defect, repeat its focused check, and rerun the affected
 platforms and themes. Before a cross-platform appearance release, review
 the four-platform full run on the revision being shipped.
+
+The full run also captures the main window after returning to Follow
+desktop. Use --theme desktop --view main for that check alone. Compare
+the sidebar's placeholders and selection with a stock input field on
+the same desktop. Native system colors can differ from the two explicit
+palettes. Keyboard checks include opening the overflow menu in a narrow
+toolbar and dismissing a manuscript notice.
 
 Check live movements with t-2 across crumbs, j then j2 followed by
 Backspace, q and Q phrase previews with a count and a literal asterisk,

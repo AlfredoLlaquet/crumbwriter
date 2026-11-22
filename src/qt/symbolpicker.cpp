@@ -1,5 +1,6 @@
 #include "symbolpicker.h"
 
+#include "commandicons.h"
 #include "manuscripteditor.h"
 #include "symbolcatalog.h"
 #include "textkeys.h"
@@ -88,7 +89,7 @@ SymbolPicker::SymbolPicker(ManuscriptEditor *editor, QSettings &settings, QWidge
     auto *form = new QFormLayout;
     search_ = new QLineEdit(this);
     search_->setObjectName("symbolSearch");
-    search_->setClearButtonEnabled(true);
+    CommandIcons::addSearchClearButton(search_);
     search_->setPlaceholderText(tr("Name, description, theme, symbol, or U+ code"));
     search_->setToolTip(tr("Search symbols (Alt+S or Ctrl+F)"));
     form->addRow(tr("Search"), search_);

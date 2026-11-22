@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
@@ -12,7 +13,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
+#include <QMouseEvent>
 #include <QPersistentModelIndex>
+#include <QPushButton>
 #include <QStyle>
 #include <QTemporaryDir>
 #include <QTextBlock>
@@ -78,9 +82,9 @@ void checkPalette(const QPalette &colors)
     check(contrast(EditorColors::warning(base), EditorColors::searchPaper(colors)) >= 4.5, "number in a search hit");
 }
 
-bool paintsLink(const QLabel &label, const QColor &expected)
+bool paintsLink(QLabel &label, const QColor &expected)
 {
-    const auto image = const_cast<QLabel &>(label).grab().toImage().convertToFormat(QImage::Format_RGB32);
+    const auto image = label.grab().toImage().convertToFormat(QImage::Format_RGB32);
     for (int y = 0; y < image.height(); ++y) {
         const auto *row = reinterpret_cast<const QRgb *>(image.constScanLine(y));
         for (int x = 0; x < image.width(); ++x) {
@@ -161,6 +165,18 @@ int main(int argc, char **argv)
     }
     prefs.settings().setValue("editor/theme", "dark");
     prefs.settings().setValue("editor/backup", false);
+    QDialogButtonBox probe(QDialogButtonBox::Close | QDialogButtonBox::Apply);
+    auto *standardClose = probe.button(QDialogButtonBox::Close);
+    auto *iconOnly = probe.button(QDialogButtonBox::Apply);
+    iconOnly->setText({});
+    auto *custom = probe.addButton("Choose a color", QDialogButtonBox::ActionRole);
+    QPixmap black(16, 16);
+    black.fill(Qt::black);
+    const QIcon graphic(black);
+    for (auto *button : {standardClose, iconOnly, custom}) button->setIcon(graphic);
+    QMessageBox question(QMessageBox::Question, "Question", "Remove the entry?", QMessageBox::Cancel);
+    QMessageBox illustrated;
+    illustrated.setIconPixmap(black);
     const auto path = temp.filePath("Moon.txt");
     QFile file(path);
     check(file.open(QIODevice::WriteOnly), "create manuscript");
@@ -169,6 +185,12 @@ int main(int argc, char **argv)
     file.write("\nCrumb 2: Audit #3: The moon was quiet.");
     file.close();
     MainWindow window(prefs);
+    check(standardClose->icon().isNull() && !standardClose->text().isEmpty() &&
+          iconOnly->icon().cacheKey() == graphic.cacheKey() && custom->icon().cacheKey() == graphic.cacheKey(),
+          "explicit themes remove only supplementary standard button icons");
+    check(question.icon() == QMessageBox::NoIcon && question.text() == "Remove the entry?" &&
+          question.standardButtons() == QMessageBox::Cancel && !illustrated.iconPixmap().isNull(),
+          "explicit confirmations retain the full question and actions, and respect custom images");
     check(QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs), "explicit theme uses themeable dialogs");
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
     check(QApplication::style()->name().compare("Fusion", Qt::CaseInsensitive) == 0,
@@ -202,6 +224,22 @@ int main(int argc, char **argv)
     auto *panel = window.findChild<QLineEdit *>("historySearch");
     until([&] { return panel && panel->hasFocus(); }, "panel focus");
     check(marginAt(editor->viewport()->grab().toImage(), top) == band, "panel keeps the active band");
+    panel->setText("Moon");
+    auto *clear = panel->findChild<QToolButton *>();
+    until([&] { return clear && clear->isVisible(); }, "a nonempty search has a clear button");
+    const QPoint middle = clear->rect().center();
+    for (auto type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+        QMouseEvent click(type, middle, clear->mapToGlobal(middle), Qt::LeftButton,
+                          type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton, Qt::NoModifier);
+        QApplication::sendEvent(clear, &click);
+    }
+    check(panel->text().isEmpty() && panel->hasFocus() && !clear->isVisible(),
+          "clicking Clear search empties the query and returns the caret to the field");
+    panel->setText("Moon");
+    const auto selectAll = QKeySequence(QKeySequence::SelectAll)[0];
+    key(panel, selectAll.key(), selectAll.keyboardModifiers());
+    key(panel, Qt::Key_Backspace);
+    check(panel->text().isEmpty() && !clear->isVisible(), "keyboard clearing also hides the search action");
     editor->setFocus();
     key(editor, Qt::Key_P, Qt::ControlModifier);
     auto *find = window.findChild<QLineEdit *>("cw-find");
@@ -227,6 +265,9 @@ int main(int argc, char **argv)
     auto *link = dialog ? dialog->findChild<QLabel *>("repositoryLink") : nullptr;
     until([&] { return link && dialog->isVisible() && dialog->palette().base() == dark.base() &&
                        paintsLink(*link, dark.link().color()); }, "About renders its link in readable dark-theme ink");
+    auto *aboutButtons = dialog->findChild<QDialogButtonBox *>();
+    check(aboutButtons && aboutButtons->button(QDialogButtonBox::Close)->icon().isNull(),
+          "a newly opened dialog also uses text-only standard buttons");
     prefs.settings().setValue("editor/theme", "light");
     window.applyPreferences();
     until([&] { return showsMarks(*editor, light) && firstWarning(*editor) == EditorColors::warning(Qt::white); },
@@ -260,6 +301,12 @@ int main(int argc, char **argv)
     check(QApplication::style()->name() == desktopStyle && QApplication::palette().base() == desktop.base() &&
           QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs) == desktopDialogsDisabled,
           "Follow desktop restores the original widget style and native dialog behavior");
+    QDialogButtonBox desktopButtons(QDialogButtonBox::Close);
+    auto *desktopClose = desktopButtons.button(QDialogButtonBox::Close);
+    check(standardClose->icon().pixmap(16).toImage() == desktopClose->icon().pixmap(16).toImage(),
+          "existing dialog buttons recover the desktop's current stock icons");
+    check(question.icon() == QMessageBox::Question && !illustrated.iconPixmap().isNull(),
+          "Follow desktop restores standard confirmation artwork while keeping custom images");
     auto newDesktop = light;
     newDesktop.setColor(QPalette::Base, QColor(244, 247, 238));
     QApplication::setPalette(newDesktop);

@@ -22,3 +22,13 @@ until xprop -root _NET_SUPPORTING_WM_CHECK | grep -Eq 'window id # 0x[1-9a-fA-F]
     sleep 0.1
 done
 "$audit" --output "$output" --platform-name xcb
+if [ -n "${QT_STYLE_OVERRIDE:-}" ]; then
+    python3 - "$output" "$QT_STYLE_OVERRIDE" <<'PY'
+import json, pathlib, sys
+for theme in ("light", "dark"):
+    report = pathlib.Path(sys.argv[1]) / theme / "report.json"
+    actual = json.loads(report.read_text())["style"]
+    if actual.casefold() != sys.argv[2].casefold():
+        sys.exit(f"{theme} used {actual} instead of the requested {sys.argv[2]} style")
+PY
+fi

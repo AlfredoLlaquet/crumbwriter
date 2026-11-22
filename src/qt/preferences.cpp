@@ -1,7 +1,6 @@
 #include "preferences.h"
-#include "editorcolors.h"
+#include "controltheme.h"
 
-#include <QApplication>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
@@ -14,8 +13,6 @@
 #include <QScreen>
 #include <QSpinBox>
 #include <QStandardPaths>
-#include <QStyle>
-#include <QStyleHints>
 #include <QTabWidget>
 #include <QTreeWidget>
 #include <QUrl>
@@ -104,6 +101,7 @@ constexpr HelpRow shortcuts[] = {
     {"Window","F10, A","Open About Crumb Writer. Enter opens the focused repository link"},
     {"Menu buttons","F10 / Space, Enter, or Down","F10 opens the document menu. Space, Enter, or Down opens a focused three-line menu button, including Characters and Recurring. Escape closes the menu"},
     {"Appearance","Ctrl+,","In Settings, choose Follow desktop, Light, or Dark for the writing area, toolbar, search fields, menus, and dialogs"},
+    {"Search fields","Select all, then Backspace","Clear the typed search and keep focus in the field. A filled sidebar, bookmark, or symbol search also has a Clear Search button"},
     {"About","Alt+L","View License offline. Scroll or copy the full terms. Escape returns to About"},
 #ifdef Q_OS_MACOS
     {"Mac keyboard","Control / Option","Ctrl means the physical Control key. Option is Alt. On a media-key keyboard, hold Fn for F1 through F10"},
@@ -147,50 +145,7 @@ QFont Preferences::manuscriptFont() const
 
 QPalette Preferences::applyControlTheme() const
 {
-    QString theme = settings_.value("editor/theme").toString();
-    const bool explicitTheme = theme == "light" || theme == "dark";
-    if (!explicitTheme) theme = "desktop";
-
-    // All manuscript windows share these process-wide Qt settings. Remember the
-    // request before changing the style, which can send palette events synchronously.
-    static QString applied = QStringLiteral("desktop");
-    if (applied == theme) return QApplication::palette();
-    static QPalette desktopPalette;
-    static bool desktopDialogsDisabled = false;
-#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
-    static QString desktopStyle;
-#endif
-    if (applied == "desktop") {
-        // A system palette has an empty resolve mask. Restoring it asks Qt for
-        // the current desktop colors, including changes made during editing.
-        desktopPalette = QApplication::palette();
-        desktopDialogsDisabled = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
-#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
-        desktopStyle = QApplication::style()->name();
-#endif
-    }
-    applied = theme;
-    QCoreApplication::setAttribute(Qt::AA_DontUseNativeDialogs, explicitTheme || desktopDialogsDisabled);
-
-#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
-    // The native Windows and Aqua widget styles can draw field backgrounds and
-    // toolbar labels from OS colors independently of the requested palette.
-    // Fusion paints both halves of each color pair from the same palette.
-    const QString targetStyle = explicitTheme ? QStringLiteral("Fusion") : desktopStyle;
-    if (!desktopStyle.isEmpty() && QApplication::style()->name().compare(targetStyle, Qt::CaseInsensitive) != 0)
-        QApplication::setStyle(targetStyle);
-#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
-    // The window frame and the Mac application menu are still OS-owned.
-    if (QGuiApplication::platformName() == "windows" || QGuiApplication::platformName() == "cocoa") {
-        const auto scheme = !explicitTheme ? Qt::ColorScheme::Unknown :
-                            theme == "dark" ? Qt::ColorScheme::Dark : Qt::ColorScheme::Light;
-        QGuiApplication::styleHints()->setColorScheme(scheme);
-    }
-#endif
-#endif
-    // Menus, tooltips and editors created by Qt can be separate top-level widgets.
-    QApplication::setPalette(explicitTheme ? EditorColors::explicitTheme(QPalette(), theme == "dark") : desktopPalette);
-    return QApplication::palette();
+    return configureControlTheme(settings_.value("editor/theme").toString());
 }
 
 QString Preferences::lastDocument() const

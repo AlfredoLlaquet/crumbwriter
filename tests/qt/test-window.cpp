@@ -602,6 +602,7 @@ void testMenuAccess(const QTemporaryDir &tmp)
     Preferences prefs(tmp.filePath("menus.ini"));
     MainWindow window(prefs);
     window.setAttribute(Qt::WA_DeleteOnClose, false);
+    window.resize(950, 600);
     window.activateManuscript(false);
     auto *toolbar = window.findChild<QToolBar *>("manuscriptToolbar");
     CHECK(toolbar);
@@ -615,8 +616,25 @@ void testMenuAccess(const QTemporaryDir &tmp)
     for (const char *name : {"documentMenuButton", "charactersMenu", "recurringMenu"}) {
         auto *button = window.findChild<QToolButton *>(name);
         CHECK(button && button->menu() && !button->accessibleName().isEmpty());
-        button->setFocus();
-        CHECK(until([&] { return button->hasFocus(); }));
+        // The offscreen plugin can deliver focus-restoration events after a
+        // popup has hidden. Establish the editing window before tabbing again.
+        window.activateManuscript(false);
+        CHECK(until([&] { return window.editor()->hasFocus() && button->isVisible(); }));
+        if (button == documentButton) {
+            button->setFocus(Qt::TabFocusReason);
+        } else {
+            const bool recurring = button->objectName() == "recurringMenu";
+            auto *field = window.findChild<QLineEdit *>(recurring ? "recurringSearch" : "charactersSearch");
+            key(recurring ? Qt::Key_2 : Qt::Key_1, Qt::ControlModifier | Qt::ShiftModifier);
+            CHECK(field && until([&] { return field->hasFocus(); }));
+            key(Qt::Key_Backtab, Qt::ShiftModifier);
+        }
+        if (!until([&] { return button->hasFocus(); })) {
+            std::fprintf(stderr, "%s did not receive keyboard focus (policy %d, current widget %s).\n",
+                         name, int(button->focusPolicy()), QApplication::focusWidget() ?
+                         qPrintable(QApplication::focusWidget()->objectName()) : "none");
+            CHECK(false);
+        }
         key(Qt::Key_Space);
         CHECK(until([&] { return button->menu()->isVisible() && button->menu()->activeAction(); }));
         dismissMenu(button->menu());

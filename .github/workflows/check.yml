@@ -56,7 +56,7 @@ jobs:
             fi
             command -v kwin_x11
             dbus-uuidgen --ensure
-            timeout 360 dbus-run-session -- sh tests/gui-audit-x11.sh kwin_x11 \
+            QT_STYLE_OVERRIDE=Breeze timeout 360 dbus-run-session -- sh tests/gui-audit-x11.sh kwin_x11 \
               ./tests/qt/test-gui-audit /tmp/crumbwriter-gui-audit || suite_status=$?
             python3 tests/check-krohnkite.py --existing-display ./crumbwriter .ci-krohnkite
             exit "$suite_status"

@@ -1,4 +1,5 @@
 #include "bookmarks.h"
+#include "commandicons.h"
 #include "layoutcolumns.h"
 #include "bookmarkfile.h"
 
@@ -149,7 +150,7 @@ public:
         auto *filterLabel = new QLabel(QStringLiteral("&Filter"), manager);
         filter = new QLineEdit(manager);
         filter->setObjectName(QStringLiteral("bookmarkFilter"));
-        filter->setClearButtonEnabled(true);
+        CommandIcons::addSearchClearButton(filter);
         filterLabel->setBuddy(filter);
         auto *viewLabel = new QLabel(QStringLiteral("&View"), manager);
         mode = new QComboBox(manager);

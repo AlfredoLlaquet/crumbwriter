@@ -12,6 +12,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
+#include <QFontInfo>
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QLabel>
@@ -22,6 +23,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScopeGuard>
 #include <QTabWidget>
 #include <QTableView>
 #include <QTemporaryDir>
@@ -114,8 +116,8 @@ void inspectMenu(GuiAudit &audit, QMenu *menu, QWidget *anchor, const QString &i
 
 QMenu *documentMenu(MainWindow &window)
 {
-    for (auto *menu : window.findChildren<QMenu *>())
-        if (menu->title() == "Document") return menu;
+    auto *button = window.findChild<QToolButton *>("documentMenuButton");
+    if (button && button->menu()) return button->menu();
     throw std::runtime_error("Missing Document menu");
 }
 
@@ -123,6 +125,21 @@ void editorFocus(MainWindow &window)
 {
     window.activateManuscript(false);
     waitFor([&] { return window.editor()->hasFocus(); }, "Manuscript did not regain keyboard focus");
+}
+
+void useLargeManuscriptFont(ManuscriptEditor *editor)
+{
+    auto font = editor->font();
+    font.setPointSize(96);
+    editor->setFont(font);
+}
+
+void checkControlFont(GuiAudit &audit, QWidget *widget, const QString &name)
+{
+    const QFontInfo expected(QApplication::font(widget));
+    const QFontInfo actual(widget->font());
+    audit.require(actual.family() == expected.family() && actual.pixelSize() == expected.pixelSize(),
+                  name + " uses the desktop control font with a 96-point manuscript");
 }
 
 void auditMenus(GuiAudit &audit, MainWindow &window)
@@ -248,8 +265,12 @@ void auditBookmarks(GuiAudit &audit, MainWindow &window)
     dismiss(form);
 
     view->setCurrentIndex(1);
+    auto *filter = visible<QLineEdit>(*manager, "bookmarkFilter");
+    filter->setText("Scenes");
     tree->setCurrentItem(tree->topLevelItem(0));
     audit.capture("bookmarks-list", manager);
+    filter->clear();
+    tree->setCurrentItem(tree->topLevelItem(0));
     key(tree, Qt::Key_F2);
     form = visible<QDialog>(window, "bookmarkEditWindow");
     audit.capture("bookmark-edit", form);
@@ -313,6 +334,9 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
 
     // The production editor uses QMenu::exec(). Sample the actual stack-owned
     // popup and its spelling submenu inside that event loop, then close it.
+    const auto manuscriptFont = editor->font();
+    const auto restoreFont = qScopeGuard([&] { editor->setFont(manuscriptFont); });
+    useLargeManuscriptFont(editor);
     editorFocus(window);
     editor->jumpTo(typo + 1, false);
     QTimer capture;
@@ -327,6 +351,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (!menu) return;
         opened = true;
         audit.capture("editor-context-menu", menu);
+        checkControlFont(audit, menu, "The manuscript context menu");
         QMenu *spelling = nullptr;
         for (auto *item : menu->actions())
             if (item->menu() && item->menu()->title() == "Spelling") spelling = item->menu();
@@ -334,6 +359,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (spelling) {
             spelling->popup(menu->mapToGlobal(QPoint(menu->width(), 0)));
             audit.capture("spelling-menu", spelling);
+            checkControlFont(audit, spelling, "The spelling submenu");
             spelling->hide();
         }
         menu->close();
@@ -364,6 +390,9 @@ void auditTools(GuiAudit &audit, MainWindow &window)
     audit.capture("symbols", picker);
     dismiss(picker);
 
+    const auto manuscriptFont = editor->font();
+    const auto restoreFont = qScopeGuard([&] { editor->setFont(manuscriptFont); });
+    useLargeManuscriptFont(editor);
     editorFocus(window);
     const int ada = editor->manuscriptText().indexOf("Ada Finch");
     if (ada < 0) throw std::runtime_error("The seeded character is missing from the manuscript");
@@ -371,6 +400,7 @@ void auditTools(GuiAudit &audit, MainWindow &window)
     key(editor, Qt::Key_F5);
     auto *choices = visible<QListView>(*editor, "synonymChoiceList");
     audit.capture("name-completion", choices->window());
+    checkControlFont(audit, choices, "The name completion list");
     key(choices, Qt::Key_Escape);
 }
 
@@ -463,6 +493,7 @@ void auditGeneric(GuiAudit &audit, MainWindow &window)
         throw std::runtime_error("Could not write the malformed companion fixture");
     malformed.close();
     if (!window.loadDocument(file.fileName())) throw std::runtime_error("Could not load the companion-error fixture");
+    editorFocus(window);
     audit.require(notice->isVisible() && notice->text().contains("closing double quote"),
                   "A warning raised by the newly opened manuscript remains visible");
     audit.capture("manuscript-notice", &window);

@@ -16,7 +16,7 @@ public:
     void capture(const QString &id, QWidget *widget);
     void require(bool condition, const QString &message);
     void checkMainControls(MainWindow &window);
-    void captureMacMenuBar(MainWindow &window);
+    void captureDesktopChrome(MainWindow &window);
     bool finish();
 
 private:

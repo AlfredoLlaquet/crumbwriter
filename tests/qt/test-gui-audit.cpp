@@ -5,10 +5,13 @@
 
 #include <QAbstractButton>
 #include <QApplication>
+#include <QCheckBox>
 #include <QCommandLineParser>
+#include <QComboBox>
 #include <QDialog>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileDialog>
 #include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -18,11 +21,13 @@
 #endif
 #include <QLineEdit>
 #include <QMenu>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QScreen>
-#include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStyle>
+#include <QStyleOptionButton>
+#include <QStyleOptionComboBox>
 #include <QSysInfo>
 #include <QTemporaryDir>
 #include <QTextDocument>
@@ -118,6 +123,22 @@ QImage actualControl(QWidget *control)
     return top->grab(rect).toImage().convertToFormat(QImage::Format_RGB32);
 }
 
+QRect selectedWordArea(const QLineEdit &field, int left, int right)
+{
+    // Whitespace above/below a selection can still use the unselected paper.
+    const int height = field.fontMetrics().height();
+    return QRect(left, (field.height() - height) / 2 + 2, right - left + 1, height - 4);
+}
+
+double clearButtonContrast(QLineEdit &field)
+{
+    for (auto *button : field.findChildren<QAbstractButton *>()) {
+        if (button->isVisibleTo(&field))
+            return paintedContrast(actualControl(button), button->rect().adjusted(2, 2, -2, -2));
+    }
+    return 1.0;
+}
+
 QRect textBounds(const QLabel *label)
 {
     QRect contents = label->contentsRect().marginsRemoved(QMargins(label->margin(), label->margin(),
@@ -190,6 +211,7 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
     views_.append(QJsonObject{{"id", id}, {"width", image.width()}, {"height", image.height()},
                               {"devicePixelRatio", image.devicePixelRatio()}, {"style", widget->style()->objectName()}});
     auto checkSurface = [&](const QRect &area) {
+        if (theme_ == "desktop") return;
         const auto paper = background(image, pixels(image, area));
         require((qGray(paper) < 128) == (theme_ == "dark"),
                 id + " paints the selected " + theme_ + " background");
@@ -198,16 +220,31 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
         checkSurface(QRect(12, 3, widget->width() - 24, 3));
     // Child windows can still belong to the main window's QObject tree. Only
     // test text actually painted inside this picture, including its clip area.
-    auto inspect = [&](QWidget *child, const QRect &text, const QString &name) {
+    auto inspect = [&](QWidget *child, const QRect &text, const QString &name, double minimum = 4.5) {
         if (child->window() != widget->window() || !child->isVisibleTo(widget) || !child->isEnabled()) return;
         QRect visible = child->visibleRegion().boundingRect().intersected(text);
         if (visible.width() < 8 || visible.height() < child->fontMetrics().ascent()) return;
         visible.translate(child->mapTo(widget, QPoint()));
         if (!widget->rect().contains(visible)) return;
-        measure(id + "/" + name, paintedContrast(image, visible), 4.5);
+        measure(id + "/" + name, paintedContrast(image, visible), minimum);
     };
+    if (auto *file = qobject_cast<QFileDialog *>(widget)) {
+        for (const char *name : {"backButton", "forwardButton", "toParentButton"}) {
+            auto *button = file->findChild<QToolButton *>(name);
+            require(button && button->isVisibleTo(file), id + "/" + name + " file navigation button");
+            if (!button || !button->isEnabled()) continue;
+            const QSize extent = button->iconSize().boundedTo(button->size());
+            QRect glyph(QPoint(), extent);
+            glyph.moveCenter(button->rect().center());
+            measure(id + "/" + name, paintedContrast(actualControl(button), glyph), 3.0);
+        }
+    }
     for (auto *label : widget->findChildren<QLabel *>()) {
         const QString text = label->text();
+        if (qobject_cast<QMessageBox *>(widget) && !label->pixmap().isNull()) {
+            inspect(label, label->contentsRect(), "message icon", 3.0);
+            continue;
+        }
         if (label->objectName() == "repositoryLink") {
             inspect(label, label->contentsRect().adjusted(2, 2, -2, -2), "repository link");
             continue;
@@ -218,10 +255,42 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
     }
     for (auto *button : widget->findChildren<QPushButton *>()) {
         const QString text = button->text();
-        if (text.size() < 2 || !button->icon().isNull() || button->menu()) continue;
-        const auto rect = button->fontMetrics().boundingRect(button->rect(), Qt::AlignCenter |
+        if (text.size() < 2 || button->menu()) continue;
+        auto rect = button->fontMetrics().boundingRect(button->rect(), Qt::AlignCenter |
                           Qt::TextShowMnemonic | Qt::TextSingleLine, text);
+        if (!button->icon().isNull()) {
+            const auto size = button->iconSize();
+            const int start = (button->width() - rect.width() - 4 - size.width()) / 2;
+            const QRect symbol(start, (button->height() - size.height()) / 2, size.width(), size.height());
+            inspect(button, symbol, text + "/icon", 3.0);
+            rect.moveLeft(symbol.right() + 5);
+        }
         inspect(button, rect, text);
+    }
+    for (auto *check : widget->findChildren<QCheckBox *>()) {
+        if (check->text().isEmpty()) continue;
+        QStyleOptionButton option;
+        option.initFrom(check);
+        const auto contents = check->style()->subElementRect(QStyle::SE_CheckBoxContents, &option, check);
+        const auto text = check->fontMetrics().boundingRect(contents, Qt::AlignLeft | Qt::AlignVCenter |
+                                                            Qt::TextShowMnemonic, check->text());
+        inspect(check, text.intersected(contents), check->text());
+    }
+    for (auto *combo : widget->findChildren<QComboBox *>()) {
+        if (combo->isEditable() || combo->currentText().isEmpty() || !combo->itemIcon(combo->currentIndex()).isNull())
+            continue;
+        QStyleOptionComboBox option;
+        option.initFrom(combo);
+        const auto contents = combo->style()->subControlRect(QStyle::CC_ComboBox, &option,
+                                                             QStyle::SC_ComboBoxEditField, combo);
+        const auto text = combo->fontMetrics().boundingRect(contents, Qt::AlignLeft | Qt::AlignVCenter,
+                                                            combo->currentText());
+        inspect(combo, text.intersected(contents), combo->currentText());
+    }
+    if (id == "symbols" || id == "bookmarks-list") {
+        auto *field = widget->findChild<QLineEdit *>(id == "symbols" ? "symbolSearch" : "bookmarkFilter");
+        require(field && field->isVisible() && !field->text().isEmpty(), id + " shows a filled search");
+        if (field) measure(id + "/clear button", clearButtonContrast(*field), 3.0);
     }
     // These two compact toolbar-style controls were especially faint in Aqua.
     // Keep the focus ring outside the sample, which measures the actual label.
@@ -259,14 +328,16 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
 
 void GuiAudit::checkMainControls(MainWindow &window)
 {
-    if (!wantsView("main")) return;
+    if (!wantsView("main") && !wantsView("panel-searches")) return;
     auto *bar = window.findChild<QToolBar *>();
     require(bar != nullptr, "The manuscript toolbar exists");
     if (!bar) return;
     int actionCount = 0;
     for (auto *action : bar->actions()) {
         auto *button = qobject_cast<QToolButton *>(bar->widgetForAction(action));
-        if (!button || action->text().isEmpty()) continue;
+        // Its QWidgetAction has a title for the toolbar overflow menu, while
+        // the main surface deliberately shows only the three-stroke icon.
+        if (!button || button->objectName() == "documentMenuButton" || action->text().isEmpty()) continue;
         ++actionCount;
         const QString label = "toolbar/" + action->text();
         require(button->isVisible() && button->isEnabled(), label + " is visible and enabled");
@@ -307,7 +378,6 @@ void GuiAudit::checkMainControls(MainWindow &window)
         auto *field = window.findChild<QLineEdit *>(name);
         require(field && field->isVisible() && field->isEnabled(), QString("Visible search field: ") + name);
         if (!field) continue;
-        const QSignalBlocker block(field);
         const auto placeholder = field->placeholderText();
         require(!placeholder.isEmpty() && field->text().isEmpty(), QString("Empty search prompt: ") + name);
         const auto prompt = actualControl(field);
@@ -319,8 +389,46 @@ void GuiAudit::checkMainControls(MainWindow &window)
         field->setPlaceholderText(placeholder);
         const auto text = field->rect().adjusted(4, 3, -20, -3);
         const auto paper = background(blank, pixels(blank, text));
-        require((qGray(paper) < 128) == (theme_ == "dark"), QString(name) + " paints the selected background");
-        measure(QString(name) + "/placeholder", paintedContrast(prompt, text, &blank), 4.5);
+        double minimumPrompt = 4.5, minimumSelection = 4.5;
+        if (theme_ == "desktop") {
+            // Native styles choose their own placeholder and selection ink.
+            // Paint a stock field on the same display and font, including
+            // real keyboard focus. Keep a floor against disappearing text.
+            auto *originalFocus = QApplication::focusWidget();
+            QLineEdit native(&window);
+            native.setPalette(QApplication::palette("QLineEdit"));
+            native.setFont(field->font());
+            native.setClearButtonEnabled(true);
+            native.setGeometry(QRect(field->mapTo(&window, QPoint()), field->size()));
+            native.setPlaceholderText(placeholder);
+            native.show();
+            native.raise();
+            const auto nativePrompt = actualControl(&native);
+            native.setPlaceholderText({});
+            const auto nativeBlank = actualControl(&native);
+            const double reference = paintedContrast(nativePrompt, text, &nativeBlank);
+            measure(QString(name) + "/desktop reference placeholder", reference, 1.5);
+            minimumPrompt = qBound(1.5, reference * 0.90, 4.5);
+            native.setFocus(Qt::TabFocusReason);
+            settle();
+            const int start = qMax(text.left(), native.inputMethodQuery(Qt::ImCursorRectangle).toRect().right() + 1);
+            native.setText("Moon");
+            const int end = native.inputMethodQuery(Qt::ImCursorRectangle).toRect().left() - 1;
+            settle(220); // Let the platform's clear-button fade reach its final opacity.
+            const auto clear = clearButtonContrast(native);
+            // A desktop can omit this icon altogether. Record what its stock
+            // control drew, but still require a visible application button.
+            measure(QString(name) + "/desktop reference clear button", clear, 1.0);
+            native.selectAll();
+            const auto selection = paintedContrast(actualControl(&native), selectedWordArea(native, start, end));
+            measure(QString(name) + "/desktop reference selection", selection, 1.5);
+            minimumSelection = qBound(1.5, selection * 0.90, 4.5);
+            native.hide();
+            if (originalFocus) originalFocus->setFocus(Qt::OtherFocusReason);
+        } else {
+            require((qGray(paper) < 128) == (theme_ == "dark"), QString(name) + " paints the selected background");
+        }
+        measure(QString(name) + "/placeholder", paintedContrast(prompt, text, &blank), minimumPrompt);
         measure(QString(name) + "/entry", paintedContrast(filled, text, &blank), 4.5);
 
         auto *previousFocus = QApplication::focusWidget();
@@ -332,66 +440,96 @@ void GuiAudit::checkMainControls(MainWindow &window)
         field->setPlaceholderText({});
         const auto focusBlank = actualControl(field);
         field->setText("Moon");
+        settle(220);
         const auto focusInk = actualControl(field);
         const int filledCaretLeft = field->inputMethodQuery(Qt::ImCursorRectangle).toRect().left();
         auto promptArea = text;
         promptArea.setLeft(qMax(text.left(), emptyCaretRight + 1));
         auto typedArea = promptArea;
         typedArea.setRight(qMin(text.right(), filledCaretLeft - 1));
-        measure(QString(name) + "/focused placeholder", paintedContrast(focusPrompt, promptArea, &focusBlank), 4.5);
+        measure(QString(name) + "/focused placeholder", paintedContrast(focusPrompt, promptArea, &focusBlank), minimumPrompt);
         measure(QString(name) + "/focused entry", paintedContrast(focusInk, typedArea, &focusBlank), 4.5);
+        measure(QString(name) + "/clear button", clearButtonContrast(*field), 3.0);
         field->selectAll();
-        // Restrict to the selected word's height: whitespace above/below it
-        // still carries the unselected field background on some styles.
-        const int height = field->fontMetrics().height();
-        typedArea.setTop((field->height() - height) / 2 + 2);
-        typedArea.setBottom(typedArea.top() + height - 5);
-        measure(QString(name) + "/selected entry", paintedContrast(actualControl(field), typedArea), 4.5);
+        const auto selected = selectedWordArea(*field, typedArea.left(), typedArea.right());
+        measure(QString(name) + "/selected entry", paintedContrast(actualControl(field), selected), minimumSelection);
         field->clear();
         field->setPlaceholderText(placeholder);
         if (previousFocus) previousFocus->setFocus(Qt::OtherFocusReason);
     }
+    if (wantsView("panel-searches")) {
+        auto *previousFocus = QApplication::focusWidget();
+        QList<QLineEdit *> fields;
+        for (const auto *name : {"charactersSearch", "recurringSearch", "historySearch", "genresSearch"}) {
+            if (auto *field = window.findChild<QLineEdit *>(name)) fields.append(field);
+        }
+        if (fields.size() == 4) {
+            const QStringList queries{"Ada", "moon", "Dispatch", "Dispatch"};
+            for (int i = 0; i < fields.size(); ++i) fields[i]->setText(queries[i]);
+            fields.front()->setFocus(Qt::TabFocusReason);
+            fields.front()->selectAll();
+            settle(220);
+            capture("panel-searches", &window);
+            for (auto *field : fields) field->clear();
+        }
+        if (previousFocus) previousFocus->setFocus(Qt::OtherFocusReason);
+    }
 }
 
-void GuiAudit::captureMacMenuBar(MainWindow &window)
+void GuiAudit::captureDesktopChrome(MainWindow &window)
 {
+    const auto platform = QGuiApplication::platformName();
+    const bool title = wantsView("native-title-bar") &&
+                       (platform == "windows" || platform == "cocoa" || platform == "xcb");
+    const bool menu = wantsView("macos-menu-bar") && platform == "cocoa";
+    if (!title && !menu) return;
+    if (!window.isActiveWindow()) {
+        notes_.append("The test manuscript was not the active window. Desktop chrome was not captured.");
+        return;
+    }
 #ifdef Q_OS_MACOS
-    if (!wantsView("macos-menu-bar")) return;
-    // The system menu lives outside QWidget's backing store. Capture only
-    // the application side of that strip, and only while this app is active.
-    if (QGuiApplication::platformName() != "cocoa") return;
-    // Avoid triggering an operating-system privacy prompt on a fresh runner.
-    // The Qt scenarios also check the registered native items and menu roles.
+    // Never trigger a screen-recording privacy prompt on a fresh Mac runner.
     QLibrary graphics("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics");
     auto preflight = reinterpret_cast<bool (*)()>(graphics.resolve("CGPreflightScreenCaptureAccess"));
     if (!preflight || !preflight()) {
         notes_.append("The desktop does not grant screen recording. The macOS native menu roles are checked separately.");
         return;
     }
-    auto *screen = window.screen();
-    const int height = screen->availableGeometry().top() - screen->geometry().top();
-    if (!window.isActiveWindow() || height < 16 || height > 80) {
-        notes_.append("The native macOS menu strip was unavailable to the desktop capture.");
-        return;
-    }
-    const auto frame = screen->grabWindow(0, 0, 0, qMin(540, screen->geometry().width()), height);
-    const auto image = frame.toImage().convertToFormat(QImage::Format_RGB32);
-    if (image.isNull() || paintedContrast(image, QRect(12, 2, 300, height - 4)) < 3.0) {
-        notes_.append("Screen recording did not return a legible native macOS menu strip.");
-        return;
-    }
-    require(image.save(output_.filePath("macos-menu-bar.png")), "Write the native macOS menu strip");
-    views_.append(QJsonObject{{"id", "macos-menu-bar"}, {"width", image.width()}, {"height", image.height()},
-                              {"devicePixelRatio", image.devicePixelRatio()}, {"style", "system menu bar"}});
-#else
-    Q_UNUSED(window)
 #endif
+    auto *screen = window.screen();
+    const QRect display = screen->geometry();
+    const auto saveStrip = [&](const QString &id, QRect area) {
+        area = area.intersected(display).translated(-display.topLeft());
+        if (area.width() < 100 || area.height() < 12 || area.height() > 80) {
+            notes_.append(id + ": this desktop provides no visible decoration strip at the test window.");
+            return;
+        }
+        const auto image = screen->grabWindow(0, area.x(), area.y(), area.width(), area.height())
+                               .toImage().convertToFormat(QImage::Format_RGB32);
+        if (image.isNull() || paintedContrast(image, QRect(QPoint(), area.size())) < 2.0) {
+            notes_.append(id + ": desktop readback did not return a distinguishable decoration.");
+            return;
+        }
+        require(image.save(output_.filePath(id + ".png")), "Write " + id);
+        views_.append(QJsonObject{{"id", id}, {"width", image.width()}, {"height", image.height()},
+                                  {"devicePixelRatio", image.devicePixelRatio()}, {"style", "system decoration"}});
+    };
+    if (title) {
+        const auto client = window.mapToGlobal(QPoint());
+        const int top = window.frameGeometry().top();
+        saveStrip("native-title-bar", QRect(client.x() + 6, top + 1, window.width() - 12, client.y() - top - 2));
+    }
+    if (menu) {
+        const int height = screen->availableGeometry().top() - display.top();
+        saveStrip("macos-menu-bar", QRect(display.topLeft(), QSize(qMin(540, display.width()), height)));
+    }
 }
 
 bool GuiAudit::finish()
 {
     require(!views_.isEmpty(), "The requested view pattern captured at least one window");
-    const QJsonObject report{{"platform", QGuiApplication::platformName()}, {"os", QSysInfo::prettyProductName()},
+    const QJsonObject report{{"platform", QGuiApplication::platformName()}, {"style", QApplication::style()->objectName()},
+                             {"os", QSysInfo::prettyProductName()},
                              {"qt", qVersion()}, {"theme", theme_}, {"views", views_}, {"measurements", measurements_},
                              {"notes", notes_}, {"errors", errors_}};
     const bool written = writeFile(output_.filePath("report.json"), QJsonDocument(report).toJson());
@@ -416,7 +554,7 @@ int main(int argc, char **argv)
     parser.addHelpOption();
     parser.addOption({"output", "Save screenshots and a JSON report for each theme.", "directory"});
     parser.addOption({"platform-name", "Require this Qt window system (xcb, windows or cocoa).", "platform"});
-    parser.addOption({"theme", "Limit the audit to light or dark.", "theme"});
+    parser.addOption({"theme", "Limit the audit to light, dark or the default desktop overview.", "theme"});
     parser.addOption({"view", "Limit measured views and images to a shell wildcard.", "pattern", "*"});
     parser.process(app);
     if (parser.isSet("platform-name") && parser.value("platform-name") != QGuiApplication::platformName()) {
@@ -424,11 +562,18 @@ int main(int argc, char **argv)
                      qPrintable(QGuiApplication::platformName()));
         return 2;
     }
-    QStringList themes{"light", "dark"};
+    QStringList themes{"light", "dark", "desktop"};
     if (parser.isSet("theme")) {
         if (!themes.contains(parser.value("theme"))) return 2;
         themes = {parser.value("theme")};
+    } else {
+        const QRegularExpression requested(QRegularExpression::wildcardToRegularExpression(parser.value("view")));
+        if (!requested.match("main").hasMatch() && !requested.match("panel-searches").hasMatch() &&
+            !requested.match("macos-menu-bar").hasMatch() && !requested.match("native-title-bar").hasMatch())
+            themes.removeAll("desktop");
     }
+    const auto desktopStyle = QApplication::style()->objectName();
+    const bool desktopDialogsDisabled = QApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
     QTemporaryDir temporary;
     if (!temporary.isValid()) return 2;
     const QDir output(parser.isSet("output") ? parser.value("output") : temporary.filePath("screenshots"));
@@ -450,10 +595,15 @@ int main(int argc, char **argv)
         window.activateManuscript(false);
         window.editor()->jumpTo(0, false);
         settle(180);
+        if (theme == "desktop") {
+            audit.require(QApplication::style()->objectName() == desktopStyle, "Follow desktop restores the native widget style");
+            audit.require(QApplication::testAttribute(Qt::AA_DontUseNativeDialogs) == desktopDialogsDisabled,
+                          "Follow desktop restores the native dialog policy");
+        }
         audit.capture("main", &window);
         audit.checkMainControls(window);
-        audit.captureMacMenuBar(window);
-        auditWindows(audit, window);
+        audit.captureDesktopChrome(window);
+        if (theme != "desktop") auditWindows(audit, window);
         window.hide();
         passed = audit.finish() && passed;
     }

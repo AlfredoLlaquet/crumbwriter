@@ -1,4 +1,5 @@
 #include "panelsearch.h"
+#include "commandicons.h"
 
 #include <QAbstractItemView>
 #include <QKeyEvent>
@@ -6,7 +7,7 @@
 PanelSearch::PanelSearch(QAbstractItemView *view, QWidget *parent, int role)
     : QLineEdit(parent), view_(view), role_(role)
 {
-    setClearButtonEnabled(true);
+    CommandIcons::addSearchClearButton(this);
     view_->installEventFilter(this);
     connect(this, &QLineEdit::textChanged, this, [this](const QString &query) {
         if (query.isEmpty()) refresh();

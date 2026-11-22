@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "commandicons.h"
 #include "bookmarks.h"
 #include "documentstore.h"
 #include "manuscripteditor.h"
@@ -51,6 +52,7 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     auto *dismiss = new QToolButton(noticeBar_);
     dismiss->setText("×");
     dismiss->setAccessibleName("Dismiss message");
+    dismiss->setFocusPolicy(Qt::StrongFocus);
     connect(dismiss, &QToolButton::clicked, noticeBar_, &QWidget::hide);
     noticeLayout->addWidget(dismiss);
     layout->addWidget(noticeBar_);
@@ -303,6 +305,7 @@ void MainWindow::chooseFile(bool saving)
     });
     if (saving) connect(dialog, &QDialog::rejected, store_, &DocumentStore::keepEditing);
     dialog->show();
+    CommandIcons::setFileNavigationIcons(dialog);
 }
 
 void MainWindow::save(bool asNew)

@@ -1,14 +1,18 @@
 #include "commandicons.h"
 
+#include <QAction>
 #include <QApplication>
+#include <QFileDialog>
 #include <QIconEngine>
 #include <QKeyEvent>
+#include <QLineEdit>
 #include <QMenu>
 #include <QPainter>
 #include <QPolygonF>
 #include <QPointer>
 #include <QStyleOptionToolButton>
 #include <QToolButton>
+#include <utility>
 
 namespace CommandIcons {
 namespace {
@@ -34,7 +38,8 @@ public:
     {
         const auto palette = owner_ ? owner_->palette() : QApplication::palette();
         const auto group = mode == QIcon::Disabled ? QPalette::Disabled : palette.currentColorGroup();
-        const auto role = mode == QIcon::Selected ? QPalette::HighlightedText : QPalette::ButtonText;
+        auto role = symbol_ == Symbol::ClearSearch ? QPalette::Text : QPalette::ButtonText;
+        if (mode == QIcon::Selected) role = QPalette::HighlightedText;
         const auto ink = palette.color(group, role);
         const qreal size = qMin(rect.width(), rect.height());
 
@@ -62,11 +67,28 @@ public:
             painter->drawEllipse(QRectF(2, 2, 10, 10));
             painter->drawLine(QLineF(10.7, 10.7, 15.7, 15.7));
             break;
+        case Symbol::ClearSearch:
+            painter->drawEllipse(QRectF(1.5, 1.5, 15, 15));
+            painter->drawLine(QLineF(6.5, 6.5, 11.5, 11.5));
+            painter->drawLine(QLineF(11.5, 6.5, 6.5, 11.5));
+            break;
         case Symbol::Menu:
             painter->setPen(Qt::NoPen);
             painter->setBrush(ink);
             for (int top : {3, 8, 13})
                 painter->drawRoundedRect(QRectF(1, top, 16, 2), 1, 1);
+            break;
+        case Symbol::Back:
+        case Symbol::Forward: {
+            const bool right = (symbol_ == Symbol::Forward) != (owner_ && owner_->isRightToLeft());
+            const int tip = right ? 15 : 3;
+            painter->drawLine(QLineF(3, 9, 15, 9));
+            painter->drawPolyline(QPolygonF{{9, 3}, {qreal(tip), 9}, {9, 15}});
+            break;
+        }
+        case Symbol::ParentDirectory:
+            painter->drawLine(QLineF(9, 3, 9, 15));
+            painter->drawPolyline(QPolygonF{{3, 9}, {9, 3}, {15, 9}});
             break;
         }
         painter->restore();
@@ -119,12 +141,45 @@ QIcon icon(Symbol symbol, QWidget *owner)
     return QIcon(new CommandIconEngine(symbol, owner));
 }
 
+void addSearchClearButton(QLineEdit *field)
+{
+    // Some styles return an empty SP_LineEditClearButton. Qt still places
+    // and activates a trailing action; supply its visible symbol here.
+    auto *clear = field->addAction(icon(Symbol::ClearSearch, field), QLineEdit::TrailingPosition);
+    clear->setObjectName("clearSearch");
+    clear->setText(QObject::tr("Clear search"));
+    clear->setToolTip(clear->text());
+    clear->setVisible(!field->text().isEmpty());
+    QObject::connect(field, &QLineEdit::textChanged, clear, [clear](const QString &text) {
+        clear->setVisible(!text.isEmpty());
+    });
+    QObject::connect(clear, &QAction::triggered, field, [field] {
+        if (!field->isReadOnly()) {
+            field->clear();
+            field->setFocus(Qt::OtherFocusReason);
+        }
+    });
+}
+
 QToolButton *menuButton(QWidget *parent, const QString &accessibleName, const QString &toolTip)
 {
     auto *button = new MenuButton(parent);
     button->setAccessibleName(accessibleName);
     button->setToolTip(toolTip);
     return button;
+}
+
+void setFileNavigationIcons(QFileDialog *dialog)
+{
+    // Qt's widget chooser uses fixed black arrows on some desktop styles.
+    // Native system choosers have none of these Qt buttons.
+    const std::pair<const char *, Symbol> directions[] = {
+        {"backButton", Symbol::Back}, {"forwardButton", Symbol::Forward},
+        {"toParentButton", Symbol::ParentDirectory}
+    };
+    for (const auto &[name, symbol] : directions)
+        if (auto *button = dialog->findChild<QToolButton *>(name))
+            button->setIcon(icon(symbol, button));
 }
 
 } // namespace CommandIcons

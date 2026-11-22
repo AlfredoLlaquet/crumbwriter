@@ -284,6 +284,8 @@ On a compact Mac keyboard, **Control+I** opens Add while either the Characters o
 
 The right panel follows the same search convention. **Ctrl+Shift+3** searches visits. **Ctrl+Shift+4** searches genres or titles. In either field, **Enter** or **Ctrl+Enter** activates the highlighted row and clears the search text. A visit or title opens its passage. A genre starts its next crumb.
 
+In a sidebar, Bookmarks, or Insert Symbol, a filled search field shows a **Clear Search** button. From the keyboard, select all (**Ctrl+A**, or **Command+A** on a Mac) and press **Backspace** to clear the field and keep focus there.
+
 Each group occupies one line in `Crumbs.txt.characters` or `Crumbs.txt.recurring`. The first alias determines the alphabetical order. For example, `"Fox, Captain", Red Fox, Captain Fox` has three aliases. Double quotes protect a comma inside an alias.
 
 In the manuscript, a unique name completion appears faintly after three typed characters. Type `Inspector Goo` and press **F5** to accept the suggested ending of `Inspector Goose`. With several possibilities, **F5** opens a list. Arrow keys and **Enter** choose one, and **Escape** dismisses it. **Settings → Names** controls completion for each list independently (**Automatic**, **On demand**, **Off**). The minimum prefix length and underline color are adjustable. Underlining offers **All mentions**, **Current group only**, and **Off** separately for each list.
