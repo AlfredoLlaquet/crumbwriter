@@ -102,12 +102,14 @@ QRgb background(const QImage &image, const QRect &area)
 
 // Require several solid ink pixels. A single stray edge or the caret must
 // not be allowed to stand in for an entire word.
-double paintedContrast(const QImage &ink, const QRect &logical, const QImage *unprinted = nullptr)
+double paintedContrast(const QImage &ink, const QRect &logical, const QImage *unprinted = nullptr,
+                       int solidPixelCount = 0)
 {
     const QRect area = pixels(ink, logical);
     if (area.isEmpty() || (unprinted && unprinted->size() != ink.size())) return 1.0;
     const QRgb paper = unprinted ? 0 : background(ink, area);
-    const int count = qMax(4, qRound(4 * ink.devicePixelRatio() * ink.devicePixelRatio()));
+    const qreal dpr = ink.devicePixelRatio();
+    const int count = solidPixelCount ? solidPixelCount : qMax(4, qRound(4 * dpr * dpr));
     QList<double> strongest(count, 1.0);
     for (int y = area.top(); y <= area.bottom(); ++y) {
         for (int x = area.left(); x <= area.right(); ++x) {
@@ -118,6 +120,13 @@ double paintedContrast(const QImage &ink, const QRect &logical, const QImage *un
         }
     }
     return strongest.front();
+}
+
+double artworkContrast(const QImage &image, const QRect &glyph, const QImage *paper = nullptr)
+{
+    // A one-pixel file-type stroke gains solid pixels along its length;
+    // antialiased edge pixels at a fractional scale need not reach the ink color.
+    return paintedContrast(image, glyph, paper, qMax(4, qCeil(4 * image.devicePixelRatio())));
 }
 
 QImage actualControl(QWidget *control)
@@ -563,7 +572,7 @@ void GuiAudit::checkFileTools(const QString &id, QFileDialog &file)
             location->setItemData(row, original, Qt::DecorationRole);
             const QSize size = location->iconSize();
             QRect glyph(slot.left(), slot.center().y() - size.height() / 2, size.width() + 5, size.height());
-            measure(id + "/current directory icon", paintedContrast(ink, glyph, &paper), artworkMinimum);
+            measure(id + "/current directory icon", artworkContrast(ink, glyph, &paper), artworkMinimum);
         } else notes_.append(id + ": the platform supplies no current-directory decoration.");
     }
     auto *files = file.findChild<QAbstractItemView *>(originalMode == QFileDialog::List ? "listView" : "treeView");
@@ -594,13 +603,13 @@ void GuiAudit::checkFileTools(const QString &id, QFileDialog &file)
             const bool drawn = suppliesArtwork(manuscript.data(Qt::DecorationRole).value<QIcon>(), QSize(side, side));
             if (drawn) {
                 require(!blank.glyph.isEmpty(), id + " locates the rendered manuscript icon");
-                measure(id + "/manuscript file icon", paintedContrast(ink, blank.glyph, &paper), artworkMinimum);
+                measure(id + "/manuscript file icon", artworkContrast(ink, blank.glyph, &paper), artworkMinimum);
             } else notes_.append(id + ": the platform supplies no text-file decoration.");
             if (drawn && breeze && files->selectionModel()->isSelected(manuscript)) {
                 // KDE's plain-text glyph has transparent gaps between strokes.
                 // Check the stroke against the paper *within* its slot as well;
                 // the edge of an added backing must never stand in for the glyph.
-                measure(id + "/selected manuscript icon ink", paintedContrast(ink, blank.glyph.adjusted(1, 1, -1, -1)), 3.0);
+                measure(id + "/selected manuscript icon ink", artworkContrast(ink, blank.glyph.adjusted(1, 1, -1, -1)), 3.0);
             }
         }
     }

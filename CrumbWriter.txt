@@ -1171,6 +1171,7 @@ Check the six command icons in Open and Save As, including Forward after
 visiting two directories and the selected List View and Details buttons.
 File-type artwork comes from the desktop. Inspect ordinary and selected
 file rows and verify the filename is readable in each.
+Check thin file-type artwork at 100%, 150%, and 200% display scaling.
 
 The full run also captures the main window, sidebar searches, Bookmarks,
 and Insert Symbol after returning to Follow desktop. Use --theme desktop
