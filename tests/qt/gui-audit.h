@@ -5,6 +5,7 @@
 #include <QRegularExpression>
 
 class MainWindow;
+class QFileDialog;
 class QWidget;
 
 // Drive real windows first, then capture them. A wildcard limits the output
@@ -20,6 +21,7 @@ public:
     bool finish();
 
 private:
+    void checkFileTools(const QString &id, QFileDialog &file);
     void measure(const QString &control, double measured, double minimum);
     QDir output_;
     QString theme_;

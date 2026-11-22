@@ -3,7 +3,10 @@
 
 #include <QApplication>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QEvent>
+#include <QFileInfo>
+#include <QIcon>
 #include <QMessageBox>
 #include <QPointer>
 #include <QPushButton>
@@ -27,6 +30,19 @@ public:
             desktopDialogsDisabled_ = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
             desktopStyle_ = QApplication::style()->name();
+#else
+            const auto isBreeze = [](const QString &name) {
+                return name == "breeze" || name == "breeze-dark";
+            };
+            const QString icons = QIcon::themeName();
+            usesBreezeIcons_ = isBreeze(icons) || ((icons.isEmpty() || icons == "hicolor") &&
+                                                    isBreeze(QIcon::fallbackThemeName()));
+            if (usesBreezeIcons_) {
+                // An empty override follows live desktop changes. Preserve a
+                // named override when it differs from the platform's choice.
+                setIconTheme({});
+                desktopIconOverride_ = icons == QIcon::themeName() ? QString() : icons;
+            }
 #endif
             qApp->installEventFilter(this);
         }
@@ -48,6 +64,8 @@ public:
             QGuiApplication::styleHints()->setColorScheme(scheme);
         }
 #endif
+#else
+        if (usesBreezeIcons_) selectBreezeIcons(theme);
 #endif
         // Menus, tooltips and editors from Qt can be separate top-level widgets.
         QApplication::setPalette(explicitTheme ? EditorColors::explicitTheme(QPalette(), theme == "dark") : desktopPalette_);
@@ -64,6 +82,32 @@ protected:
     }
 
 private:
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
+    static void setIconTheme(const QString &name)
+    {
+        // Qt clears custom icon search paths when the name is reset to automatic.
+        const auto paths = QIcon::themeSearchPaths();
+        QIcon::setThemeName(name);
+        if (QIcon::themeSearchPaths() != paths) QIcon::setThemeSearchPaths(paths);
+    }
+
+    void selectBreezeIcons(const QString &theme)
+    {
+        // Breeze ships separate artwork for light and dark surfaces. Keep the
+        // desktop's file-type icons, including artwork supplied by applications.
+        if (theme != "desktop") {
+            const QString target = theme == "dark" ? QStringLiteral("breeze-dark") : QStringLiteral("breeze");
+            for (const auto &root : QIcon::themeSearchPaths()) {
+                if (QFileInfo::exists(QDir(root).filePath(target + "/index.theme"))) {
+                    setIconTheme(target);
+                    return;
+                }
+            }
+        }
+        setIconTheme(desktopIconOverride_);
+    }
+#endif
+
     void updateDialogDecoration(QWidget *widget) const
     {
         if (auto *button = qobject_cast<QPushButton *>(widget)) {
@@ -109,6 +153,9 @@ private:
     bool desktopDialogsDisabled_ = false;
 #if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
     QString desktopStyle_;
+#else
+    bool usesBreezeIcons_ = false;
+    QString desktopIconOverride_;
 #endif
 };
 }

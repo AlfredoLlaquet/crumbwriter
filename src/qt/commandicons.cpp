@@ -1,5 +1,6 @@
 #include "commandicons.h"
 
+#include <QAbstractItemView>
 #include <QAction>
 #include <QApplication>
 #include <QFileDialog>
@@ -10,6 +11,7 @@
 #include <QPainter>
 #include <QPolygonF>
 #include <QPointer>
+#include <QStyledItemDelegate>
 #include <QStyleOptionToolButton>
 #include <QToolButton>
 #include <utility>
@@ -90,6 +92,23 @@ public:
             painter->drawLine(QLineF(9, 3, 9, 15));
             painter->drawPolyline(QPolygonF{{3, 9}, {9, 3}, {15, 9}});
             break;
+        case Symbol::NewFolder:
+            painter->drawPolyline(QPolygonF{{7.5, 14.5}, {1.5, 14.5}, {1.5, 3.5}, {6.5, 3.5}, {8.5, 5.5}, {15.5, 5.5}, {15.5, 8}});
+            painter->drawLine(QLineF(12.5, 8.5, 12.5, 15.5));
+            painter->drawLine(QLineF(9, 12, 16, 12));
+            break;
+        case Symbol::ListView:
+            for (int y : {4, 9, 14}) {
+                painter->drawPoint(QPointF(2.5, y));
+                painter->drawLine(QLineF(6, y, 15.5, y));
+            }
+            break;
+        case Symbol::DetailsView:
+            painter->drawRoundedRect(QRectF(1.5, 2.5, 15, 13), 1, 1);
+            painter->drawLine(QLineF(2, 7, 16, 7));
+            painter->drawLine(QLineF(2, 11, 16, 11));
+            painter->drawLine(QLineF(7, 7, 7, 15));
+            break;
         }
         painter->restore();
     }
@@ -134,6 +153,31 @@ protected:
         QToolButton::keyPressEvent(event);
     }
 };
+
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
+class BreezeFileDelegate final : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        QStyledItemDelegate::paint(painter, option, index);
+        if (!(option.state & QStyle::State_Selected)) return;
+        QStyleOptionViewItem cell(option);
+        initStyleOption(&cell, index);
+        if (cell.icon.isNull()) return;
+
+        // Breeze file types can be gray lines that merge with the selection.
+        // Keep the label selected and draw the original artwork on its usual paper.
+        const auto *style = cell.widget ? cell.widget->style() : QApplication::style();
+        const auto rect = style->subElementRect(QStyle::SE_ItemViewItemDecoration, &cell, cell.widget);
+        painter->fillRect(rect, cell.palette.base());
+        cell.icon.paint(painter, rect, cell.decorationAlignment,
+                        cell.state & QStyle::State_Enabled ? QIcon::Normal : QIcon::Disabled,
+                        cell.state & QStyle::State_Open ? QIcon::On : QIcon::Off);
+    }
+};
+#endif
 } // namespace
 
 QIcon icon(Symbol symbol, QWidget *owner)
@@ -169,17 +213,28 @@ QToolButton *menuButton(QWidget *parent, const QString &accessibleName, const QS
     return button;
 }
 
-void setFileNavigationIcons(QFileDialog *dialog)
+void setFileDialogIcons(QFileDialog *dialog)
 {
-    // Qt's widget chooser uses fixed black arrows on some desktop styles.
-    // Native system choosers have none of these Qt buttons.
-    const std::pair<const char *, Symbol> directions[] = {
+    // Qt's widget chooser can use fixed dark artwork on a dark surface.
+    // Its existing buttons retain their actions, shortcuts and checked states.
+    const std::pair<const char *, Symbol> tools[] = {
         {"backButton", Symbol::Back}, {"forwardButton", Symbol::Forward},
-        {"toParentButton", Symbol::ParentDirectory}
+        {"toParentButton", Symbol::ParentDirectory}, {"newFolderButton", Symbol::NewFolder},
+        {"listModeButton", Symbol::ListView}, {"detailModeButton", Symbol::DetailsView}
     };
-    for (const auto &[name, symbol] : directions)
+    for (const auto &[name, symbol] : tools)
         if (auto *button = dialog->findChild<QToolButton *>(name))
             button->setIcon(icon(symbol, button));
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
+    if (QIcon::themeName() == "breeze" || QIcon::themeName() == "breeze-dark") {
+        for (const char *name : {"listView", "treeView"}) {
+            auto *view = dialog->findChild<QAbstractItemView *>(name);
+            if (view && !view->itemDelegateForColumn(0) && view->itemDelegate() &&
+                view->itemDelegate()->metaObject() == &QStyledItemDelegate::staticMetaObject)
+                view->setItemDelegateForColumn(0, new BreezeFileDelegate(view));
+        }
+    }
+#endif
 }
 
 } // namespace CommandIcons

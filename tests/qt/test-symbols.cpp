@@ -87,6 +87,25 @@ void picker(QSettings &settings)
     check(search && themes && list && details && insert && !dialog.isModal() && until([&] { return search->hasFocus(); }),
           "nonmodal picker opens at the search field");
 
+    search->setText("arrow");
+    const auto wideArrows = list->model()->match(list->model()->index(0, 0), Qt::UserRole,
+                                                QStringLiteral("⟷"), 1, Qt::MatchExactly);
+    check(wideArrows.size() == 1, "long two-headed arrow is available");
+    const auto arrow = wideArrows.first();
+    const auto arrowText = arrow.data().toString();
+    check(list->visualRect(arrow).size() == list->gridSize() &&
+          list->visualRect(arrow).width() >= list->fontMetrics().tightBoundingRect(arrowText).width(),
+          "long arrows keep both heads in a mixed-width result grid");
+    search->setText("U+2003");
+    const auto emSpace = list->currentIndex();
+    const auto markers = emSpace.data().toString();
+    auto *preview = dialog.findChild<QLabel *>("symbolGlyph");
+    check(markers == QStringLiteral("│ │") &&
+          list->visualRect(emSpace).width() >= list->fontMetrics().horizontalAdvance(markers) &&
+          preview && preview->contentsRect().width() >= preview->fontMetrics().horizontalAdvance(markers),
+          "both width markers of an em space fit in the grid and the enlarged preview");
+    search->clear();
+
     key(search, Qt::Key_T, Qt::AltModifier);
     check(until([&] { return themes->view()->isVisible(); }), "Alt+T opens the theme selector");
     key(themes->view(), Qt::Key_S, Qt::AltModifier);

@@ -4,15 +4,18 @@
 #include "preferences.h"
 
 #include <QAbstractButton>
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QCheckBox>
 #include <QCommandLineParser>
 #include <QComboBox>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
 #include <QImage>
+#include <QIdentityProxyModel>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -24,11 +27,13 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScreen>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleOptionButton>
 #include <QStyleOptionComboBox>
+#include <QStyledItemDelegate>
 #include <QSysInfo>
 #include <QTemporaryDir>
 #include <QTextDocument>
@@ -124,6 +129,73 @@ QImage actualControl(QWidget *control)
     return top->grab(rect).toImage().convertToFormat(QImage::Format_RGB32);
 }
 
+QRect iconSquare(const QToolButton &button)
+{
+    QRect square(QPoint(), button.iconSize().boundedTo(button.size()));
+    square.moveCenter(button.rect().center());
+    return square;
+}
+
+QImage withoutIcon(QToolButton &button)
+{
+    const auto original = button.icon();
+    const auto arrow = button.arrowType();
+    QPixmap transparent(button.iconSize());
+    transparent.fill(Qt::transparent);
+    if (arrow != Qt::NoArrow) button.setArrowType(Qt::NoArrow);
+    button.setIcon(QIcon(transparent));
+    const auto paper = actualControl(&button);
+    button.setIcon(original);
+    if (arrow != Qt::NoArrow) button.setArrowType(arrow);
+    return paper;
+}
+
+class TransparentFileIcon final : public QIdentityProxyModel {
+public:
+    TransparentFileIcon(QAbstractItemModel *source, const QSize &size)
+    {
+        setSourceModel(source);
+        QPixmap empty(size);
+        empty.fill(Qt::transparent);
+        empty_ = QIcon(empty);
+    }
+    QVariant data(const QModelIndex &index, int role) const override
+    {
+        return role == Qt::DecorationRole ? QVariant::fromValue(empty_) : QIdentityProxyModel::data(index, role);
+    }
+private:
+    QIcon empty_;
+};
+
+class NoFileIcon final : public QStyledItemDelegate {
+public:
+    NoFileIcon(QAbstractItemDelegate *original, QAbstractItemModel *model, int side)
+        : original_(original), blank_(model, QSize(side, side)) {}
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        if (index.column() == 0) {
+            QStyleOptionViewItem item(option);
+            initStyleOption(&item, index);
+            auto *style = option.widget ? option.widget->style() : QApplication::style();
+            glyph = style->subElementRect(QStyle::SE_ItemViewItemDecoration, &item, option.widget);
+            const auto slot = style->subElementRect(QStyle::SE_ItemViewItemText, &item, option.widget);
+            text = item.fontMetrics.boundingRect(slot, item.displayAlignment.toInt() | Qt::TextSingleLine,
+                                                 item.text).intersected(slot);
+        }
+        // Use the real chooser delegate, including its selected-icon paper.
+        // Only the source image is blank. Filename, focus, and model roles match.
+        original_->paint(painter, option, blank_.mapFromSource(index));
+    }
+    QSize sizeHint(const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        return original_->sizeHint(option, index);
+    }
+    mutable QRect glyph, text;
+private:
+    QAbstractItemDelegate *original_;
+    TransparentFileIcon blank_;
+};
+
 QRect selectedWordArea(const QLineEdit &field, int left, int right)
 {
     // Whitespace above/below a selection can still use the unselected paper.
@@ -138,6 +210,15 @@ double clearButtonContrast(QLineEdit &field)
             return paintedContrast(actualControl(button), button->rect().adjusted(2, 2, -2, -2));
     }
     return 1.0;
+}
+
+bool suppliesArtwork(const QIcon &icon, const QSize &size)
+{
+    const auto image = icon.pixmap(size).toImage().convertToFormat(QImage::Format_ARGB32);
+    for (int y = 0; y < image.height(); ++y)
+        for (int x = 0; x < image.width(); ++x)
+            if (qAlpha(image.pixel(x, y)) > 8) return true;
+    return false;
 }
 
 QRect textBounds(const QLabel *label)
@@ -229,17 +310,7 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
         if (!widget->rect().contains(visible)) return;
         measure(id + "/" + name, paintedContrast(image, visible), minimum);
     };
-    if (auto *file = qobject_cast<QFileDialog *>(widget)) {
-        for (const char *name : {"backButton", "forwardButton", "toParentButton"}) {
-            auto *button = file->findChild<QToolButton *>(name);
-            require(button && button->isVisibleTo(file), id + "/" + name + " file navigation button");
-            if (!button || !button->isEnabled()) continue;
-            const QSize extent = button->iconSize().boundedTo(button->size());
-            QRect glyph(QPoint(), extent);
-            glyph.moveCenter(button->rect().center());
-            measure(id + "/" + name, paintedContrast(actualControl(button), glyph), 3.0);
-        }
-    }
+    if (auto *file = qobject_cast<QFileDialog *>(widget)) checkFileTools(id, *file);
     for (auto *label : widget->findChildren<QLabel *>()) {
         const QString text = label->text();
         if (qobject_cast<QMessageBox *>(widget) && !label->pixmap().isNull()) {
@@ -259,6 +330,35 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
         if (text.size() < 2 || button->menu()) continue;
         auto rect = button->fontMetrics().boundingRect(button->rect(), Qt::AlignCenter |
                           Qt::TextShowMnemonic | Qt::TextSingleLine, text);
+        double minimum = 4.5;
+        auto *box = qobject_cast<QDialogButtonBox *>(button->parentWidget());
+        if (theme_ == "desktop" && box && button->isDefault() && !button->isFlat() && button->icon().isNull() &&
+            button->isEnabled() && button->isVisibleTo(widget) && button->window() == widget->window() &&
+            button->style() == QApplication::style() && button->styleSheet().isEmpty() &&
+            !button->testAttribute(Qt::WA_SetPalette)) {
+            // Apple's saturated system accent can yield less than 4.5:1 on
+            // the enabled default action. Paint a stock default button in the
+            // same active dialog and focus state. Ordinary buttons and both
+            // explicit themes retain the full text requirement.
+            auto *focus = QApplication::focusWidget();
+            QPushButton stock(text, box);
+            stock.setPalette(QApplication::palette("QPushButton"));
+            stock.setFont(button->font());
+            stock.setGeometry(button->geometry());
+            stock.setAutoDefault(button->autoDefault());
+            stock.show();
+            stock.raise();
+            stock.setDefault(true);
+            if (focus == button) stock.setFocus(Qt::TabFocusReason);
+            settle();
+            const double reference = paintedContrast(actualControl(&stock), rect);
+            measure(id + "/" + text + "/desktop reference default button", reference, 1.0);
+            minimum = qBound(3.0, reference * 0.95, 4.5);
+            stock.hide();
+            stock.setDefault(false);
+            button->setDefault(true);
+            if (focus) focus->setFocus(Qt::OtherFocusReason);
+        }
         if (!button->icon().isNull()) {
             const auto size = button->iconSize();
             const int start = (button->width() - rect.width() - 4 - size.width()) / 2;
@@ -266,7 +366,7 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
             inspect(button, symbol, text + "/icon", 3.0);
             rect.moveLeft(symbol.right() + 5);
         }
-        inspect(button, rect, text);
+        inspect(button, rect, text, minimum);
     }
     for (auto *check : widget->findChildren<QCheckBox *>()) {
         if (check->text().isEmpty()) continue;
@@ -352,6 +452,161 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
     }
 }
 
+void GuiAudit::checkFileTools(const QString &id, QFileDialog &file)
+{
+    const QStringList required{"backButton", "forwardButton", "toParentButton", "newFolderButton",
+                               "listModeButton", "detailModeButton"};
+    QSet<QToolButton *> measured;
+    auto *entry = file.findChild<QLineEdit *>("fileNameEdit");
+    auto *initialFocus = QApplication::focusWidget();
+    file.raise();
+    file.activateWindow();
+    const auto inspect = [&](QToolButton *button, const QString &state) {
+        if (!button || !button->isVisibleTo(&file) || !button->isEnabled()) return;
+        const QString label = id + "/" + (button->objectName().isEmpty() ? button->toolTip() : button->objectName()) + state;
+        const auto sample = [&](const QString &suffix) {
+            const auto ink = actualControl(button);
+            const auto paper = withoutIcon(*button);
+            measure(label + suffix, paintedContrast(ink, iconSquare(*button), &paper), 3.0);
+        };
+        if (entry) entry->setFocus(Qt::TabFocusReason);
+        settle();
+        sample("/unfocused");
+        if (button->focusPolicy() & Qt::TabFocus) {
+            button->setFocus(Qt::TabFocusReason);
+            settle();
+            require(button->hasFocus(), label + " receives keyboard focus");
+            sample("/focused");
+        } else if (required.contains(button->objectName())) {
+            require(false, label + " has a keyboard focus policy");
+        }
+        measured.insert(button);
+    };
+
+    // Discover new icon-only controls as well as the six familiar commands.
+    // A disabled history arrow is checked after real navigation enables it.
+    const auto inspectNew = [&](const QString &state) {
+        for (auto *button : file.findChildren<QToolButton *>()) {
+            if (!measured.contains(button) && (button->toolButtonStyle() == Qt::ToolButtonIconOnly ||
+                                               required.contains(button->objectName())))
+                inspect(button, state);
+        }
+    };
+    inspectNew({});
+    auto *parent = file.findChild<QToolButton *>("toParentButton");
+    auto *back = file.findChild<QToolButton *>("backButton");
+    auto *forward = file.findChild<QToolButton *>("forwardButton");
+    if (parent && back && forward && parent->isEnabled()) {
+        const auto original = file.directory();
+        parent->click();
+        settle();
+        require(file.directory() != original && back->isEnabled(), id + " activates file history");
+        inspect(back, "/after navigation");
+        inspectNew("/after navigation");
+        back->click();
+        settle();
+        require(file.directory() == original && forward->isEnabled(), id + " returns to the fixture directory");
+        inspect(forward, "/after going back");
+        inspectNew("/after going back");
+    }
+    const auto originalMode = file.viewMode();
+    for (const auto mode : {QFileDialog::List, QFileDialog::Detail}) {
+        auto *list = file.findChild<QToolButton *>("listModeButton");
+        auto *details = file.findChild<QToolButton *>("detailModeButton");
+        auto *target = mode == QFileDialog::List ? list : details;
+        if (!target) continue;
+        target->click();
+        settle();
+        const QString state = mode == QFileDialog::List ? "/list view" : "/detail view";
+        require(file.viewMode() == mode, id + state + " was selected");
+        inspect(list, state);
+        inspect(details, state);
+        inspectNew(state);
+    }
+    file.setViewMode(originalMode);
+    for (const auto &name : required) {
+        auto *button = file.findChild<QToolButton *>(name);
+        require(button && measured.contains(button), id + "/" + name + " was visible and measured while enabled");
+    }
+    // Shell icons are optional decorations. When supplied, verify their real
+    // pixels alongside the location name and the manuscript filename. A bare
+    // Qt platform may legitimately show only those names.
+    auto *location = file.findChild<QComboBox *>("lookInCombo");
+    require(location && location->isVisibleTo(&file), id + " shows its current directory");
+    // The paired Breeze icon theme is part of our explicit appearance. Other
+    // desktops supply decorative shell artwork (including a pale white page
+    // on Windows). Record its actual ink; the names and command symbols have
+    // independent legibility requirements on every platform.
+    const bool breeze = QIcon::themeName().startsWith("breeze", Qt::CaseInsensitive) &&
+                        QGuiApplication::platformName() == "xcb";
+    const double artworkMinimum = breeze ? 3.0 : 1.03;
+    if (location) {
+        const auto original = location->currentData(Qt::DecorationRole);
+        const QIcon icon = original.value<QIcon>();
+        const auto ink = actualControl(location);
+        QStyleOptionComboBox option;
+        option.initFrom(location);
+        option.editable = location->isEditable();
+        option.currentText = location->currentText();
+        option.currentIcon = icon;
+        option.iconSize = location->iconSize();
+        const auto slot = location->style()->subControlRect(QStyle::CC_ComboBox, &option,
+                                                            QStyle::SC_ComboBoxEditField, location);
+        auto text = slot.adjusted(icon.isNull() ? 3 : option.iconSize.width() + 6, 2, -3, -2);
+        measure(id + "/current directory name", paintedContrast(ink, text), 4.5);
+        if (suppliesArtwork(icon, option.iconSize)) {
+            QPixmap empty(location->iconSize());
+            empty.fill(Qt::transparent);
+            const int row = location->currentIndex();
+            location->setItemData(row, QIcon(empty), Qt::DecorationRole);
+            const auto paper = actualControl(location);
+            location->setItemData(row, original, Qt::DecorationRole);
+            const QSize size = location->iconSize();
+            QRect glyph(slot.left(), slot.center().y() - size.height() / 2, size.width() + 5, size.height());
+            measure(id + "/current directory icon", paintedContrast(ink, glyph, &paper), artworkMinimum);
+        } else notes_.append(id + ": the platform supplies no current-directory decoration.");
+    }
+    auto *files = file.findChild<QAbstractItemView *>(originalMode == QFileDialog::List ? "listView" : "treeView");
+    require(files && files->isVisibleTo(&file), id + " shows the file listing");
+    if (files) {
+        const auto root = files->rootIndex();
+        QModelIndex manuscript;
+        QElapsedTimer waiting;
+        waiting.start();
+        do {
+            const auto first = files->model()->index(0, 0, root);
+            const auto matches = files->model()->match(first, Qt::DisplayRole, "Moon Logbook.txt", 1, Qt::MatchExactly);
+            if (!matches.isEmpty()) manuscript = matches.front();
+            if (!manuscript.isValid()) settle();
+        } while (!manuscript.isValid() && waiting.elapsed() < 3000);
+        require(manuscript.isValid(), id + " lists the plain-text manuscript");
+        if (manuscript.isValid()) {
+            files->scrollTo(manuscript);
+            int side = files->iconSize().width();
+            if (side <= 0) side = files->style()->pixelMetric(QStyle::PM_SmallIconSize, nullptr, files);
+            const auto ink = actualControl(files->viewport());
+            NoFileIcon blank(files->itemDelegateForIndex(manuscript), files->model(), side);
+            auto *previous = files->itemDelegateForRow(manuscript.row());
+            files->setItemDelegateForRow(manuscript.row(), &blank);
+            const auto paper = actualControl(files->viewport());
+            files->setItemDelegateForRow(manuscript.row(), previous);
+            measure(id + "/manuscript filename", paintedContrast(ink, blank.text), 4.5);
+            const bool drawn = suppliesArtwork(manuscript.data(Qt::DecorationRole).value<QIcon>(), QSize(side, side));
+            if (drawn) {
+                require(!blank.glyph.isEmpty(), id + " locates the rendered manuscript icon");
+                measure(id + "/manuscript file icon", paintedContrast(ink, blank.glyph, &paper), artworkMinimum);
+            } else notes_.append(id + ": the platform supplies no text-file decoration.");
+            if (drawn && breeze && files->selectionModel()->isSelected(manuscript)) {
+                // KDE's plain-text glyph has transparent gaps between strokes.
+                // Check the stroke against the paper *within* its slot as well;
+                // the edge of an added backing must never stand in for the glyph.
+                measure(id + "/selected manuscript icon ink", paintedContrast(ink, blank.glyph.adjusted(1, 1, -1, -1)), 3.0);
+            }
+        }
+    }
+    if (initialFocus) initialFocus->setFocus(Qt::OtherFocusReason);
+}
+
 void GuiAudit::checkMainControls(MainWindow &window)
 {
     if (!wantsView("main") && !wantsView("panel-searches")) return;
@@ -385,17 +640,10 @@ void GuiAudit::checkMainControls(MainWindow &window)
         // Aqua can shade each toolbar row differently. Subtract the same
         // button painted with an empty icon, so gradients and borders cancel.
         // Equal icon sizes preserve the button's normal style and geometry.
-        const auto original = button->icon();
-        QPixmap transparent(button->iconSize());
-        transparent.fill(Qt::transparent);
-        button->setIcon(QIcon(transparent));
-        const auto paper = actualControl(button);
-        button->setIcon(original);
+        const auto paper = withoutIcon(*button);
         require(image.size() == paper.size(), QString(name) + " keeps the same bounds with a blank icon");
         if (image.size() != paper.size()) continue;
-        QRect square(QPoint(), button->iconSize().boundedTo(button->size()));
-        square.moveCenter(button->rect().center());
-        const QRect glyph = pixels(image, square);
+        const QRect glyph = pixels(image, iconSquare(*button));
         // The three strokes must cross the same three columns. This rejects
         // a Qt application logo, a row of dots, and a lone disclosure arrow.
         for (const double fraction : {0.25, 0.50, 0.75}) {

@@ -353,10 +353,13 @@ file's notice before displaying any warning about the newly opened file.
 The close and confirmation buttons in an explicit theme use their text
 labels. Confirmation dialogs display the full question and its choices.
 Follow desktop honors the desktop's standard button and dialog icons.
-The built-in Open and Save As dialogs draw their Back, Forward, and
-Parent Directory arrows in the color of the active theme. Search fields
-in both sidebars, Bookmarks, and Insert Symbol show a clear button when
-they contain text. Clearing a field keeps the keyboard in that field.
+The built-in Open and Save As dialogs use the active theme's ink for
+Back, Forward, Parent Directory, New Folder, List View, and Details.
+When both KDE Breeze icon sets are installed, an explicit appearance
+uses its matching set for folder and file-type icons. A selected filename
+keeps its highlight while its icon is drawn on the list's normal background.
+Search fields in both sidebars, Bookmarks, and Insert Symbol show a clear
+button when they contain text. Clearing a field keeps the keyboard there.
 The manuscript font applies to the writing area. Context
 menus, spelling suggestions and the name list keep the interface font,
 including when the manuscript is set to 96 points.
@@ -1164,6 +1167,11 @@ Correct each defect, repeat its focused check, and rerun the affected
 platforms and themes. Before a cross-platform appearance release, review
 the four-platform full run on the revision being shipped.
 
+Check the six command icons in Open and Save As, including Forward after
+visiting two directories and the selected List View and Details buttons.
+File-type artwork comes from the desktop. Inspect ordinary and selected
+file rows and verify the filename is readable in each.
+
 The full run also captures the main window, sidebar searches, Bookmarks,
 and Insert Symbol after returning to Follow desktop. Use --theme desktop
 --view main for the main window alone. Compare the sidebar's placeholders
@@ -1181,6 +1189,9 @@ appearance audit with the packaged Qt libraries. Its gui-audit-windows-11
 artifact includes the Windows edition, build, and host architecture.
 The Mac jobs use Cocoa on both Apple silicon and Intel. Inspect the title
 bar and Mac system menu screenshots alongside the application controls.
+In Insert Symbol, check both ends of long arrows and both width markers
+on invisible spacing characters. The grid measures the catalog samples
+when it opens for the selected font and gives every item the full cell.
 
 Check live movements with t-2 across crumbs, j then j2 followed by
 Backspace, q and Q phrase previews with a count and a literal asterisk,

@@ -136,10 +136,10 @@ void useLargeManuscriptFont(ManuscriptEditor *editor)
     editor->setFont(font);
 }
 
-void checkControlFont(GuiAudit &audit, QWidget *widget, const QFont &controlFont, const QString &name)
+void checkControlFont(GuiAudit &audit, const QFont &testedFont, const QFont &controlFont, const QString &name)
 {
     const QFontInfo expected(controlFont);
-    const QFontInfo actual(widget->font());
+    const QFontInfo actual(testedFont);
     const auto description = [](const QFontInfo &info) {
         return QString("%1, %2 pt, %3 px").arg(info.family()).arg(info.pointSizeF()).arg(info.pixelSize());
     };
@@ -379,7 +379,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (!menu) return;
         opened = true;
         audit.capture("editor-context-menu", menu);
-        checkControlFont(audit, menu, documentMenu(window)->font(), "The manuscript context menu");
+        checkControlFont(audit, menu->font(), documentMenu(window)->font(), "The manuscript context menu");
         QMenu *spelling = nullptr;
         for (auto *item : menu->actions())
             if (item->menu() && item->menu()->title() == "Spelling") spelling = item->menu();
@@ -387,7 +387,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (spelling) {
             spelling->popup(menu->mapToGlobal(QPoint(menu->width(), 0)));
             audit.capture("spelling-menu", spelling);
-            checkControlFont(audit, spelling, documentMenu(window)->font(), "The spelling submenu");
+            checkControlFont(audit, spelling->font(), documentMenu(window)->font(), "The spelling submenu");
             spelling->hide();
         }
         menu->close();
@@ -432,13 +432,11 @@ void auditNameCompletion(GuiAudit &audit, MainWindow &window)
     key(editor, Qt::Key_F5);
     auto *choices = visible<QListView>(*editor, "synonymChoiceList");
     audit.capture("name-completion", choices->window());
-    // Cocoa can specialize the resolved font on item views. Compare with an
-    // actual visible list and label in the same window and on the same screen.
+    // Cocoa uses different native font sizes for an embedded list and a
+    // popup. Compare the popup with itself after restoring the writing font.
+    const QFont largeListFont = choices->font();
+    const QFont largeHeadingFont = visible<QLabel>(*choices->window())->font();
     auto *referenceList = visible<QListView>(window, "charactersList");
-    auto *referenceHeading = visible<QLabel>(window, "wordCount");
-    auto *heading = visible<QLabel>(*choices->window());
-    checkControlFont(audit, choices, referenceList->font(), "The name completion list");
-    checkControlFont(audit, heading, referenceHeading->font(), "The name completion heading");
     const auto rowHeight = [](QListView *list) {
         return list->visualRect(list->model()->index(0, 0)).height();
     };
@@ -446,6 +444,14 @@ void auditNameCompletion(GuiAudit &audit, MainWindow &window)
     audit.require(actualRow > 0 && expectedRow > 0 && qAbs(actualRow - expectedRow) <= 2,
                   QString("The completion row is %1 px high at a 96-point manuscript font; "
                           "the Characters list row is %2 px high").arg(actualRow).arg(expectedRow));
+    key(choices, Qt::Key_Escape);
+    editor->setFont(manuscriptFont);
+    editorFocus(window);
+    key(editor, Qt::Key_F5);
+    choices = visible<QListView>(*editor, "synonymChoiceList");
+    checkControlFont(audit, largeListFont, choices->font(), "The name completion list");
+    checkControlFont(audit, largeHeadingFont, visible<QLabel>(*choices->window())->font(), "The name completion heading");
+    audit.require(rowHeight(choices) == actualRow, "Changing the writing font preserves the completion row height");
     key(choices, Qt::Key_Escape);
 }
 

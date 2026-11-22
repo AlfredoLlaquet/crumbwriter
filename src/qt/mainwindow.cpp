@@ -305,7 +305,7 @@ void MainWindow::chooseFile(bool saving)
     });
     if (saving) connect(dialog, &QDialog::rejected, store_, &DocumentStore::keepEditing);
     dialog->show();
-    CommandIcons::setFileNavigationIcons(dialog);
+    CommandIcons::setFileDialogIcons(dialog);
 }
 
 void MainWindow::save(bool asNew)

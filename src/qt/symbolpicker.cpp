@@ -20,6 +20,7 @@
 #include <QScreen>
 #include <QSettings>
 #include <QShortcut>
+#include <QStyle>
 #include <QVBoxLayout>
 #include <algorithm>
 
@@ -33,6 +34,23 @@ QLabel *plainLabel(QWidget *parent)
     auto *label = new QLabel(parent);
     label->setTextFormat(Qt::PlainText);
     return label;
+}
+
+QSize symbolCellSize(const QListView *grid)
+{
+    const QFontMetrics metrics = grid->fontMetrics();
+    const int height = std::max(48, qRound(metrics.height() * 1.4));
+    const int padding = 2 * (grid->style()->pixelMetric(QStyle::PM_FocusFrameHMargin, nullptr, grid) + 2);
+    int width = height;
+    const auto &catalog = SymbolCatalog::instance();
+    for (int row : catalog.search({})) {
+        const auto sample = catalog.at(row).sample();
+        const int advance = metrics.horizontalAdvance(sample);
+        const auto ink = metrics.tightBoundingRect(sample);
+        const int overhang = std::max({0, -ink.left(), ink.right() + 1 - advance});
+        width = std::max(width, advance + 2 * overhang + padding);
+    }
+    return {width, height};
 }
 }
 
@@ -58,14 +76,18 @@ public:
         case Qt::AccessibleDescriptionRole: return entry->theme + ", " + entry->code;
         case Qt::ToolTipRole: return entry->name + " (" + entry->code + ")";
         case Qt::TextAlignmentRole: return int(Qt::AlignCenter);
+        case Qt::SizeHintRole: return cellSize_;
         case Qt::UserRole: return entry->text;
         default: return {};
         }
     }
-    void setRows(QList<int> rows)
+    void setRows(QList<int> rows, QSize cellSize)
     {
         beginResetModel();
         rows_ = std::move(rows);
+        // A uniform QListView otherwise measures one arbitrary result and
+        // clips wider glyphs inside the empty space reserved for their cells.
+        cellSize_ = cellSize;
         endResetModel();
     }
     QModelIndex byCode(const QString &code) const
@@ -78,6 +100,7 @@ public:
 
 private:
     QList<int> rows_;
+    QSize cellSize_;
 };
 
 SymbolPicker::SymbolPicker(ManuscriptEditor *editor, QSettings &settings, QWidget *parent)
@@ -186,11 +209,11 @@ void SymbolPicker::openPicker()
     QFont glyphFont = original;
     glyphFont.setPointSizeF(std::clamp(QFontInfo(original).pointSizeF() * 1.55, 18.0, 29.0));
     grid_->setFont(glyphFont);
-    const int cell = std::max(48, qRound(grid_->fontMetrics().height() * 1.4));
-    grid_->setGridSize(QSize(cell, cell));
+    const QSize cell = symbolCellSize(grid_);
+    grid_->setGridSize(cell);
     glyphFont.setPointSizeF(glyphFont.pointSizeF() * 1.45);
     preview_->setFont(glyphFont);
-    preview_->setFixedWidth(std::max(cell + 10, preview_->fontMetrics().height() * 2));
+    preview_->setFixedWidth(std::max(qRound(cell.width() * 1.45) + 4, preview_->fontMetrics().height() * 2));
     refresh();
     show();
     raise();
@@ -209,7 +232,7 @@ void SymbolPicker::refresh(const QString &keepCode)
     const auto &catalog = SymbolCatalog::instance();
     const QStringList stored = settings_.value(scope == Favorites ? favoriteKey : recentKey).toStringList();
     model_->setRows(catalog.search(search_->text(), scope >= FirstTheme ? theme_->currentText() : QString(),
-                                  scope == Favorites || scope == Recent ? &stored : nullptr));
+                                  scope == Favorites || scope == Recent ? &stored : nullptr), grid_->gridSize());
     grid_->setCurrentIndex(model_->byCode(keepCode));
     if (grid_->currentIndex().isValid()) grid_->scrollTo(grid_->currentIndex());
     const auto size = model_->rowCount();

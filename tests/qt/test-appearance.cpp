@@ -1,3 +1,4 @@
+#include "controltheme.h"
 #include "editorcolors.h"
 #include "mainwindow.h"
 #include "manuscripteditor.h"
@@ -7,9 +8,11 @@
 #include <QApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QImage>
+#include <QIcon>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -82,6 +85,54 @@ void checkPalette(const QPalette &colors)
     check(contrast(colors.text().color(), EditorColors::searchPaper(colors)) >= 4.5, "search hits");
     check(contrast(EditorColors::warning(base), EditorColors::searchPaper(colors)) >= 4.5, "number in a search hit");
 }
+
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
+void checkBreezeIconThemes()
+{
+    QTemporaryDir temp;
+    const QString originalTheme = QIcon::themeName();
+    const auto paths = QIcon::themeSearchPaths();
+    const QString fallback = QIcon::fallbackThemeName();
+    QIcon::setThemeName({});
+    const QString native = QIcon::themeName();
+    for (const char *name : {"breeze", "breeze-dark"}) {
+        QDir dir(temp.filePath(name));
+        check(dir.mkpath("16x16/actions"), "create test icon theme");
+        QFile index(dir.filePath("index.theme"));
+        check(index.open(QIODevice::WriteOnly), "create icon theme index");
+        index.write("[Icon Theme]\nName=Test\nDirectories=16x16/actions\n[16x16/actions]\nSize=16\nType=Fixed\n");
+    }
+    QIcon::setThemeSearchPaths({temp.path()});
+    QIcon::setThemeName("breeze-dark");
+    for (const QString &choice : {QStringLiteral("light"), QStringLiteral("dark"), QStringLiteral("light")}) {
+        configureControlTheme(choice);
+        check(QIcon::themeName() == (choice == "dark" ? "breeze-dark" : "breeze"),
+              "explicit Breeze themes use their matching installed file artwork");
+    }
+    configureControlTheme("desktop");
+    check(QIcon::themeName() == "breeze-dark", "Follow desktop restores the previous Breeze icon theme");
+    QIcon::setThemeName({});
+    QIcon::setFallbackThemeName("breeze");
+    const QString desktop = QIcon::themeName();
+    QIcon::setThemeSearchPaths({temp.path()});
+    configureControlTheme("dark");
+    configureControlTheme("desktop");
+    check(QIcon::themeName() == desktop && QIcon::themeSearchPaths().contains(temp.path()),
+          "Follow desktop restores automatic theme selection and custom search paths");
+    QIcon::setThemeName("breeze-dark");
+    check(QFile::remove(temp.filePath("breeze/index.theme")), "remove the test light variant");
+    configureControlTheme("light");
+    check(QIcon::themeName() == "breeze-dark", "missing sibling preserves the existing icon theme");
+    configureControlTheme("desktop");
+    QIcon::setThemeName("custom");
+    configureControlTheme("dark");
+    check(QIcon::themeName() == "custom", "custom icon artwork remains in explicit themes");
+    configureControlTheme("desktop");
+    QIcon::setThemeSearchPaths(paths);
+    QIcon::setFallbackThemeName(fallback);
+    QIcon::setThemeName(originalTheme == native ? QString() : originalTheme);
+}
+#endif
 
 void checkNativePrompts()
 {
@@ -178,6 +229,9 @@ int main(int argc, char **argv)
     QApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
 #endif
     QApplication app(argc, argv);
+#if !defined(Q_OS_WIN) && !defined(Q_OS_MACOS)
+    checkBreezeIconThemes();
+#endif
     checkNativePrompts();
     QTemporaryDir temp;
     check(temp.isValid(), "temporary settings and manuscript");
