@@ -1087,6 +1087,9 @@ tests. The resize test measures a completed paint after typing in a moving
 window with recognized aliases on every paragraph and checks the actual text
 and caret. The installed-package smoke test verifies the embedded symbol
 catalog by searching for U+2661.
+The layout suite opens two manuscripts under simulated tiling and reopens
+a saved floating window after its monitor disappears. It checks that the
+width fits the available display and the saved height is recovered.
 The same Makefile supports FreeBSD base make and GNU make.
 
 Check live movements with t-2 across crumbs, j then j2 followed by

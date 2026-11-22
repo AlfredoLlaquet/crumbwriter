@@ -259,11 +259,12 @@ void floatingAndTiledManuscripts(QSettings &settings)
 void unavailableDisplay(QSettings &settings)
 {
     const auto key = "layouts/v1/manuscriptWindow/geometry";
-    settings.setValue(key, QVariantMap{{"size", QSize(30000, 30000)}, {"screen", "missing monitor"},
+    const int height = qMin(310, QGuiApplication::primaryScreen()->availableSize().height() / 2);
+    settings.setValue(key, QVariantMap{{"floating", true}, {"size", QSize(30000, height)}, {"screen", "missing monitor"},
                                       {"position", QPoint(25000, 20000)}});
     Fixture window(settings);
     CHECK(window.size().width() <= window.screen()->availableSize().width());
-    CHECK(window.size().height() <= window.screen()->availableSize().height());
+    CHECK(window.size().height() == height); // A valid saved dimension survives the missing monitor.
     window.resize(575, 385);
     events();
     CHECK(window.size() == QSize(575, 385));
