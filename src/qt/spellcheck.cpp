@@ -176,7 +176,8 @@ struct SpellCheck::State {
         QVector<SpellingRange> result;
         const auto &rec = editor->model().record(block.blockNumber());
         for (auto range : spelling.issues(rec.text)) {
-            if (rec.valid && range.start < rec.headerEnd && range.end > rec.headerStart) continue;
+            if (!editor->model().isGeneric() && rec.valid &&
+                range.start < rec.headerEnd && range.end > rec.headerStart) continue;
             if (!ignoredWords.isEmpty() && ignoredWords.contains(SpellWords::key(
                     rec.text.mid(range.start, range.end - range.start)))) continue;
             range.start += block.position();

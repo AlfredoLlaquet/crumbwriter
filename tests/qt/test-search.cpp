@@ -319,7 +319,7 @@ void controlsAndReplace()
 void staleAndReservedText()
 {
     Fixture f;
-    const QString source = QStringLiteral("Crumb 1: : A\u2029B.\nCrumb 2: : A\u2029B.");
+    const QString source = QStringLiteral("First passage: A\u2029B.\nSecond passage: A\u2029B.");
     f.editor->loadText(source);
     const int at = source.indexOf(QStringLiteral("A\u2029B"));
     f.editor->selectRange(at, at + 3);
@@ -329,19 +329,19 @@ void staleAndReservedText()
     auto *all = f.button("cw-replace-all");
     all->click();
     auto *preview = f.search->findChild<QPlainTextEdit *>(QStringLiteral("cw-replace-preview"));
-    check(preview->isVisible(), "initial two-crumb preview");
+    check(preview->isVisible() && preview->toPlainText().contains("2 paragraphs"), "initial two-paragraph preview");
     f.editor->replaceRangeLiteral(at, at + 3, QStringLiteral("edited"));
     check(!preview->isVisible(), "manuscript edits invalidate a displayed confirmation immediately");
     waitFor([&] { return all->isEnabled(); }, "updated match count after manuscript edit");
     all->click();
-    check(preview->toPlainText().startsWith(QStringLiteral("1 replacement in 1 crumb")),
+    check(preview->toPlainText().startsWith(QStringLiteral("1 replacement in 1 paragraph")),
           "new preview shows revised count");
     all->click();
     check(f.editor->blockCount() == 2 && f.editor->manuscriptText().endsWith(QStringLiteral("x\ufdd0\u2029y.")),
           "bulk replacement retains reserved Qt characters as literal Unicode");
     f.editor->undo();
     check(f.editor->manuscriptText().endsWith(QStringLiteral("A\u2029B.")) &&
-          f.editor->manuscriptText().startsWith(QStringLiteral("Crumb 1: : edited.")),
+          f.editor->manuscriptText().startsWith(QStringLiteral("First passage: edited.")),
           "one undo restores the bulk edit without changing earlier manual work");
 }
 

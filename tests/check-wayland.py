@@ -19,7 +19,7 @@ def check(app, run):
         env["XDG_" + name.upper() + ("_DIR" if name == "runtime" else "_HOME")] = str(folder)
 
     manuscript = run / "Typing.txt"
-    first = "Crumb 1: First: Original.\n"
+    first = "Notes//Crumb 1: First: Original.\n"
     second = "Crumb 2: Second:"
     manuscript.write_bytes((first + second).encode())
     compositor_log = run / "weston.log"
@@ -132,6 +132,23 @@ def check(app, run):
         keyboard("key", "--clearmodifiers", "ctrl+z")
         save_and_check(verified)
         print("Wayland virtual typing materialized two newlines and one undo restored the original bytes.", flush=True)
+
+        keyboard("key", "--clearmodifiers", "ctrl+a")
+        for row, text in enumerate(("Tide Tables", "", "The Moon", "", "A goose counted.", "The moon waited.")):
+            if row:
+                keyboard("key", "--clearmodifiers", "Return")
+            if text:
+                keyboard("type", "--clearmodifiers", text)
+        prose = "Tide Tables\n\nThe Moon\n\nA goose counted.\nThe moon waited."
+        save_and_check(prose)
+        keyboard("key", "--clearmodifiers", "ctrl+shift+4")
+        keyboard("type", "--clearmodifiers", "moon")
+        keyboard("key", "--clearmodifiers", "Return", "ctrl+space")
+        keyboard("type", "--clearmodifiers", "j2")
+        keyboard("key", "--clearmodifiers", "Return")
+        keyboard("type", "--clearmodifiers", "Lunar ")
+        save_and_check(prose.replace("The Moon\n\n", "Lunar "))
+        print("Generic mode navigated to a chapter by keyboard and accepted a two-paragraph movement.", flush=True)
         keyboard("key", "--clearmodifiers", "alt+w")
         if editor.wait(timeout=8) != 0:
             raise AssertionError("Closing the editor failed")

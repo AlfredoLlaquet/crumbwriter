@@ -3,6 +3,7 @@
 #include "manuscripttext.h"
 #include "viselection.h"
 
+#include <algorithm>
 #include <climits>
 
 #include <QtCore/QMimeData>
@@ -116,7 +117,7 @@ void ManuscriptEditor::recordEditForHash(QTextCursor &cursor, const QString &inp
 {
     // Pasted hashes are literal. Only an actual typed hash can continue a
     // number. A multi-character IM commit ending in a hash follows the same rule.
-    if (input.endsWith(u'#') && cursor.positionInBlock() > 0) {
+    if (!model_->isGeneric() && input.endsWith(u'#') && cursor.positionInBlock() > 0) {
         const auto digits = model_->completeGenre(cursor.blockNumber(), cursor.positionInBlock()-1);
         if (!digits.isEmpty())
             ManuscriptText::insert(cursor, digits);
@@ -333,6 +334,48 @@ void ManuscriptEditor::eraseSelection(QTextCursor c, EditRun run)
     trackSeparator(c);
 }
 
+void ManuscriptEditor::showPreedit(QInputMethodEvent *event)
+{
+    const QString &draft = event->preeditString();
+    if (draft.isEmpty() || !model_->isGeneric()) {
+        QPlainTextEdit::inputMethodEvent(event);
+        return;
+    }
+
+    // Qt normally draws uncommitted characters in the underlying document
+    // font. In Generic mode that font is the tiny blank separator. Supply the
+    // writing font across the draft, keeping the input method's own styling.
+    QTextCharFormat writing;
+    writing.setFont(inputMethodQuery(Qt::ImFont).value<QFont>());
+    auto attributes = event->attributes();
+    QVector<std::pair<int, int>> spans;
+    const int length = int(draft.size());
+    for (auto &a : attributes) {
+        if (a.type != QInputMethodEvent::TextFormat) continue;
+        auto format = writing;
+        format.merge(a.value.value<QTextFormat>());
+        a.value = QVariant::fromValue<QTextFormat>(format);
+        const int first = qBound(0, a.start, length);
+        const int last = int(std::clamp<qint64>(qint64(a.start) + a.length, first, length));
+        if (last > first)
+            spans.append({first, last});
+    }
+    std::sort(spans.begin(), spans.end());
+    int end = 0;
+    auto addGap = [&](int next) {
+        if (end < next)
+            attributes.append({QInputMethodEvent::TextFormat, end, next - end, writing});
+    };
+    for (const auto &[first, last] : spans) {
+        addGap(first);
+        end = qMax(end, last);
+    }
+    addGap(length);
+    QInputMethodEvent display(draft, attributes);
+    QPlainTextEdit::inputMethodEvent(&display);
+    event->setAccepted(display.isAccepted());
+}
+
 void ManuscriptEditor::inputMethodEvent(QInputMethodEvent *e)
 {
     if (vi_->active()) {
@@ -341,7 +384,7 @@ void ManuscriptEditor::inputMethodEvent(QInputMethodEvent *e)
         return;
     }
     if (e->commitString().isEmpty() && !e->replacementLength()) {
-        QPlainTextEdit::inputMethodEvent(e);
+        showPreedit(e);
         return;
     }
     // Let Qt own preedit display and candidate attributes. Only the committed
@@ -353,7 +396,7 @@ void ManuscriptEditor::inputMethodEvent(QInputMethodEvent *e)
     typeText(e->commitString(), e->replacementStart(), e->replacementLength());
     if (!e->preeditString().isEmpty() || !e->attributes().isEmpty()) {
         QInputMethodEvent preedit(e->preeditString(), e->attributes());
-        QPlainTextEdit::inputMethodEvent(&preedit);
+        showPreedit(&preedit);
     }
     e->accept();
 }
@@ -361,6 +404,11 @@ void ManuscriptEditor::inputMethodEvent(QInputMethodEvent *e)
 bool ManuscriptEditor::event(QEvent *e)
 {
     if (vi_ && vi_->active()) {
+        if (e->type() == QEvent::InputMethodQuery) {
+            QPlainTextEdit::event(e);
+            vi_->inputMethodQuery(*static_cast<QInputMethodQueryEvent *>(e));
+            return true;
+        }
         if (e->type() == QEvent::ShortcutOverride) {
             e->accept();
             return true;

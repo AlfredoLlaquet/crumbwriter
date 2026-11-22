@@ -105,7 +105,7 @@ void reviewAndPersistence(const QTemporaryDir &tmp)
     const QString name = tmp.filePath("Crumbs.txt");
     writeFile(name + ".dictionary", QByteArray::fromStdString("ZoRnnix\r\n"));
     const QString original = QStringLiteral(
-        "Zzqhdr 1: Story: I’m using ZORNNIX and Qzorb Blepik. Here is Qzorb.\n"
+        "Book//Zzqhdr 1: Story: I’m using ZORNNIX and Qzorb Blepik. Here is Qzorb.\n"
         "Zzqhdr 2: More: recieve this and recieve that. Qzorb twice.\n");
     ed.loadText(original);
     QString error;
@@ -115,6 +115,12 @@ void reviewAndPersistence(const QTemporaryDir &tmp)
     ed.setFocus();
     const QStringList expected{"Qzorb","recieve","recieve","Qzorb"};
     until([&] { return underlined(ed) == expected; }, "visible spelling ranges skip headers and full aliases");
+    QTextCursor prefix(ed.document());
+    prefix.setPosition(6, QTextCursor::KeepAnchor);
+    prefix.removeSelectedText();
+    until([&] { return underlined(ed).count("Zzqhdr") == 2; }, "generic prose checks words even in header-shaped text");
+    ed.undo();
+    until([&] { return underlined(ed) == expected; }, "undo restores crumb header exemptions");
 
     QTextEdit::ExtraSelection search;
     search.cursor = QTextCursor(ed.document());

@@ -26,43 +26,46 @@ QString preferencesFile()
 
 struct HelpRow { const char *scope; const char *keys; const char *effect; };
 constexpr HelpRow shortcuts[] = {
-    {"Manuscript","Ctrl+N","Append the next crumb and go to its body"},
-    {"Manuscript","Ctrl+1","Select the header and copy its lowercase form without its colon"},
-    {"Manuscript","Ctrl+Q","Select and copy the whole crumb without its newline"},
-    {"Manuscript","Ctrl+Y","Delete the current crumb when the manuscript has focus"},
+    {"Manuscript modes","First line","A // outside a URL selects Crumb mode. Other manuscripts use Generic mode. The status bar shows the current mode."},
+    {"Generic mode","Titles","The first paragraph is the document title if it lacks a period, is all caps, or precedes a blank line. Blank lines on both sides mark chapter titles."},
+    {"Manuscript","Ctrl+N","Append the next crumb or a new prose paragraph"},
+    {"Crumb mode","Ctrl+1","Select the header and copy its lowercase form without its colon"},
+    {"Manuscript","Ctrl+Q / Ctrl+Y","Select and copy the current crumb or paragraph without its newline / delete it"},
     {"Manuscript","Ctrl+W","Delete the selected text or the word or space at the caret"},
     {"Manuscript","Ctrl+Z / Ctrl+Shift+Z","Undo / redo one run of typing, Backspaces, or Deletes"},
     {"Manuscript","Ctrl+A / X / C / V","Select all / cut / copy / paste"},
-    {"Manuscript","Tab / Shift+Tab","Next / previous title or body"},
+    {"Crumb mode","Tab / Shift+Tab","Next / previous crumb title or body"},
+    {"Generic mode","Tab / Shift+Tab","Next / previous document or chapter title"},
     {"Manuscript","Up / Down","Move by one wrapped line, including virtual rows below the file"},
     {"Manuscript","Home / End","Beginning / end of the wrapped line"},
-    {"Manuscript","Ctrl+Up / Ctrl+Down","Previous / next crumb"},
-    {"Manuscript","Ctrl+Home / Ctrl+End","Beginning / end of this crumb"},
-    {"Manuscript","Ctrl+Page Up / Ctrl+Page Down","Beginning of the file / end of the last crumb (RePág / AvPág)"},
-    {"Selection","Ctrl+Shift+Home / End","Select to the start / end of this crumb"},
-    {"Selection","Ctrl+Shift+Up / Down","Extend or shrink the selection to the previous / next crumb"},
-    {"Selection","Ctrl+Shift+Page Up / Page Down","Select to the start of the manuscript / end of its last crumb"},
-    {"Vi selection","Ctrl+Space","Type a movement in the manuscript. The bottom bar shows the command"},
-    {"Vi selection","h / l · j / k · gj / gk","Left / right one character · next / previous crumb · next / previous wrapped row"},
-    {"Vi selection","w / b / e · W / B / E","Next word / previous word / through word end. Uppercase treats punctuation as part of the word"},
-    {"Vi selection","0 / ^ / $","Beginning / first nonblank / end of the physical line"},
-    {"Vi selection","gg / G · 42G","First / last physical line · line 42"},
-    {"Vi selection","f / t · F / T","Type a character. Select through it / stop before it. Uppercase searches backward"},
-    {"Vi selection","2t- · ; / ,","Up to the second hyphen, excluding it · repeat the last character find / reverse it"},
-    {"Vi selection","q / Q + text + Enter","Select through a literal phrase forward / backward, ignoring case"},
-    {"Vi selection","Backspace / Escape","Edit the pending command / cancel and keep the original selection"},
-    {"Manuscript","Ctrl+Enter / Alt+Enter","Center the current line / put this crumb at the top"},
+    {"Manuscript","Ctrl+Up / Ctrl+Down","Previous / next crumb or paragraph"},
+    {"Manuscript","Ctrl+Home / Ctrl+End","Beginning / end of this crumb or paragraph"},
+    {"Manuscript","Ctrl+Page Up / Ctrl+Page Down","Beginning / end of the manuscript (RePág / AvPág)"},
+    {"Selection","Ctrl+Shift+Home / End","Select to the beginning / end of the current crumb or paragraph"},
+    {"Selection","Ctrl+Shift+Up / Down","Extend or shrink the selection to the previous / next crumb or paragraph"},
+    {"Selection","Ctrl+Shift+Page Up / Page Down","Select to the beginning / end of the manuscript"},
+    {"Movement selection","Ctrl+Space","Type a movement, then its count. The bottom bar shows the command. Each keystroke previews the selection from the original caret."},
+    {"Movement selection","Enter / Escape / Backspace","Accept and keep the selection / restore the original selection / edit the command and preview again"},
+    {"Movement selection","h / l · j / k · gj / gk","Left / right one character · next / previous physical line · next / previous wrapped row. Examples: j2, gj2"},
+    {"Movement selection","w / b / e · W / B / E","Next word / previous word / through word end. Uppercase treats punctuation as part of the word"},
+    {"Movement selection","0 / ^ / $","Beginning / first nonblank / end of the physical line"},
+    {"Movement selection","gg / G · G42","First / last physical line · go to line 42"},
+    {"Movement selection","f / t · F / T","Type a character. Select through it / stop before it. Uppercase searches backward"},
+    {"Movement selection","t-2 · ; / ,","Up to the second hyphen, excluding it · repeat the last character find / reverse it"},
+    {"Movement selection","q / Q · qth*2","Through the forward / backward phrase, ignoring case. qth*2 reaches the second th. Type \\* for a literal asterisk."},
+    {"Manuscript","Ctrl+Enter / Alt+Enter","Center the current visual line / move the start of this crumb or paragraph to the top"},
     {"Navigation","F2 / Shift+F2","Back / forward to the exact caret position after a jump"},
-    {"Navigation","F4 / Shift+F4","Next / previous numbering warning"},
-    {"Navigation","Ctrl+Shift+J","Follow the crumb reference under the caret"},
-    {"Navigation","Ctrl+L","Go to a crumb number"},
-    {"Navigation","F6 / F7","Focus visit history / genres. Type part of a title or genre, then Enter"},
-    {"Navigation","Shift+F7","Sort genres alphabetically or by number then name"},
+    {"Crumb mode","F4 / Shift+F4","Next / previous numbering warning"},
+    {"Crumb mode","Ctrl+Shift+J","Follow the crumb reference under the caret"},
+    {"Navigation","Ctrl+L","Go to a crumb number in Crumb mode or a physical line in Generic mode"},
+    {"Panels","Ctrl+Shift+1 / Ctrl+Shift+2","Search Characters / Recurring by any synonym"},
+    {"Panels","Ctrl+Shift+3 / Ctrl+Shift+4","Search visit history / genres or manuscript titles"},
+    {"Panels","Type in Search · Up / Down","Highlight the first matching entry. Move among matches while every entry stays visible"},
+    {"History, Genres, Titles","Enter / Ctrl+Enter","Clear the search and visit the selected entry. In Genres, append the next crumb in the selected genre"},
+    {"Navigation","Shift+F7","Switch between alphabetical and genre-number order, or alphabetical and document order for titles"},
     {"Navigation","F9 / Shift+F9","Show or hide the right / left panel"},
-    {"Synonym lists","Alt+1 / Alt+2","Focus Characters / Recurring"},
-    {"Synonym lists","Type to filter","Find entries by any synonym"},
     {"Synonym lists","Insert / F2 / Delete","Add from the manuscript selection / edit / remove a synonym group"},
-    {"Synonym lists","Enter / Ctrl+Enter","Find all occurrences / insert the first synonym at the manuscript caret"},
+    {"Synonym lists","Enter / Ctrl+Enter","Find all occurrences / insert the first synonym at the manuscript caret. Both clear the panel search"},
     {"Synonym lists","F5 / Escape","Reload the list from disk / return to the manuscript"},
     {"Spelling","F8 / Shift+F8","Review next / previous spelling issue"},
     {"Spelling","Ctrl+Shift+D","Open the manuscript dictionary"},
@@ -70,14 +73,14 @@ constexpr HelpRow shortcuts[] = {
     {"Spelling review","Alt+I / Alt+L / Alt+D","Ignore once / ignore all / add the word to the manuscript dictionary"},
     {"Dictionary","Enter / Delete / F5","Add the typed word / remove the selected entry / reload from disk"},
     {"Bookmarks","Ctrl+B / Alt+B","Add a bookmark / open the Bookmarks window"},
-    {"Bookmarks","Type in Filter, then Enter","Open a matching bookmark at its saved physical line"},
+    {"Bookmarks","Type in Filter, then Enter","Open a matching bookmark. Bookmarks follow edits above them. Deleting a bookmarked line moves its bookmark to the next surviving line"},
     {"Bookmarks window","Ctrl+F / Up / Down","Focus the filter / move through matching bookmarks"},
     {"Bookmarks window","F2 / Delete","Edit the selected bookmark or category / confirm removal"},
     {"Bookmarks window","F5 / Escape","Reload bookmarks from disk / close this window"},
     {"Find and Replace","Ctrl+F / Ctrl+G","Search forward / backward from the manuscript caret"},
     {"Find and Replace","Ctrl+H","Open Replace, then switch between Find and Replace with"},
     {"Find and Replace","F3 / Shift+F3","Repeat in the opening direction / opposite direction"},
-    {"Find and Replace","Ctrl+P / Ctrl+R / Ctrl+L","Find plain text / regular expression / crumb number"},
+    {"Find and Replace","Ctrl+P / Ctrl+R / Ctrl+L","Find plain text / regular expression / crumb or file line number"},
     {"Find controls","Ctrl+M / Ctrl+W / Alt+W","Toggle match case / whole words / wrap"},
     {"While Find is open","Alt+Down","Open recent searches"},
     {"While Find is open","Enter / Shift+Enter","Next result in the opening direction / opposite direction"},
@@ -222,11 +225,14 @@ void showShortcutHelp(QWidget *parent)
     filter->setAccessibleName("Filter shortcuts");
     auto *list = new QTreeWidget(dialog);
     list->setRootIsDecorated(false);
+    list->setWordWrap(true);
     list->setHeaderLabels({"Context", "Keys", "Action"});
     list->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     list->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    for (const auto &row : shortcuts)
-        new QTreeWidgetItem(list, {row.scope, row.keys, row.effect});
+    for (const auto &row : shortcuts) {
+        auto *item = new QTreeWidgetItem(list, {row.scope, row.keys, row.effect});
+        item->setToolTip(2, item->text(2));
+    }
     layout->addWidget(filter);
     layout->addWidget(list);
     QObject::connect(filter, &QLineEdit::textChanged, list, [list](const QString &query) {

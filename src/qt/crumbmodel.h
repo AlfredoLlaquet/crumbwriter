@@ -11,6 +11,8 @@
 
 class QTextDocument;
 
+enum class ParagraphRole { Body, Blank, DocumentTitle, ChapterTitle };
+
 // Line numbers are zero-based. All columns are relative UTF-16 offsets, just
 // like QTextBlock and QTextCursor. Each end is exclusive.
 struct CrumbWarning {
@@ -40,6 +42,9 @@ struct CrumbRecord {
     QString title;
     int words = 0;
     int fileWords = 0; // Whole-file convention, including any first-line work title.
+    bool blank = true;
+    bool hasWorkSeparator = false; // Meaningful on physical line 1 only.
+    ParagraphRole role = ParagraphRole::Body;
     int recordStart = 0;
     int headerStart = 0;
     int digitsStart = 0;
@@ -67,6 +72,8 @@ struct CrumbChange {
     bool genresChanged = false;
     bool structureChanged = false;
     bool textChanged = false;
+    bool modeChanged = false;
+    bool titlesChanged = false;
 };
 
 class CrumbModel final : public QObject {
@@ -76,10 +83,16 @@ public:
 
     // A record reference remains valid until the next document edit.
     const CrumbRecord &record(int line) const;
+    bool isGeneric() const;
+    ParagraphRole paragraphRole(int line) const;
+    QVector<int> titleLines() const; // Zero-based, in document order.
+    int neighborTitle(int line, bool backward) const;
+    int paragraphCount() const; // Nonblank physical paragraphs, including headings.
     QVector<CrumbGenre> genres() const;
     int crumbCount() const;
     qint64 totalWords() const;
     int todayCount() const;
+    qint64 todayWords() const;
     void markOpened();
     QString openDailyCount(const QString &manuscript);
     QString saveDailyCountAs(const QString &manuscript);

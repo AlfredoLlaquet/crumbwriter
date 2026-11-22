@@ -32,7 +32,14 @@ QByteArray beforeNewDay(const QByteArray &checkpoint, QDate date)
     data.insert("date", date.toString(Qt::ISODate));
     data.insert("new", QJsonArray{});
     data.insert("count", 0);
+    if (data.contains("words")) data.insert("baselineWords", data.value("words"));
     return QJsonDocument(data).toJson(QJsonDocument::Compact);
+}
+
+qint64 savedWordBaseline(const QJsonObject &data, qint64 fallback)
+{
+    const auto value = data.value("baselineWords").toInteger(-1);
+    return value >= 0 ? value : fallback;
 }
 }
 
@@ -50,7 +57,9 @@ void DailyCount::indexOrigins()
 void DailyCount::takeBaseline(QDate date)
 {
     date_ = date;
+    baselineWords_ = totalWords_;
     cached_.clear();
+    cachedLayout_ = {};
     committed_.clear();
     lastDraftPath_.clear();
     currentCount_ = 0;
@@ -79,15 +88,27 @@ QByteArray DailyCount::shape() const
 
 QByteArray DailyCount::snapshot()
 {
-    if (cached_.isEmpty()) {
+    if (cachedLayout_.isEmpty()) {
         QJsonArray lines;
         for (int i = 0; i < rows_.size(); ++i)
             if (rows_[i].number && rows_[i].origin < 0) lines.append(i + 1);
-        const QJsonObject data{{"date", date_.toString(Qt::ISODate)}, {"shape", QString::fromLatin1(shape())},
-                               {"count", currentCount_}, {"new", lines}};
+        cachedLayout_ = {{"date", date_.toString(Qt::ISODate)}, {"shape", QString::fromLatin1(shape())},
+                         {"count", currentCount_}, {"new", lines}};
+    }
+    if (cached_.isEmpty()) {
+        QJsonObject data = cachedLayout_;
+        data.insert("words", totalWords_);
+        data.insert("baselineWords", baselineWords_);
         cached_ = QJsonDocument(data).toJson(QJsonDocument::Compact);
     }
     return cached_;
+}
+
+void DailyCount::setTotalWords(qint64 words)
+{
+    if (totalWords_ == words) return;
+    totalWords_ = words;
+    cached_.clear(); // The crumb layout and its fingerprint are still valid.
 }
 
 QString DailyCount::publish(const QString &manuscript, const QByteArray &snapshot)
@@ -247,14 +268,14 @@ QString DailyCount::writeState(const QString &name, const QByteArray &checkpoint
         for (quint64 number : it.value()) names.append(QString::number(number));
         renamed.append(QJsonArray{it.key(), QString::number(preferred_.value(it.key())), names});
     }
-    QJsonObject state{{"version", 1}, {"date", date_.toString(Qt::ISODate)},
+    QJsonObject state{{"version", 1}, {"date", date_.toString(Qt::ISODate)}, {"baselineWords", baselineWords_},
                       {"headers", headers}, {"renamed", renamed}};
     if (!checkpoint.isEmpty()) state.insert("checkpoint", QJsonDocument::fromJson(checkpoint).object());
     const auto bytes = QJsonDocument(state).toJson(QJsonDocument::Compact);
     QSaveFile file(name);
     if (!QDir().mkpath(QFileInfo(name).absolutePath()) ||
         !file.open(QIODevice::WriteOnly) || file.write(bytes) != bytes.size() || !file.commit())
-        return QStringLiteral("Could not save the daily crumb count in %1.").arg(name);
+        return QStringLiteral("Could not save the daily writing counts in %1.").arg(name);
     return {};
 }
 
@@ -291,16 +312,29 @@ bool DailyCount::readState(const QByteArray &bytes, QDate date)
     baseline_ = std::move(baseline);
     aliases_ = std::move(aliases);
     preferred_ = std::move(preferred);
+    baselineWords_ = savedWordBaseline(root, totalWords_);
     const auto checkpoint = root.value("checkpoint");
-    if (checkpoint.isObject()) committed_ = QJsonDocument(checkpoint.toObject()).toJson(QJsonDocument::Compact);
+    if (checkpoint.isObject()) {
+        const auto snapshot = checkpoint.toObject();
+        committed_ = QJsonDocument(snapshot).toJson(QJsonDocument::Compact);
+        // At midnight the open buffer and the saved revision can differ.
+        // Discarding overnight edits restores the saved revision's baseline.
+        if (snapshot.value("date").toString() == date.toString(Qt::ISODate) &&
+            snapshot.value("words").toInteger(-1) == totalWords_)
+            baselineWords_ = savedWordBaseline(snapshot, baselineWords_);
+    }
     date_ = date;
     return true;
 }
 
-QString DailyCount::open(const QString &manuscript, QDate date, const QVector<quint64> &numbers)
+QString DailyCount::open(const QString &manuscript, QDate date, const QVector<quint64> &numbers,
+                         qint64 words)
 {
     stateFile_ = statePath(manuscript);
+    totalWords_ = words;
+    baselineWords_ = words;
     cached_.clear();
+    cachedLayout_ = {};
     committed_.clear();
     lastDraftPath_.clear();
     rows_.clear();
@@ -311,7 +345,7 @@ QString DailyCount::open(const QString &manuscript, QDate date, const QVector<qu
         if (file.exists()) {
             if (!file.open(QIODevice::ReadOnly)) {
                 takeBaseline(date);
-                return QStringLiteral("Could not read the daily crumb count in %1.").arg(stateFile_);
+                return QStringLiteral("Could not read the daily writing counts in %1.").arg(stateFile_);
             }
             if (readState(file.readAll(), date)) {
                 const bool extended = matchOpened();
@@ -353,6 +387,7 @@ QString DailyCount::replace(int first, int oldEnd, const std::vector<CrumbRecord
         return {}; // Body text, punctuation and formatting need no bookkeeping.
 
     cached_.clear();
+    cachedLayout_ = {};
     QVector<Row> next;
     next.reserve(size);
     for (const auto &r : parsed) next.append({r.number, -1});

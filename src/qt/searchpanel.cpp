@@ -51,11 +51,11 @@ void runInBackground(QObject *receiver, Work work, Done done)
     });
 }
 
-QString modeName(cwsearch::Mode mode)
+QString modeName(cwsearch::Mode mode, bool generic)
 {
     switch (mode) {
     case cwsearch::Mode::Regex: return QStringLiteral("Regular expression");
-    case cwsearch::Mode::Number: return QStringLiteral("Crumb number");
+    case cwsearch::Mode::Number: return generic ? QStringLiteral("Line number") : QStringLiteral("Crumb number");
     case cwsearch::Mode::Text: return QStringLiteral("Plain text");
     }
     return {};
@@ -115,6 +115,9 @@ SearchPanel::SearchPanel(ManuscriptEditor *editor, QSettings *settings, QWidget 
         if (!isHidden() && !replacing)
             refreshDelay->start(0);
     });
+    editor->model().observe(this, [this](const CrumbChange &change) {
+        if (change.modeChanged) updateControls();
+    });
     updateControls();
     hide();
 }
@@ -139,11 +142,10 @@ void SearchPanel::buildUi()
     modes = new QToolButton;
     modes->setObjectName(QStringLiteral("cw-search-mode"));
     modes->setAccessibleName(QStringLiteral("Search mode"));
-    modes->setToolTip(QStringLiteral("Plain text (Ctrl+P), regular expression (Ctrl+R), crumb number (Ctrl+L)"));
     modes->setPopupMode(QToolButton::InstantPopup);
     modeMenu = new QMenu(modes);
     for (Mode mode : {Mode::Text, Mode::Regex, Mode::Number}) {
-        auto *action = modeMenu->addAction(modeName(mode));
+        auto *action = modeMenu->addAction(modeName(mode, editor->model().isGeneric()));
         action->setCheckable(true);
         connect(action, &QAction::triggered, this, [this, mode] { setMode(mode); });
     }
@@ -158,7 +160,6 @@ void SearchPanel::buildUi()
     findEntry->setObjectName(QStringLiteral("cw-find"));
     numberEntry = new QLineEdit;
     numberEntry->setObjectName(QStringLiteral("cw-crumb-number"));
-    numberEntry->setAccessibleName(QStringLiteral("Crumb number"));
     entries->addWidget(findEntry);
     entries->addWidget(numberEntry);
     row->addWidget(entries, 1);
@@ -278,9 +279,15 @@ void SearchPanel::updateControls()
 {
     QScopedValueRollback<bool> guard(settingControls, true);
     const bool number = options.mode == Mode::Number;
+    const bool generic = editor->model().isGeneric();
+    const QString numberLabel = modeName(Mode::Number, generic);
+    numberEntry->setAccessibleName(numberLabel);
+    modes->setToolTip(QStringLiteral("Plain text (Ctrl+P), regular expression (Ctrl+R), %1 (Ctrl+L)")
+                      .arg(numberLabel.toLower()));
     modes->setText(number ? QStringLiteral("Number") : options.mode == Mode::Text ?
                    QStringLiteral("Text") : QStringLiteral("Regex"));
     const auto actions = modeMenu->actions();
+    actions.at(static_cast<int>(Mode::Number))->setText(numberLabel);
     for (int i = 0; i < actions.size(); ++i)
         actions[i]->setChecked(i == static_cast<int>(options.mode));
     entries->setCurrentWidget(entry());
@@ -289,11 +296,13 @@ void SearchPanel::updateControls()
     queryLabel->setBuddy(entry());
     findEntry->setAccessibleName(backwards ? QStringLiteral("Find backward") : QStringLiteral("Find forward"));
     next->setText(number ? QStringLiteral("→") : QStringLiteral("↓"));
-    next->setAccessibleName(number ? QStringLiteral("Go to crumb") : QStringLiteral("Next match"));
+    next->setAccessibleName(number ? (generic ? QStringLiteral("Go to line") : QStringLiteral("Go to crumb"))
+                                   : QStringLiteral("Next match"));
     next->setToolTip(next->accessibleName());
     previous->setVisible(!number);
     matchCase->setVisible(!number);
     wholeWords->setVisible(!number);
+    wrap->setVisible(!number || !generic);
     matchCase->setChecked(options.matchCase);
     wholeWords->setChecked(options.wholeWords);
     wrap->setChecked(options.wrap);
@@ -392,7 +401,7 @@ void SearchPanel::showRecent()
     recentEntries = history.entries();
     QStringList labels;
     for (const auto &entry : recentEntries) {
-        QString details = modeName(entry.options.mode);
+        QString details = modeName(entry.options.mode, editor->model().isGeneric());
         if (entry.options.mode != Mode::Number) {
             if (entry.options.matchCase)
                 details += QStringLiteral(" · case");
@@ -677,18 +686,28 @@ void SearchPanel::previewText(bool restorePrevious)
 void SearchPanel::stepNumber(bool reverse)
 {
     const QString input = numberEntry->text().trimmed();
+    const bool generic = editor->model().isGeneric();
     bool ok = false;
     const quint64 number = input.toULongLong(&ok);
     if (!ok || !number || !std::all_of(input.begin(), input.end(), [](QChar c) { return c >= u'0' && c <= u'9'; })) {
-        setNotice(QStringLiteral("Enter a positive crumb number."));
+        setNotice(generic ? QStringLiteral("Enter a positive line number.") : QStringLiteral("Enter a positive crumb number."));
         return;
     }
     remember();
-    const int at = editor->model().findNumber(number, origin.position(), reverse, options.wrap);
+    int at = -1;
+    if (generic) {
+        auto last = editor->document()->lastBlock();
+        if (last.blockNumber() > 0 && last.length() == 1) last = last.previous();
+        if (number <= quint64(last.blockNumber()) + 1)
+            at = editor->document()->findBlockByNumber(int(number - 1)).position();
+    } else {
+        at = editor->model().findNumber(number, origin.position(), reverse, options.wrap);
+    }
     if (at < 0) {
         const QString scope = options.wrap ? QString() : reverse ?
                               QStringLiteral(" earlier") : QStringLiteral(" later");
-        setNotice(QStringLiteral("No%1 crumb numbered %2").arg(scope).arg(number));
+        setNotice(generic ? QStringLiteral("No line numbered %1").arg(number)
+                          : QStringLiteral("No%1 crumb numbered %2").arg(scope).arg(number));
         return;
     }
     saveOrigin(at);
@@ -895,7 +914,7 @@ void SearchPanel::previewReady(cwsearch::ReplacementPlan plan)
         return;
     }
     QString message = QStringLiteral("%1 in %2")
-        .arg(plural(plan.changes, "replacement", "replacements"), plural(plan.affectedLines, "crumb", "crumbs"));
+        .arg(plural(plan.changes, "replacement", "replacements"), affectedUnits(plan.affectedLines));
     QStringList lines{message};
     for (const auto &example : plan.examples) {
         lines.append(QStringLiteral("Line %1 before   %2").arg(example.line).arg(example.before));
@@ -932,7 +951,12 @@ void SearchPanel::applyPreview()
     origin.clearSelection();
     rebuild(false);
     setNotice(QStringLiteral("Applied %1 in %2")
-              .arg(plural(plan.changes, "replacement", "replacements"), plural(plan.affectedLines, "crumb", "crumbs")));
+              .arg(plural(plan.changes, "replacement", "replacements"), affectedUnits(plan.affectedLines)));
+}
+
+QString SearchPanel::affectedUnits(int lines) const
+{
+    return editor->model().isGeneric() ? plural(lines, "paragraph", "paragraphs") : plural(lines, "crumb", "crumbs");
 }
 
 bool SearchPanel::eventFilter(QObject *object, QEvent *event)

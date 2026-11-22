@@ -37,30 +37,67 @@ number_start(const gchar *start, const gchar *end)
     return p;
 }
 
+/* Enclosing punctuation in prose can immediately precede the work-title
+   separator. Balanced brackets and parentheses inside a URL belong to it
+   (e.g. an IPv6 host or a Wikipedia article with a parenthetical title). */
+static const gchar *
+url_end(const gchar *p)
+{
+    const gchar *begin = p;
+    guint parentheses = 0, brackets = 0;
+    while (*p) {
+        gunichar c = g_utf8_get_char(p);
+        if (g_unichar_isspace(c) || c == '<' || c == '>' || c == '"' ||
+            c == '{' || c == '}' || c == 0xab || c == 0xbb ||
+            c == 0x2018 || (c >= 0x201a && c <= 0x201f) || c == 0x2039 || c == 0x203a)
+            break;
+        if ((c == '\'' || c == 0x2019) &&
+            (p == begin || !g_unichar_isalnum(g_utf8_get_char(g_utf8_prev_char(p))) ||
+             !g_unichar_isalnum(g_utf8_get_char(g_utf8_next_char(p)))))
+            break;
+        if (c == '(') ++parentheses;
+        if (c == '[') ++brackets;
+        if (c == ')' && !parentheses) break;
+        if (c == ']' && !brackets) break;
+        if (c == ')') --parentheses;
+        if (c == ']') --brackets;
+        p = g_utf8_next_char(p);
+    }
+    return p;
+}
+
 static const gchar *
 record_start(const gchar *line, gboolean first_line)
 {
-    if (!first_line)
-        return line;
-    const gchar *separator = strstr(line, "//");
-    if (!separator)
+    if (!first_line || !strstr(line, "//"))
         return line;
 
-    /* Without a work title the body can still contain a URL or literal //. */
-    const gchar *colon = strchr(line, ':');
-    if (colon && colon < separator) {
-        const gchar *start = skip_space(line, colon);
-        if (number_start(start, trim_end(start, colon))) {
-            const gchar *next_colon = strchr(colon + 1, ':');
-            if (!next_colon || next_colon < separator)
-                return line;
-            /* A work title can itself start with something like "Volume 2:". */
-            start = skip_space(separator + 2, next_colon);
-            if (!number_start(start, trim_end(start, next_colon)))
-                return line;
-        }
+    /* Match a whole URL before testing for a separator. This also skips //
+       later in its path, query or fragment. Prose delimiters close the URL. */
+    static gsize pattern;
+    if (g_once_init_enter(&pattern)) {
+        const gchar *url_or_separator =
+            "\\b[a-z][a-z0-9.+-]*://|(?<![\\w.-])"
+            "(?://(?=(?:[\\p{L}\\d-]+\\.)+[\\p{L}]{2,}\\b)|www\\.|"
+            "(?:[\\p{L}\\d-]+\\.)+[\\p{L}]{2,}(?=[/:?#]))|(?<separator>//)";
+        GRegex *regex = g_regex_new(url_or_separator, G_REGEX_CASELESS | G_REGEX_OPTIMIZE, 0, NULL);
+        g_once_init_leave(&pattern, (gsize)regex);
     }
-    return separator + 2;
+    const gchar *scan = line;
+    while (*scan) {
+        GMatchInfo *match;
+        if (!g_regex_match((GRegex *)pattern, scan, 0, &match)) {
+            g_match_info_free(match);
+            return line;
+        }
+        gint end, separator = -1;
+        g_match_info_fetch_pos(match, 0, NULL, &end);
+        g_match_info_fetch_named_pos(match, "separator", NULL, &separator);
+        g_match_info_free(match);
+        if (separator >= 0) return scan + separator;
+        scan = url_end(scan + end);
+    }
+    return line;
 }
 
 gboolean
@@ -68,6 +105,7 @@ cw_crumb_parse(const gchar *line, gboolean first_line, CwCrumb *out)
 {
     *out = (CwCrumb){0};
     const gchar *record = record_start(line, first_line);
+    out->record_start = (gint)g_utf8_pointer_to_offset(line, record);
     const gchar *colon = strchr(record, ':');
     if (!colon)
         return FALSE;
@@ -77,7 +115,6 @@ cw_crumb_parse(const gchar *line, gboolean first_line, CwCrumb *out)
     if (!digits)
         return FALSE;
 
-    out->record_start = (gint)g_utf8_pointer_to_offset(line, record);
     out->header_start = out->record_start + (gint)g_utf8_pointer_to_offset(record, header);
     out->digits_start = out->header_start + (gint)g_utf8_pointer_to_offset(header, digits);
     out->header_end = out->digits_start + (gint)(header_end - digits);

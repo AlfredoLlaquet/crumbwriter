@@ -1,6 +1,7 @@
 #include "crumbmodel.h"
 #include "manuscripttext.h"
 
+#include <QtCore/QCryptographicHash>
 #include <QtCore/QFile>
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QTextBlock>
@@ -173,10 +174,12 @@ static void compareModel(const CrumbModel &actual, const CrumbModel &expected, i
 {
     CHECK(actual.totalWords() == expected.totalWords());
     CHECK(actual.crumbCount() == expected.crumbCount());
-    if (expected.neighbor(-1, false) >= 0)
+    CHECK(actual.isGeneric() == expected.isGeneric());
+    CHECK(actual.paragraphCount() == expected.paragraphCount());
+    CHECK(actual.titleLines() == expected.titleLines());
+    if (expected.crumbCount())
         CHECK(actual.nextHeader() == expected.nextHeader());
-    else
-        CHECK(actual.neighbor(-1, false) == -1);
+    CHECK(actual.neighbor(-1, false) == expected.neighbor(-1, false));
     const auto ga = actual.genres(), gb = expected.genres();
     CHECK(ga.size() == gb.size());
     for (int i = 0; i < ga.size(); ++i)
@@ -184,6 +187,7 @@ static void compareModel(const CrumbModel &actual, const CrumbModel &expected, i
               ga[i].number == gb[i].number && ga[i].warning == gb[i].warning);
     for (int line = 0; line < count; ++line) {
         const auto &a = actual.record(line), &b = expected.record(line);
+        CHECK(actual.paragraphRole(line) == expected.paragraphRole(line));
         CHECK(a.text == b.text && a.valid == b.valid && a.number == b.number && a.title == b.title);
         CHECK(a.bodyStart == b.bodyStart && a.headerStart == b.headerStart && a.words == b.words);
         CHECK(a.headerWarning == b.headerWarning && a.warnings.size() == b.warnings.size());
@@ -201,7 +205,8 @@ static void incrementalIndex()
     CrumbModel model(&doc);
     const QStringList inserts = { QStringLiteral("x"), QStringLiteral("\n"), QStringLiteral("5"),
         QStringLiteral("C 7: A #2: x\n"), QStringLiteral("\nC 2: B #4: y\nC 4: A #5: z"),
-        QStringLiteral("é"), QStringLiteral(" #1"), QStringLiteral(" ") };
+        QStringLiteral("é"), QStringLiteral(" #1"), QStringLiteral(" "), QStringLiteral("//"),
+        QStringLiteral(".\n\n"), QStringLiteral("\n\nChapter\n\n") };
     std::mt19937 rng(318);
     for (int step = 0; step < 220; ++step) {
         if (step % 15 == 4 && doc.isUndoAvailable()) {
@@ -236,9 +241,91 @@ static void manuscriptStatistics()
     doc.undo();
     CHECK(model.totalWords() == 16);
     doc.setPlainText(QStringLiteral("Crumb 1: URL: https://site.tld//tail\n"));
-    CHECK(model.crumbCount() == 1 && model.totalWords() == 5 && model.record(0).words == 4);
+    CHECK(model.isGeneric() && model.totalWords() == 4 && model.record(0).words == 4);
     doc.clear();
     CHECK(model.crumbCount() == 0 && model.totalWords() == 0);
+}
+
+static void paragraphStructure()
+{
+    using Role = ParagraphRole;
+    QTextDocument doc;
+    const QString opening = QStringLiteral("A first sentence.\nAnother sentence.\n\nA chapter.\n\nBody text.\n");
+    doc.setPlainText(opening);
+    CrumbModel model(&doc);
+    CHECK(model.isGeneric() && model.paragraphCount() == 4 && model.titleLines() == QVector<int>{3});
+    CHECK(model.paragraphRole(0) == Role::Body && model.paragraphRole(2) == Role::Blank);
+    CHECK(model.paragraphRole(3) == Role::ChapterTitle && model.paragraphRole(5) == Role::Body);
+    CHECK(model.neighbor(1, false) == 2 && model.neighbor(3, true) == 2);
+    CHECK(model.neighbor(5, false) == -1 && model.neighbor(6, true) == 5);
+    CrumbChange last;
+    model.observe(&doc, [&](const CrumbChange &change) { last = change; });
+    replace(doc, doc.findBlockByNumber(5).position(), 0, QStringLiteral("More "));
+    CHECK(!last.titlesChanged && !last.modeChanged);
+    replace(doc, doc.findBlockByNumber(3).position(), 1, QStringLiteral("The"));
+    CHECK(last.titlesChanged && model.titleLines() == QVector<int>{3});
+    replace(doc, doc.findBlockByNumber(4).position(), 0, QStringLiteral("Prose."));
+    CHECK(last.titlesChanged && last.firstLine <= 3 && model.titleLines().isEmpty());
+    doc.undo();
+    CHECK(model.paragraphRole(3) == Role::ChapterTitle);
+    replace(doc, doc.findBlockByNumber(1).position(), 0, QStringLiteral("\n"));
+    const QVector<int> moved{0, 2, 4};
+    CHECK(last.titlesChanged && model.titleLines() == moved);
+    CHECK(model.paragraphRole(0) == Role::DocumentTitle);
+    CHECK(model.neighborTitle(0, false) == 2 && model.neighborTitle(4, true) == 2);
+    CHECK(model.neighborTitle(0, true) == -1 && model.neighborTitle(4, false) == -1);
+
+    doc.setPlainText(QStringLiteral("ÁRBOL 2.\nProse."));
+    CHECK(model.paragraphRole(0) == Role::DocumentTitle);
+    doc.setPlainText(QStringLiteral("1912.\nProse."));
+    CHECK(model.paragraphRole(0) == Role::Body);
+    doc.setPlainText(QStringLiteral("Mixed Case\nProse."));
+    CHECK(model.paragraphRole(0) == Role::DocumentTitle);
+    doc.setPlainText(QStringLiteral("\nName of chapter\n  \t\nText."));
+    CHECK(model.paragraphRole(0) == Role::Blank && model.paragraphRole(1) == Role::ChapterTitle);
+    CHECK(model.paragraphCount() == 2);
+    doc.setPlainText(QStringLiteral("First paragraph.\n"));
+    CHECK(model.titleLines().isEmpty() && model.paragraphCount() == 1);
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral("\n"));
+    CHECK(model.paragraphRole(0) == Role::DocumentTitle && model.paragraphCount() == 1);
+    doc.undo();
+    CHECK(model.paragraphRole(0) == Role::Body && model.titleLines().isEmpty());
+    doc.setPlainText(QStringLiteral("Body.\n\nChapter"));
+    CHECK(model.titleLines().contains(0) && !model.titleLines().contains(2));
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral("\n\n"));
+    CHECK(model.paragraphRole(2) == Role::ChapterTitle);
+}
+
+static void firstLineMode()
+{
+    QTextDocument doc;
+    const QString first = QStringLiteral("Guide to https://example.org/a//b and www.example.com/x//y");
+    doc.setPlainText(first + QStringLiteral("\n//Crumb 2: Old form: Text."));
+    CrumbModel model(&doc);
+    CHECK(model.isGeneric() && model.record(0).words == 5);
+    CrumbChange last;
+    model.observe(&doc, [&](const CrumbChange &change) { last = change; });
+    const QString title = first + QStringLiteral(" 📘 Edition");
+    const QString header = QStringLiteral("//Cranolo 1: The Inspector: A goose audits the moon for bumps.");
+    replace(doc, first.size(), 0, title.mid(first.size()) + header);
+    CHECK(!model.isGeneric() && last.modeChanged && last.titlesChanged && model.titleLines().isEmpty());
+    const auto &row = model.record(0);
+    CHECK(row.valid && row.label == u"Cranolo" && row.title == u"The Inspector");
+    CHECK(row.recordStart == title.size() + 2 && row.headerStart == row.recordStart);
+    CHECK(row.text.mid(row.bodyStart) == u"A goose audits the moon for bumps.");
+    CHECK(row.words == 11 && model.totalWords() > row.words);
+    doc.undo();
+    CHECK(model.isGeneric() && last.modeChanged);
+    doc.redo();
+    CHECK(!model.isGeneric() && last.modeChanged);
+    replace(doc, title.size() + 2, header.size() - 2, {});
+    CHECK(!model.isGeneric() && !model.record(0).valid); // A work title can precede its first header.
+    doc.setPlainText(QStringLiteral("Title\nC 2: : //"));
+    CHECK(model.isGeneric());
+    doc.setPlainText(QStringLiteral("C 1: : example.org/a//b W W"));
+    CHECK(model.isGeneric());
+    doc.setPlainText(QStringLiteral("Notes (<https://example.org/a//b>)//C 1: A: x"));
+    CHECK(!model.isGeneric() && model.record(0).label == u"C");
 }
 
 static void dailyPersistence(const QString &directory)
@@ -377,6 +464,87 @@ static void dailyPersistence(const QString &directory)
     CHECK(reopen(overnight, old + QStringLiteral("\nCrumb 3: Today: text")) == 1);
 }
 
+static void dailyWordPersistence(const QString &directory)
+{
+    const QString source = directory + "/Novel.txt";
+    const QString copy = directory + "/Novel copy.txt";
+    const QString draft = directory + "/unsaved draft";
+    QDate date(2026, 11, 20);
+    const auto clock = [&] { return date; };
+    const auto reopen = [&](const QString &name, const QString &text) {
+        QTextDocument opened;
+        opened.setPlainText(text);
+        CrumbModel model(&opened, clock);
+        CHECK(model.openDailyCount(name).isEmpty());
+        return model.todayWords();
+    };
+    QTextDocument doc;
+    const QString old = QStringLiteral("A novel\none two three.");
+    doc.setPlainText(old);
+    CrumbModel model(&doc, clock);
+    CHECK(model.openDailyCount(source).isEmpty() && model.todayWords() == 0);
+    replace(doc, 0, doc.findBlockByNumber(1).position(), {});
+    CHECK(model.todayWords() == -2);
+    const auto fewer = model.dailySnapshot();
+    CHECK(model.publishDailySnapshot(draft, fewer).isEmpty());
+    CHECK(reopen(draft, doc.toPlainText()) == -2);
+    CHECK(reopen(source, old) == 0); // Saving a draft does not change the manuscript's revision.
+    doc.undo();
+    CHECK(model.todayWords() == 0);
+    doc.redo();
+    CHECK(model.todayWords() == -2);
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral(" Geese write—more / words."));
+    CHECK(model.todayWords() == 2 && model.totalWords() == 7);
+    const QString savedText = doc.toPlainText();
+    const auto saved = model.dailySnapshot();
+    CHECK(model.publishDailySnapshot(source, saved).isEmpty());
+    CHECK(reopen(source, savedText) == 2);
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral(" Later."));
+    CHECK(model.todayWords() == 3);
+    CHECK(model.saveDailyCountAs(copy).isEmpty());
+    CHECK(model.publishDailySnapshot(copy, model.dailySnapshot()).isEmpty());
+    CHECK(reopen(copy, doc.toPlainText()) == 3 && reopen(source, savedText) == 2);
+    replace(doc, 0, 0, QStringLiteral("Book//C 1: T: "));
+    CHECK(!model.isGeneric());
+    doc.undo();
+    CHECK(model.isGeneric() && model.todayWords() == 3);
+
+    date = date.addDays(1);
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral(" Today starts."));
+    CHECK(model.todayWords() == 2);
+    CHECK(model.publishDailySnapshot(draft, saved).isEmpty()); // Worker completed across midnight.
+    CHECK(reopen(draft, savedText) == 0);
+    CHECK(model.publishDailySnapshot(copy, model.dailySnapshot()).isEmpty());
+    CHECK(reopen(copy, doc.toPlainText()) == 2);
+
+    const QString onDisk = doc.toPlainText();
+    replace(doc, 0, doc.characterCount() - 1, QStringLiteral("one"));
+    date = date.addDays(1);
+    model.refreshDay();
+    CHECK(model.todayWords() == 0 && reopen(copy, onDisk) == 0);
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral(" two"));
+    CHECK(model.todayWords() == 1 && model.publishDailySnapshot(copy, model.dailySnapshot()).isEmpty());
+    CHECK(reopen(copy, doc.toPlainText()) == 1);
+    CHECK(reopen(directory + "/Another novel.txt", onDisk) == 0);
+
+    // Version 2.2 stored crumb identities without a word baseline.
+    const QString legacy = directory + "/Legacy.txt";
+    const auto key = QCryptographicHash::hash(legacy.toUtf8(), QCryptographicHash::Sha256).toHex();
+    QFile state(directory + "/crumbwriter/daily/" + QString::fromLatin1(key) + ".json");
+    CHECK(state.open(QIODevice::WriteOnly));
+    const auto oldState = QByteArray("{\"version\":1,\"headers\":[\"1\"],\"renamed\":[],\"date\":\"") +
+                          date.toString(Qt::ISODate).toLatin1() + "\"}";
+    CHECK(state.write(oldState) == oldState.size());
+    state.close();
+    QTextDocument migrated;
+    migrated.setPlainText(QStringLiteral("Work//C 1: A: x\nC 2: B: y"));
+    CrumbModel counted(&migrated, clock);
+    CHECK(counted.openDailyCount(legacy).isEmpty());
+    CHECK(counted.todayCount() == 1 && counted.todayWords() == 0);
+    replace(migrated, migrated.characterCount() - 1, 0, QStringLiteral(" later"));
+    CHECK(counted.todayWords() == 1);
+}
+
 int main(int argc, char **argv)
 {
     QTemporaryDir temp;
@@ -388,10 +556,13 @@ int main(int argc, char **argv)
     numbersAndDailyCount();
     manuscriptStatistics();
     dailyPersistence(temp.path());
+    paragraphStructure();
+    firstLineMode();
+    dailyWordPersistence(temp.path());
     genreEditsAndWarnings();
     observersAndFormatting();
     incrementalIndex();
-    std::puts("Crumb model fields, genres, numbering, daily counts and manuscript statistics passed.");
+    std::puts("Manuscript modes, paragraph headings, crumb fields, daily counts and statistics passed.");
     if (argc == 2 || (argc == 3 && QByteArray(argv[1]) == "--stats")) {
         QFile file(QString::fromLocal8Bit(argv[argc-1]));
         CHECK(file.open(QIODevice::ReadOnly));

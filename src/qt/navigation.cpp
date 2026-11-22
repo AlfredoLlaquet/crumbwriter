@@ -1,12 +1,14 @@
 #include "navigation.h"
 #include "manuscripteditor.h"
+#include "manuscriptnumbers.h"
+#include "panelsearch.h"
 
-#include <QApplication>
-#include <QElapsedTimer>
+#include <QCollator>
 #include <QHeaderView>
-#include <QKeyEvent>
 #include <QLabel>
+#include <QPointer>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QTextBlock>
 #include <QToolButton>
@@ -26,53 +28,14 @@ public:
         setMinimumSize(1, 1);
         setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
         header()->setStretchLastSection(true);
-        connect(this, &QTreeWidget::itemClicked, this, [this](QTreeWidgetItem *item) {
-            if (open) open(item);
-        });
     }
-    std::function<void(QTreeWidgetItem *)> open;
 protected:
-    void focusInEvent(QFocusEvent *e) override
-    {
-        typed_.clear();
-        interval_.invalidate();
-        QTreeWidget::focusInEvent(e);
-    }
-
-    void keyPressEvent(QKeyEvent *e) override
-    {
-        if ((e->key() == Qt::Key_Return || e->key() == Qt::Key_Enter) && currentItem()) {
-            if (open) open(currentItem());
-            e->accept();
-        } else {
-            QTreeWidget::keyPressEvent(e);
-        }
-    }
-    void keyboardSearch(const QString &text) override
-    {
-        if (!interval_.isValid() || interval_.elapsed() > QApplication::keyboardInputInterval())
-            typed_.clear();
-        interval_.start();
-        typed_ += text;
-        for (int i = 0; i < topLevelItemCount(); ++i) {
-            auto *item = topLevelItem(i);
-            if (item->text(0).contains(typed_, Qt::CaseInsensitive) ||
-                item->text(1).contains(typed_, Qt::CaseInsensitive)) {
-                setCurrentItem(item);
-                scrollToItem(item);
-                break;
-            }
-        }
-    }
-private:
-    QString typed_;
-    QElapsedTimer interval_;
+    void keyboardSearch(const QString &) override {} // The labeled field owns text search.
 };
 
 class VisitItem final : public QTreeWidgetItem {
 public:
-    explicit VisitItem(const QTextCursor &at) : block(at.block()), caret(at) {}
-    QTextBlock block;
+    explicit VisitItem(const QTextCursor &at) : caret(at) {}
     QTextCursor caret;
 };
 
@@ -102,6 +65,21 @@ QTextCursor insertionPoint(QTextCursor c)
     c.clearSelection();
     return c;
 }
+
+QString paragraphPreview(const QString &text)
+{
+    constexpr int limit = 96;
+    const QStringView paragraph = QStringView(text).trimmed();
+    if (paragraph.size() <= limit) return paragraph.toString();
+    // A preview may end beside a supplementary Unicode character.
+    const int length = paragraph.at(limit - 1).isHighSurrogate() ? limit - 1 : limit;
+    return paragraph.left(length).trimmed().toString() + QChar(0x2026);
+}
+
+const char *orderPreference(bool generic)
+{
+    return generic ? "editor/title-sort-document-order" : "editor/genre-sort-by-number";
+}
 }
 
 void JumpHistory::remember(QTextCursor cursor)
@@ -129,7 +107,7 @@ QTextCursor JumpHistory::move(const QTextCursor &from, bool forward)
 void JumpHistory::clear() { previous_.clear(); next_.clear(); }
 
 NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, QWidget *parent)
-    : QWidget(parent), editor_(editor)
+    : QWidget(parent), editor_(editor), settings_(settings)
 {
     setObjectName("sidebar");
     setMinimumSize(1, 1);
@@ -149,7 +127,6 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
     words_->setObjectName("wordCount");
     today_ = label(this);
     today_->setObjectName("todayCount");
-    setTodayCount(0);
     for (auto *widget : {number_, title_, words_, today_}) layout->addWidget(widget);
 
     auto *split = new QSplitter(Qt::Vertical, this);
@@ -164,6 +141,8 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
         auto *headingRow = new QHBoxLayout;
         headingRow->addWidget(heading, 1);
         if (genres) {
+            genreHeading_ = heading;
+            genreHeading_->setObjectName("genreHeading");
             genreOrder_ = new QToolButton(section);
             genreOrder_->setObjectName("genreOrder");
             genreOrder_->setCheckable(true);
@@ -179,70 +158,132 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
         tree->header()->setStretchLastSection(false);
         tree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
         if (genres) tree->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+        auto *search = new PanelSearch(tree, section, genres ? Qt::DisplayRole : Qt::ToolTipRole);
+        search->returnToEditor = [this] { editor_->setFocus(); };
+        search->setObjectName(genres ? "genresSearch" : "historySearch");
+        heading->setBuddy(search);
+        if (genres) {
+            genresSearch_ = search;
+            search->activateRow = [this](bool) { return openGenreOrTitle(); };
+            setTabOrder(genreOrder_, search);
+        } else {
+            historySearch_ = search;
+            search->activateRow = [this](bool) { return openVisit(); };
+            search->setPlaceholderText(tr("Search visit history"));
+            search->setAccessibleName(search->placeholderText());
+            search->setToolTip(tr("Search visit history (Ctrl+Shift+3). Up and Down move between matches. Enter returns to the passage."));
+        }
+        setTabOrder(search, tree);
+        connect(tree, &QTreeWidget::itemClicked, this, [search] { search->activateCurrent(); });
+        column->addWidget(search);
         column->addWidget(tree, 1);
         split->addWidget(section);
         return tree;
     };
-    auto *visits = addList("Visit history", "visitHistory", false);
-    auto *genres = addList("Genres", "genreList", true);
-    visits_ = visits;
-    genres_ = genres;
-    genreOrder_->setChecked(settings->value("editor/genre-sort-by-number", false).toBool());
-    connect(genreOrder_, &QToolButton::toggled, this, [this, settings](bool byNumber) {
-        settings->setValue("editor/genre-sort-by-number", byNumber);
-        settings->sync();
+    visits_ = addList(tr("Visit history"), "visitHistory", false);
+    genres_ = addList(tr("Genres"), "genreList", true);
+    connect(genreOrder_, &QToolButton::toggled, this, [this](bool byNumber) {
+        settings_->setValue(orderPreference(editor_->model().isGeneric()), byNumber);
+        settings_->sync();
         updateGenres();
     });
-    visits->open = [this](auto *item) { openVisit(item); };
-    genres->open = [this](auto *item) { continueGenre(item); };
     layout->addWidget(split, 1);
 
     connect(editor_, &QPlainTextEdit::cursorPositionChanged, this, [this] { updateCurrent(); });
     editor_->model().observe(this, [this](const CrumbChange &change) { updateModel(change); });
-    editor_->onVirtualChanged = [this] { updateCurrent(); };
+    const QPointer<NavigationPanel> panel(this);
+    editor_->onVirtualChanged = [panel] { if (panel) panel->updateCurrent(); };
+    editor_->onViAccepted = [panel] { if (panel) panel->updateCurrent(); };
     reset();
 }
 
 void NavigationPanel::reset()
 {
+    historySearch_->clear();
+    genresSearch_->clear();
     visitedLines_.clear();
     visits_->clear();
+    updateMode();
+    updateToday();
     updateGenres();
     updateCurrent();
 }
 
+void NavigationPanel::updateMode()
+{
+    const bool generic = editor_->model().isGeneric();
+    for (auto *widget : {number_, title_, words_}) widget->setVisible(!generic);
+    today_->setWordWrap(generic);
+    today_->setAccessibleDescription(generic ? tr("Net change in manuscript words today, including deletions.") :
+                                              tr("New crumbs written today."));
+    const QString caption = generic ? tr("Titles") : tr("Genres");
+    genreHeading_->setText(caption);
+    genres_->setAccessibleName(caption);
+    genres_->headerItem()->setText(0, generic ? tr("Title") : tr("Genre"));
+    genres_->setColumnHidden(1, generic);
+    visits_->headerItem()->setText(0, generic ? tr("Paragraph") : tr("Title"));
+    genresSearch_->setPlaceholderText(generic ? tr("Search titles") : tr("Search genres"));
+    genresSearch_->setAccessibleName(genresSearch_->placeholderText());
+    genresSearch_->setToolTip(generic ?
+        tr("Search titles (Ctrl+Shift+4). Up and Down move between matches. Enter goes to the title.") :
+        tr("Search genres (Ctrl+Shift+4). Up and Down move between matches. Enter adds the next crumb in the genre."));
+    const QSignalBlocker blocked(genreOrder_);
+    genreOrder_->setChecked(settings_->value(orderPreference(generic), generic).toBool());
+}
+
+void NavigationPanel::updateToday()
+{
+    const auto &model = editor_->model();
+    const QString count = model.isGeneric() ? tr("New words written today: %1").arg(ManuscriptNumbers::format(model.todayWords()))
+                                            : tr("New today   %1").arg(model.todayCount());
+    if (today_->text() != count) {
+        today_->setText(count);
+        today_->setToolTip(count);
+    }
+}
+
+bool NavigationPanel::isVisitLine(int row) const
+{
+    const auto &model = editor_->model();
+    return row >= 0 && row < editor_->document()->blockCount() &&
+           (model.isGeneric() ? model.paragraphRole(row) != ParagraphRole::Blank : model.record(row).valid);
+}
+
 void NavigationPanel::updateVisit(QTreeWidgetItem *item)
 {
-    const int row = static_cast<VisitItem *>(item)->block.blockNumber();
-    const auto &record = editor_->model().record(row);
-    const QString title = record.title.isEmpty() ? tr("Untitled") : record.title;
-    if (item->text(0) != title) {
-        item->setText(0, title);
-        item->setToolTip(0, title);
-    }
+    const auto &model = editor_->model();
+    const auto &record = model.record(static_cast<VisitItem *>(item)->caret.blockNumber());
+    const QString full = model.isGeneric() ? record.text :
+                         record.title.isEmpty() ? tr("Untitled") : record.title;
+    if (item->toolTip(0) == full) return;
+    item->setText(0, model.isGeneric() ? paragraphPreview(full) : full);
+    item->setToolTip(0, full);
 }
 
 void NavigationPanel::updateCurrent()
 {
     const QTextCursor caret = insertionPoint(editor_->textCursor());
     const int row = caret.blockNumber();
-    const auto &record = editor_->model().record(row);
     const int virtualRows = editor_->virtualRows();
-    const bool valid = record.valid && !virtualRows;
-    number_->setText(valid ? record.label + " " + QString::number(record.number)
-                          : QString("%1 %2").arg(virtualRows ? "Blank line" : "Line").arg(row + 1 + virtualRows));
-    title_->setText(valid ? record.title : QString());
-    title_->setToolTip(title_->text());
-    words_->setText(QString("Words   %1").arg(virtualRows ? 0 : record.words));
-    QPalette colors = palette();
-    if (valid && record.headerWarning)
-        colors.setColor(QPalette::WindowText, colors.color(QPalette::Window).lightness() < 128
-                                              ? QColor("#ff8488") : QColor("#bc102a"));
-    if (number_->palette() != colors) number_->setPalette(colors);
-    if (!valid) return;
+    const auto &model = editor_->model();
+    if (!model.isGeneric()) {
+        const auto &record = model.record(row);
+        const bool valid = record.valid && !virtualRows;
+        number_->setText(valid ? record.label + " " + QString::number(record.number)
+                              : QString("%1 %2").arg(virtualRows ? "Blank line" : "Line").arg(row + 1 + virtualRows));
+        title_->setText(valid ? record.title : QString());
+        title_->setToolTip(title_->text());
+        words_->setText(QString("Words   %1").arg(virtualRows ? 0 : record.words));
+        QPalette colors = palette();
+        if (valid && record.headerWarning)
+            colors.setColor(QPalette::WindowText, colors.color(QPalette::Window).lightness() < 128
+                                                  ? QColor("#ff8488") : QColor("#bc102a"));
+        if (number_->palette() != colors) number_->setPalette(colors);
+    }
+    if (virtualRows || editor_->viSelectionActive() || !isVisitLine(row)) return;
 
     auto *item = static_cast<VisitItem *>(visitedLines_.value(row));
-    if (item && item->block != caret.block()) {
+    if (item && item->caret.block() != caret.block()) {
         delete visits_->takeTopLevelItem(visits_->indexOfTopLevelItem(item));
         item = nullptr;
     }
@@ -262,58 +303,96 @@ void NavigationPanel::updateCurrent()
 
 void NavigationPanel::updateModel(const CrumbChange &change)
 {
-    if (change.structureChanged) {
+    if (change.modeChanged) {
+        genresSearch_->clear();
+        updateMode();
+    }
+    updateToday();
+    if (change.structureChanged || change.modeChanged) {
         visitedLines_.clear();
-        for (int i = visits_->topLevelItemCount() - 1; i >= 0; --i) {
+        for (int i = 0; i < visits_->topLevelItemCount();) {
             auto *visit = static_cast<VisitItem *>(visits_->topLevelItem(i));
-            int row = visit->block.isValid() ? visit->block.blockNumber() : -1;
-            if (!visit->block.isValid() || !editor_->model().record(row).valid ||
-                visitedLines_.contains(row)) {
+            const int row = visit->caret.blockNumber();
+            if (!isVisitLine(row) || visitedLines_.contains(row)) {
                 delete visits_->takeTopLevelItem(i);
             } else {
                 visitedLines_.insert(row, visit);
                 updateVisit(visit);
+                ++i;
             }
         }
     } else {
         for (int i = change.firstLine; i <= change.lastLine; ++i) {
             auto *visit = visitedLines_.value(i);
             if (!visit) continue;
-            if (editor_->model().record(i).valid) updateVisit(visit);
+            if (isVisitLine(i)) updateVisit(visit);
             else {
                 visitedLines_.remove(i);
                 delete visits_->takeTopLevelItem(visits_->indexOfTopLevelItem(visit));
             }
         }
     }
-    if (change.genresChanged) updateGenres();
+    if (change.modeChanged || (editor_->model().isGeneric() ? change.titlesChanged : change.genresChanged))
+        updateGenres();
     updateCurrent();
+    if (!historySearch_->text().isEmpty()) historySearch_->refresh();
 }
 
 void NavigationPanel::updateGenres()
 {
     const bool byNumber = genreOrder_->isChecked();
+    const auto &model = editor_->model();
+    const bool generic = model.isGeneric();
     genreOrder_->setText(byNumber ? "# ↑" : "A–Z");
-    const QString order = byNumber ? tr("Genres ordered by number, then name") : tr("Genres ordered alphabetically");
+    QString order;
+    if (generic) order = byNumber ? tr("Titles in document order") : tr("Titles ordered alphabetically");
+    else order = byNumber ? tr("Genres ordered by number, then name") : tr("Genres ordered alphabetically");
     genreOrder_->setAccessibleName(order);
     genreOrder_->setToolTip(order + tr(". Switch order (Shift+F7)"));
-    QString selected;
-    if (genres_->currentItem()) selected = genres_->currentItem()->data(0, Qt::UserRole).toString();
+    const QVariant selected = genres_->currentItem() ? genres_->currentItem()->data(0, Qt::UserRole) : QVariant();
     genres_->clear();
-    auto rows = editor_->model().genres(); // Alphabetical order also breaks number ties.
-    if (byNumber) {
-        std::stable_sort(rows.begin(), rows.end(), [](const CrumbGenre &a, const CrumbGenre &b) {
-            return a.number < b.number;
-        });
+    QList<QTreeWidgetItem *> entries;
+    QTreeWidgetItem *retain = nullptr;
+    if (generic) {
+        auto lines = model.titleLines();
+        if (!byNumber) {
+            QCollator collator;
+            collator.setCaseSensitivity(Qt::CaseInsensitive);
+            std::stable_sort(lines.begin(), lines.end(), [&](int a, int b) {
+                return collator.compare(QStringView(model.record(a).text).trimmed(),
+                                        QStringView(model.record(b).text).trimmed()) < 0;
+            });
+        }
+        const auto previous = selected.value<QTextBlock>();
+        for (int line : lines) {
+            const QString title = model.record(line).text.trimmed();
+            const auto block = editor_->document()->findBlockByNumber(line);
+            auto *item = new QTreeWidgetItem(QStringList{title});
+            item->setToolTip(0, title);
+            item->setData(0, Qt::UserRole, QVariant::fromValue(block));
+            entries.append(item);
+            if (block == previous) retain = item;
+        }
+    } else {
+        auto rows = model.genres(); // Alphabetical order also breaks number ties.
+        if (byNumber) {
+            std::stable_sort(rows.begin(), rows.end(), [](const CrumbGenre &a, const CrumbGenre &b) {
+                return a.number < b.number;
+            });
+        }
+        for (const auto &genre : rows) {
+            auto *item = new QTreeWidgetItem(QStringList{genre.name, "#" + QString::number(genre.number)});
+            item->setData(0, Qt::UserRole, genre.key);
+            item->setToolTip(0, genre.name);
+            markNumber(item, 1, genre.warning, palette());
+            if (!genre.canAppend) item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+            entries.append(item);
+            if (genre.key == selected.toString()) retain = item;
+        }
     }
-    for (const auto &genre : rows) {
-        auto *item = new QTreeWidgetItem(genres_, {genre.name, "#" + QString::number(genre.number)});
-        item->setData(0, Qt::UserRole, genre.key);
-        item->setToolTip(0, genre.name);
-        markNumber(item, 1, genre.warning, palette());
-        if (!genre.canAppend) item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
-        if (genre.key == selected) genres_->setCurrentItem(item);
-    }
+    genres_->addTopLevelItems(entries);
+    if (retain) genres_->setCurrentItem(retain);
+    genresSearch_->refresh();
 }
 
 void NavigationPanel::toggleGenreOrder()
@@ -321,32 +400,35 @@ void NavigationPanel::toggleGenreOrder()
     genreOrder_->toggle();
 }
 
-void NavigationPanel::setTodayCount(int count)
+bool NavigationPanel::openVisit()
 {
-    today_->setText(QString("New today   %1").arg(count));
+    const auto *visit = static_cast<VisitItem *>(visits_->currentItem());
+    if (!visit || visit->caret.isNull() || !jumpTo) return false;
+    jumpTo(visit->caret.position());
+    return true;
 }
 
-void NavigationPanel::openVisit(QTreeWidgetItem *item)
+bool NavigationPanel::openGenreOrTitle()
 {
-    const auto *visit = static_cast<VisitItem *>(item);
-    if (visit->block.isValid() && jumpTo) jumpTo(visit->caret.position());
-}
-
-void NavigationPanel::continueGenre(QTreeWidgetItem *item)
-{
-    if (!item || !(item->flags() & Qt::ItemIsEnabled)) return;
-    editor_->appendCrumb(item->text(0));
+    const auto *item = genres_->currentItem();
+    if (!item || !(item->flags() & Qt::ItemIsEnabled)) return false;
+    if (editor_->model().isGeneric()) {
+        const auto block = item->data(0, Qt::UserRole).value<QTextBlock>();
+        if (!block.isValid() || !jumpTo) return false;
+        jumpTo(block.position());
+    } else {
+        editor_->appendCrumb(item->text(0));
+    }
     editor_->setFocus();
+    return true;
 }
 
 void NavigationPanel::focusHistory()
 {
-    visits_->setFocus();
-    if (!visits_->currentItem()) visits_->setCurrentItem(visits_->topLevelItem(0));
+    historySearch_->focusSearch();
 }
 
 void NavigationPanel::focusGenres()
 {
-    genres_->setFocus();
-    if (!genres_->currentItem()) genres_->setCurrentItem(genres_->topLevelItem(0));
+    genresSearch_->focusSearch();
 }

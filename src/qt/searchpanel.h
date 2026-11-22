@@ -76,6 +76,7 @@ private:
     void replaceAll();
     void previewReady(cwsearch::ReplacementPlan plan);
     void applyPreview();
+    QString affectedUnits(int lines) const;
 
     ManuscriptEditor *editor;
     cwsearch::History history;

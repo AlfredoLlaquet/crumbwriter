@@ -73,22 +73,41 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     status_->setObjectName("documentStatus");
     status_->setMargin(5);
     status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    layout->addWidget(status_);
+    auto *bottom = new QHBoxLayout;
+    bottom->addWidget(status_, 1);
+    mode_ = new QLabel(this);
+    mode_->setTextFormat(Qt::PlainText);
+    mode_->setObjectName("documentMode");
+    mode_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    mode_->setMargin(5);
+    bottom->addWidget(mode_);
+    layout->addLayout(bottom);
 
     store_ = new DocumentStore(this);
     editor_->onViPrompt = [this](const QString &prompt) {
         status_->setText(prompt.isEmpty() ? store_->status() : prompt);
     };
     store_->setSnapshotProvider([this] { return editor_->manuscriptText(); });
-    store_->captureMetadata = [this] { return editor_->model().dailySnapshot(); };
+    store_->captureMetadata = [this] {
+        bookmarks_->captureForSave();
+        return editor_->model().dailySnapshot();
+    };
     store_->onPublished = [this](const QString &path, const QByteArray &metadata) {
         const QString error = editor_->model().publishDailySnapshot(path, metadata);
         if (!error.isEmpty()) showNotice(error);
+        if (path == store_->path()) {
+            QString bookmarkError;
+            if (!bookmarks_->publishSave(&bookmarkError)) showNotice(bookmarkError);
+        }
     };
     bookmarks_ = new Bookmarks(this,
         [this] { return editor_->textCursor().blockNumber() + 1 + editor_->virtualRows(); },
-        [this] { return editor_->document()->blockCount(); },
-        [this](int line) { return editor_->model().record(line - 1).title; },
+        editor_->document(),
+        [this](int line) {
+            const auto &model = editor_->model();
+            const auto &record = model.record(line - 1);
+            return model.isGeneric() ? record.text : record.title;
+        },
         [this](int line) {
             const auto block = editor_->document()->findBlockByNumber(line - 1);
             if (block.isValid()) jump(block.position());
@@ -119,7 +138,7 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     side_->jumpTo = [this](int pos) { jump(pos); };
     search_->recordOrigin = [this](const QTextCursor &c) { trail_.remember(c); };
     editor_->model().observe(this, [this](const CrumbChange &change) {
-        side_->setTodayCount(editor_->model().todayCount());
+        if (change.modeChanged) updateModeControls();
         if (!loading_ && change.textChanged) {
             store_->markEdited();
             bookmarks_->refresh();
@@ -131,6 +150,7 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     });
 
     buildMenu();
+    updateModeControls();
     const QSize available = screen()->availableGeometry().size();
     resize(QSize(1060, 720).boundedTo(available * 0.80));
     const int left = qMin(synonymWidth_, width() / 5);
@@ -172,7 +192,6 @@ bool MainWindow::loadDocument(const QString &name, bool recovery)
         const QString dailyError = editor_->model().openDailyCount(recovery ? name : store_->path());
         if (!dailyError.isEmpty()) showNotice(dailyError);
         side_->reset();
-        side_->setTodayCount(editor_->model().todayCount());
         updateCompanions(CompanionAction::Open, store_->path());
         if (recovery) showNotice("Recovered an unsaved manuscript. Use Save As to give it a filename.");
         prefs_.remember(store_->path());
@@ -204,10 +223,8 @@ void MainWindow::applyPreferences()
     editor_->setPaperPalette(p);
     editor_->setPaperActive(isActiveWindow());
     const QFont font = prefs_.manuscriptFont();
-    if (editor_->font() != font) {
+    if (editor_->font() != font)
         editor_->setFont(font);
-        editor_->document()->setDefaultFont(font);
-    }
     editor_->setSmartPunctuation(prefs_.enabled("smart-punctuation"));
     spelling_->setEnabled(prefs_.enabled("spell-check"));
     store_->configureLiveSave(prefs_.enabled("live-save"), prefs_.saveDelay());
@@ -254,7 +271,9 @@ void MainWindow::chooseFile(bool saving)
     dialog->setFileMode(saving ? QFileDialog::AnyFile : QFileDialog::ExistingFile);
     dialog->setNameFilters({"Text files (*.txt)", "All files (*)"});
     if (!path().isEmpty()) dialog->setDirectory(QFileInfo(path()).absolutePath());
-    if (saving) dialog->selectFile(path().isEmpty() ? "Crumbs.txt" : QFileInfo(path()).fileName());
+    if (saving) dialog->selectFile(path().isEmpty()
+        ? (editor_->model().isGeneric() ? "Manuscript.txt" : "Crumbs.txt")
+        : QFileInfo(path()).fileName());
     connect(dialog, &QFileDialog::fileSelected, this, [this, saving](const QString &name) {
         if (!saving) { if (openRequested) openRequested(name); return; }
         if (pathAvailable && !pathAvailable(name)) {

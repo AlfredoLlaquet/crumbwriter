@@ -122,7 +122,7 @@ def session(app, run):
             middle = 'Crumb 2: Middle: Copy this crumb.'
             original = f'Book//Crumb 1: First: An editor window.\n{middle}\nCrumb 3: Last: The end.\n'
             first.write_text(original.replace(middle, 'Crumb 2:\tMiddle: Copy \t this crumb.  '))
-            second_text = 'Crumb 1: Second: Another editor window.'
+            second_text = 'Another editor window.'
             second.write_text(second_text + '\n')
             Path(str(second) + '.characters').write_text(
                 'Antler, Reindeer\n"Captain, Widgets", Blue Cap, Pilot\n', encoding='utf-8')
@@ -157,7 +157,7 @@ def session(app, run):
             key(alpha, 'Escape')
             normal_paper = wait_for('reactivated manuscript returns to its theme color',
                                     lambda: restored_paper(alpha))
-            for chord in ('F6', 'F7', 'F6', 'shift+F7', 'ctrl+p', 'e', 'Return', 'alt+Down', 'Escape',
+            for chord in ('ctrl+shift+3', 'ctrl+shift+4', 'Escape', 'shift+F7', 'ctrl+p', 'e', 'Return', 'alt+Down', 'Escape',
                           'Escape', 'ctrl+r', 'ctrl+l', 'Escape', 'ctrl+h', 'Escape', 'F10', 'Escape'):
                 key(alpha, chord)
                 unchanged()
@@ -257,17 +257,17 @@ def session(app, run):
             if review in windows().values():
                 key(review, 'Escape')
             key(beta, 'ctrl+Next')
-            for chord, alias, first_name in [('alt+1', 'blue cap', 'Captain, Widgets'),
-                                             ('alt+2', 'pebblepost', 'Planet Pebble')]:
+            for chord, alias, first_name in [('ctrl+shift+1', 'blue cap', 'Captain, Widgets'),
+                                             ('ctrl+shift+2', 'pebblepost', 'Planet Pebble')]:
                 key(beta, chord)
                 output('xdotool', 'type', '--clearmodifiers', '--delay', '24', alias)
                 key(beta, 'ctrl+Return')
                 key(beta, 'ctrl+s')
                 second_text += first_name
-                wait_for(f'first synonym inserted at the last crumb via {chord}',
+                wait_for(f'first synonym inserted at the last paragraph via {chord}',
                          lambda: second.read_text() == second_text + '\n')
                 unchanged()
-            print('Both synonym lists filtered and inserted their first names from the keyboard.', flush=True)
+            print('Both synonym searches selected and inserted their first names from the keyboard.', flush=True)
             key(beta, 'alt+w')
             clients.remove(beta)
             wait_for('closing the extra manuscript retiles the others', lambda: tiles(clients, screen))
@@ -298,7 +298,7 @@ def session(app, run):
 def check_live_resize(app, run, launch, screen):
     path = run / 'Resize.txt'
     first = 'This proportional text wraps across several visual lines. ' * 4
-    manuscript = '\n'.join(f'Crumb {n}: Genre #{n}: {first}End.' for n in range(1, 3372))
+    manuscript = 'Resize//' + '\n'.join(f'Crumb {n}: Genre #{n}: {first}End.' for n in range(1, 3372))
     path.write_text(manuscript + '\n\n', encoding='utf-8')
     launch(app, path)
     writer = wait_for('large manuscript at EOF', lambda: windows().get('Resize.txt — Crumb Writer'))

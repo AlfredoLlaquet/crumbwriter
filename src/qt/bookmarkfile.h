@@ -1,25 +1,25 @@
 #ifndef CRUMBWRITER_BOOKMARKFILE_H
 #define CRUMBWRITER_BOOKMARKFILE_H
 
-#include <QtCore/QByteArray>
-#include <QtCore/QList>
-#include <QtCore/QMap>
+#include "bookmarkanchors.h"
+
 #include <QtCore/QStringList>
 #include <optional>
 
-struct LineBookmark {
-    QString category;
-    QString name;
-    int line = 0; // One-based physical line, independent of edits to the manuscript.
-};
-
 class BookmarkFile {
 public:
+    explicit BookmarkFile(QTextDocument *document = nullptr) : anchors_(document) {}
     bool openManuscript(const QString &path, QString *error = nullptr);
     bool saveAs(const QString &newPath, QString *error = nullptr);
     bool flush(QString *error = nullptr);
+    void captureForSave();
+    bool publishSave(QString *error = nullptr);
     QString manuscriptPath() const { return manuscript_; }
     bool hasPending() const { return pending_; }
+    int lineCount() const { return anchors_.lineCount(); }
+    void attach(LineBookmark &target, int line) const { anchors_.attach(target, line); }
+    void noteUndoCommand() { anchors_.noteUndoCommand(); }
+    bool trackEdit(int position, int added, LineBookmark *openForm = nullptr);
 
     const QList<LineBookmark> &entries() const { return data_.entries; }
     QString lastCategory() const { return data_.lastCategory; }
@@ -47,12 +47,19 @@ private:
     bool store(Data next, QString *error);
     bool writeBytes(const QByteArray &encoded, QString *error);
 
+    BookmarkAnchors anchors_;
     Data data_;
     QString manuscript_;
     std::optional<QByteArray> baseline_; // Missing sidecar and zero-byte sidecar differ.
     std::optional<QByteArray> unreadableJson_; // Save As can still copy malformed text exactly.
     bool pending_ = false;
     bool readBlocked_ = false;
+    struct Snapshot {
+        QByteArray bytes;
+        quint64 revision;
+    };
+    std::optional<Snapshot> captured_;
+    quint64 revision_ = 0;
 };
 
 #endif

@@ -55,6 +55,14 @@ bool integer(const QJsonValue &value, int minimum, int &result)
     return true;
 }
 
+bool readFingerprint(const QJsonObject &context, const QString &key, bool required, QByteArray &result)
+{
+    if (!context.contains(key)) return !required;
+    const QByteArray hex = context.value(key).toString().toLatin1();
+    result = QByteArray::fromHex(hex);
+    return result.size() == 32 && result.toHex() == hex.toLower();
+}
+
 int findBookmark(const QList<LineBookmark> &entries, const QString &category, const QString &name)
 {
     for (qsizetype i = 0; i < entries.size(); ++i)
@@ -109,13 +117,21 @@ QByteArray BookmarkFile::encode(const Data &data)
 {
     QJsonArray entries;
     for (const LineBookmark &entry : data.entries) {
-        entries.append(QJsonObject{{"category", entry.category}, {"name", entry.name},
-                                   {"line", entry.line}});
+        QJsonObject item{{"category", entry.category}, {"name", entry.name}, {"line", entry.line}};
+        if (!entry.context.target.isEmpty()) {
+            QJsonObject context{{"target", QString::fromLatin1(entry.context.target.toHex())}};
+            if (!entry.context.before.isEmpty())
+                context.insert("before", QString::fromLatin1(entry.context.before.toHex()));
+            if (!entry.context.after.isEmpty())
+                context.insert("after", QString::fromLatin1(entry.context.after.toHex()));
+            item.insert("context", context);
+        }
+        entries.append(item);
     }
     QJsonObject counters;
     for (auto it = data.counters.constBegin(); it != data.counters.constEnd(); ++it)
         counters.insert(it.key(), it.value());
-    return QJsonDocument(QJsonObject{{"version", 1}, {"lastCategory", data.lastCategory},
+    return QJsonDocument(QJsonObject{{"version", 2}, {"lastCategory", data.lastCategory},
                                      {"counters", counters}, {"bookmarks", entries}})
         .toJson(QJsonDocument::Indented);
 }
@@ -128,9 +144,9 @@ bool BookmarkFile::decode(const QByteArray &bytes, Data &data, QString *error)
         return fail(error, QStringLiteral("Invalid bookmark JSON at byte %1. %2")
                     .arg(parseError.offset).arg(parseError.errorString()));
     const QJsonObject root = doc.object();
-    if (!doc.isObject() || root.value("version").toInteger(-1) != 1 ||
-        !root.value("bookmarks").isArray())
-        return fail(error, QStringLiteral("Expected version 1 and a bookmarks array."));
+    const qint64 version = root.value("version").toInteger(-1);
+    if (!doc.isObject() || (version != 1 && version != 2) || !root.value("bookmarks").isArray())
+        return fail(error, QStringLiteral("Expected bookmark format version 1 or 2 and a bookmarks array."));
 
     Data parsed;
     if (root.contains("lastCategory")) {
@@ -152,11 +168,20 @@ bool BookmarkFile::decode(const QByteArray &bytes, Data &data, QString *error)
     const QJsonArray entries = root.value("bookmarks").toArray();
     for (const QJsonValue &value : entries) {
         const QJsonObject object = value.toObject();
-        LineBookmark entry{object.value("category").toString().trimmed(),
-                           object.value("name").toString().trimmed(), 0};
+        LineBookmark entry;
+        entry.category = object.value("category").toString().trimmed();
+        entry.name = object.value("name").toString().trimmed();
         if (entry.category.isEmpty() || entry.name.isEmpty() ||
             !integer(object.value("line"), 1, entry.line))
             return fail(error, QStringLiteral("Each bookmark needs a category, name and positive line number."));
+        if (version == 2 && object.contains("context")) {
+            const auto context = object.value("context").toObject();
+            if (!readFingerprint(context, "target", true, entry.context.target) ||
+                !readFingerprint(context, "before", false, entry.context.before) ||
+                !readFingerprint(context, "after", false, entry.context.after))
+                return fail(error, QStringLiteral("Invalid line context for bookmark %1 / %2.")
+                            .arg(entry.category, entry.name));
+        }
         const auto key = qMakePair(entry.category, entry.name);
         if (used.contains(key))
             return fail(error, QStringLiteral("Repeated bookmark %1 / %2.").arg(entry.category, entry.name));
@@ -172,10 +197,13 @@ bool BookmarkFile::openManuscript(const QString &path, QString *error)
 {
     manuscript_ = absolute(path);
     data_ = Data{};
+    anchors_.restore(data_.entries);
     pending_ = false;
     readBlocked_ = false;
     baseline_.reset();
     unreadableJson_.reset();
+    captured_.reset();
+    revision_ = 0;
     if (manuscript_.isEmpty())
         return true;
     const QString file = sidecarPath(manuscript_);
@@ -191,7 +219,10 @@ bool BookmarkFile::openManuscript(const QString &path, QString *error)
         unreadableJson_ = baseline_;
         return fail(error, QStringLiteral("Cannot load %1. %2").arg(file, reason));
     }
-    return true;
+    // Migrate physical-line bookmarks and record any relocation after an
+    // external edit. A failed write retains the usable destinations for retry.
+    pending_ = anchors_.restore(data_.entries);
+    return !pending_ || flush(error);
 }
 
 bool BookmarkFile::writeBytes(const QByteArray &encoded, QString *error)
@@ -232,9 +263,13 @@ bool BookmarkFile::store(Data next, QString *error)
 {
     if (readBlocked_)
         return fail(error, QStringLiteral("Reload the bookmark file after correcting its read error."));
+    anchors_.capture(next.entries);
     if (!manuscript_.isEmpty() && !writeBytes(encode(next), error))
         return false;
     data_ = std::move(next);
+    // A bookmark added, removed or renamed while a manuscript write is in
+    // flight must never be rolled back by that write's metadata.
+    captured_.reset();
     pending_ = manuscript_.isEmpty();
     return true;
 }
@@ -245,10 +280,46 @@ bool BookmarkFile::flush(QString *error)
         return true;
     if (manuscript_.isEmpty())
         return fail(error, QStringLiteral("Save the manuscript to give its bookmarks a filename."));
+    anchors_.capture(data_.entries);
     if (!writeBytes(unreadableJson_ ? *unreadableJson_ : encode(data_), error))
         return false;
+    captured_.reset();
     pending_ = false;
     return true;
+}
+
+void BookmarkFile::captureForSave()
+{
+    captured_.reset();
+    if (!pending_) {
+        if (baseline_) captured_ = Snapshot{*baseline_, revision_};
+        return;
+    }
+    anchors_.capture(data_.entries);
+    captured_ = Snapshot{unreadableJson_ ? *unreadableJson_ : encode(data_), revision_};
+}
+
+bool BookmarkFile::publishSave(QString *error)
+{
+    if (!captured_) return true;
+    if (!pending_) {
+        captured_.reset();
+        return true;
+    }
+    if (!writeBytes(captured_->bytes, error)) return false;
+    // A second edit may have landed while the manuscript worker was writing.
+    // Its positions stay live and will travel with the subsequent revision.
+    pending_ = revision_ != captured_->revision;
+    captured_.reset();
+    return true;
+}
+
+bool BookmarkFile::trackEdit(int position, int added, LineBookmark *openForm)
+{
+    if (!data_.entries.isEmpty()) ++revision_;
+    const bool changed = anchors_.edited(data_.entries, position, added, pending_, openForm);
+    pending_ |= changed;
+    return changed;
 }
 
 bool BookmarkFile::saveAs(const QString &newPath, QString *error)
@@ -257,7 +328,7 @@ bool BookmarkFile::saveAs(const QString &newPath, QString *error)
     if (target.isEmpty())
         return fail(error, QStringLiteral("The manuscript needs a filename before its bookmarks can be saved."));
     if (target == manuscript_)
-        return flush(error);
+        return captured_ ? publishSave(error) : flush(error);
 
     // With no source bookmarks, an existing target sidecar belongs to the
     // chosen manuscript. A populated source is always copied from memory.
@@ -273,14 +344,14 @@ bool BookmarkFile::saveAs(const QString &newPath, QString *error)
     manuscript_ = target;
     baseline_.reset();
     pending_ = true;
-    return flush(error);
+    return captured_ ? publishSave(error) : flush(error);
 }
 
 bool BookmarkFile::add(QString category, QString name, int line, QString *error)
 {
     category = category.trimmed();
     name = name.trimmed();
-    if (category.isEmpty() || line < 1)
+    if (category.isEmpty() || line < 1 || line > anchors_.lineCount())
         return fail(error, QStringLiteral("Choose a category and an existing manuscript line."));
     if (name.isEmpty())
         name = nextName(category);
@@ -290,7 +361,11 @@ bool BookmarkFile::add(QString category, QString name, int line, QString *error)
         return fail(error, QStringLiteral("The category already contains a bookmark named %1.").arg(name));
 
     Data next = data_;
-    next.entries.append({category, name, line});
+    LineBookmark entry;
+    entry.category = category;
+    entry.name = name;
+    anchors_.attach(entry, line);
+    next.entries.append(entry);
     noteName(next, category, name);
     next.lastCategory = category;
     return store(std::move(next), error);

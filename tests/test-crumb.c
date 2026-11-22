@@ -77,6 +77,25 @@ test_first_line(void)
     g_assert_true(cw_crumb_parse("Volume 2: Writing//Nota 1: Ø: x", TRUE, &crumb));
     g_assert_cmpstr(crumb.label, ==, "Nota");
     cw_crumb_clear(&crumb);
+    line = "Véase https://sitio.example/a//b — Índice//Cranolo 1: Ida: vuelta";
+    g_assert_true(cw_crumb_parse(line, TRUE, &crumb));
+    g_assert_cmpstr(crumb.label, ==, "Cranolo");
+    g_assert_cmpstr(g_utf8_offset_to_pointer(line, crumb.header_start), ==, "Cranolo 1: Ida: vuelta");
+    g_assert_cmpuint(cw_crumb_words(line, TRUE), ==, 4);
+    cw_crumb_clear(&crumb);
+    line = "Notes (https://[::1]/article_(part_(1))//here)//C 1: T: x";
+    g_assert_true(cw_crumb_parse(line, TRUE, &crumb));
+    g_assert_cmpstr(crumb.label, ==, "C");
+    cw_crumb_clear(&crumb);
+    g_assert_false(cw_crumb_parse("Link //example.org in prose.", TRUE, &crumb));
+    g_assert_cmpint(crumb.record_start, ==, 0);
+    cw_crumb_clear(&crumb);
+    g_assert_false(cw_crumb_parse("http://site.example/a//b", TRUE, &crumb));
+    g_assert_cmpint(crumb.record_start, ==, 0);
+    cw_crumb_clear(&crumb);
+    g_assert_false(cw_crumb_parse("Work title//", TRUE, &crumb));
+    g_assert_cmpint(crumb.record_start, ==, 12);
+    cw_crumb_clear(&crumb);
 }
 
 /* The installed wc determines locale-dependent treatment of Unicode spaces. */

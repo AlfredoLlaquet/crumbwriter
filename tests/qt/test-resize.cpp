@@ -58,15 +58,16 @@ private:
     QElapsedTimer clock;
 };
 
-static bool exercise(PaintTimer &app, const QString &directory, int count)
+static bool exercise(PaintTimer &app, const QString &directory, int count, bool generic = false)
 {
     const QByteArray body = "Proportional text wraps across several visual lines. ";
-    QByteArray original;
+    QByteArray original = generic ? QByteArray() : QByteArray("Resize//");
     for (int n = 1; n <= count; ++n) {
         if (n > 1)
             original += '\n';
-        original += "Crumb " + QByteArray::number(n) + ": Genre #" + QByteArray::number(n)
-                  + ": " + body.repeated(3 + n % 4) + "End.";
+        if (!generic)
+            original += "Crumb " + QByteArray::number(n) + ": Genre #" + QByteArray::number(n) + ": ";
+        original += body.repeated(3 + n % 4) + "End.";
     }
     QString path = directory + "/Manuscript-" + QString::number(count) + ".txt";
     QFile fixture(path);
@@ -105,9 +106,9 @@ static bool exercise(PaintTimer &app, const QString &directory, int count)
         latency.push_back(ms);
     }
     std::sort(latency.begin(), latency.end());
-    std::printf("Qt %s: %d records, manuscript width %d to %d px, resize and key to completed "
+    std::printf("Qt %s: %d %s, manuscript width %d to %d px, resize and key to completed "
                 "paint p95 %.1f ms, max %.1f ms (20 samples)\n",
-                qVersion(), count, wide, narrow, latency[18], latency.back());
+                qVersion(), count, generic ? "paragraphs" : "crumbs", wide, narrow, latency[18], latency.back());
     return narrow < wide && editor->manuscriptText().toUtf8() == original + QByteArray(20, 'x');
 }
 
@@ -116,7 +117,7 @@ int main(int argc, char **argv)
     PaintTimer app(argc, argv);
     QTemporaryDir directory;
     if (!directory.isValid() || !exercise(app, directory.path(), 3371)
-        || !exercise(app, directory.path(), 25092)) {
+        || !exercise(app, directory.path(), 25092) || !exercise(app, directory.path(), 25092, true)) {
         std::fprintf(stderr, "Resizing failed to show and preserve typed text at the last crumb.\n");
         return 1;
     }

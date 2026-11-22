@@ -12,6 +12,7 @@ class QToolButton;
 class QTreeWidget;
 class QTreeWidgetItem;
 class ManuscriptEditor;
+class PanelSearch;
 struct CrumbChange;
 
 class JumpHistory {
@@ -32,22 +33,28 @@ public:
     void focusHistory();
     void focusGenres();
     void toggleGenreOrder();
-    void setTodayCount(int count);
     std::function<void(int)> jumpTo;
 private:
+    void updateMode();
+    void updateToday();
     void updateModel(const CrumbChange &change);
+    bool isVisitLine(int row) const;
     void updateVisit(QTreeWidgetItem *item);
     void updateGenres();
-    void openVisit(QTreeWidgetItem *item);
-    void continueGenre(QTreeWidgetItem *item);
+    bool openVisit();
+    bool openGenreOrTitle();
     ManuscriptEditor *editor_;
+    QSettings *settings_;
     QLabel *number_;
     QLabel *title_;
     QLabel *words_;
     QLabel *today_;
+    QLabel *genreHeading_;
     QToolButton *genreOrder_;
     QTreeWidget *visits_;
     QTreeWidget *genres_;
+    PanelSearch *historySearch_;
+    PanelSearch *genresSearch_;
     QHash<int, QTreeWidgetItem *> visitedLines_;
 };
 

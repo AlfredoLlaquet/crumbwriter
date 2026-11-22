@@ -129,7 +129,8 @@ void pane(const QString &dir)
     layout.addWidget(&panel);
     layout.addWidget(&editor);
     const auto path = dir + "/writing.txt";
-    write(path + ".characters", "Zorbo Marmalade, Zed, \"Dr. Ada, DDS\", A.A., O'Neil\nOther Name, Alias\n");
+    write(path + ".characters", "Zorbo Marmalade, Zed, \"Dr. Ada, DDS\", A.A., O'Neil, Violet Flame\n"
+                                "Other Name, Alias, Violet Lamp\n");
     write(path + ".recurring", "Winter, Wintertime\n");
     check(panel.openManuscript(path) && panel.allAliases().contains("Zorbo Marmalade") &&
           !panel.allAliases().contains("Zorbo") && panel.allAliases().contains("Wintertime"), "complete cross-list spelling vocabulary");
@@ -155,17 +156,28 @@ void pane(const QString &dir)
     window.show();
     window.activateWindow();
     settle();
-    auto *filter = panel.findChild<QLineEdit *>("charactersFilter");
+    auto *search = panel.findChild<QLineEdit *>("charactersSearch");
     auto *list = panel.findChild<QListView *>("charactersList");
     auto *things = panel.findChild<QListView *>("recurringList");
-    auto *thingFilter = panel.findChild<QLineEdit *>("recurringFilter");
+    auto *thingSearch = panel.findChild<QLineEdit *>("recurringSearch");
     panel.focusCharacters();
-    check(filter->hasFocus(), "direct access focuses character filter");
-    filter->setText("zed");
-    check(list->model()->rowCount() == 1, "filter by alternate spelling");
-    key(filter, Qt::Key_Return);
+    check(search->hasFocus() && search->placeholderText() == "Search characters", "shortcut focuses character search");
+    search->setText("vIOleT");
+    check(list->model()->rowCount() == 2 && list->currentIndex().row() == 0, "first alternate name matches in place");
+    key(search, Qt::Key_Up);
+    check(search->hasFocus() && list->currentIndex().row() == 1, "previous match wraps without leaving the field");
+    key(search, Qt::Key_Down);
+    check(list->currentIndex().row() == 0, "next match wraps");
+    search->setText("absent");
+    key(search, Qt::Key_Return, Qt::ControlModifier);
+    check(!list->currentIndex().isValid() && search->text() == "absent" && list->model()->rowCount() == 2 &&
+          !editor.toPlainText().contains("Other Name"), "a missing match leaves the search and manuscript intact");
+    search->setText("ada, dd");
+    check(list->currentIndex().row() == 1, "search handles punctuation within a quoted alias");
+    key(search, Qt::Key_Return);
     auto *view = panel.findChild<QTableView *>("synonymMatches");
-    check(view && waitFor([&] { return view->model()->rowCount() == 6; }), "all literal occurrences, whole names and curly apostrophes");
+    check(search->text().isEmpty() && view && waitFor([&] { return view->model()->rowCount() == 6; }),
+          "Enter clears the search and finds all literal occurrences, whole names and curly apostrophes");
     auto row = view->model()->index(4, 1);
     check(row.data().toString() == "DR. ADA, DDS" && row.siblingAtColumn(0).data().toInt() == 2,
           "ordered, case-preserving results with physical line number");
@@ -174,12 +186,14 @@ void pane(const QString &dir)
     check(jumped == editor.toPlainText().indexOf("DR. ADA, DDS") && selected == "DR. ADA, DDS",
           "activated occurrence uses exact UTF-16 offsets");
     panel.focusCharacters();
-    key(filter, Qt::Key_Return, Qt::ControlModifier);
-    check(editor.toPlainText().contains("🦋 Zorbo Marmalade then"), "insertion uses first synonym at saved selection");
+    search->setText("zed");
+    key(search, Qt::Key_Return, Qt::ControlModifier);
+    check(search->text().isEmpty() && editor.toPlainText().contains("🦋 Zorbo Marmalade then"),
+          "Ctrl+Enter clears the search and inserts the first synonym at the saved selection");
 
     panel.focusRecurring();
-    check(thingFilter->hasFocus(), "direct access focuses recurring filter");
-    key(thingFilter, Qt::Key_Insert);
+    check(thingSearch->hasFocus() && thingSearch->placeholderText() == "Search recurring", "shortcut focuses recurring search");
+    key(thingSearch, Qt::Key_Insert);
     auto *form = panel.findChild<QDialog *>("recurringEditDialog");
     check(form && form->isVisible(), "keyboard add opens nonmodal editor");
     auto *field = form->findChild<QLineEdit *>("synonymText");
@@ -209,9 +223,9 @@ void pane(const QString &dir)
     key(things, Qt::Key_F5);
     check(panel.allAliases().contains("Flash") && !panel.allAliases().contains("Winter"), "F5 refreshes manually edited file");
 
-    filter->setText("zed");
+    search->setText("zed");
     panel.focusCharacters();
-    key(filter, Qt::Key_Return);
+    key(search, Qt::Key_Return);
     check(waitFor([&] { return view->model()->rowCount() == 6; }), "search reopened after document edit");
     editor.setPlainText("Crumb 1: Fresh: Zed");
     check(waitFor([&] { return view->model()->rowCount() == 1; }) &&
@@ -228,8 +242,8 @@ void overlaps(const QString &dir)
     editor.setPlainText("A A A");
     panel.openManuscript(path);
     panel.show();
-    auto *filter = panel.findChild<QLineEdit *>("charactersFilter");
-    key(filter, Qt::Key_Return);
+    auto *search = panel.findChild<QLineEdit *>("charactersSearch");
+    key(search, Qt::Key_Return);
     auto *view = panel.findChild<QTableView *>("synonymMatches");
     check(waitFor([&] { return view->model()->rowCount() == 5; }), "overlapping aliases retained and identical spans deduplicated");
 }

@@ -42,7 +42,7 @@ void ManuscriptEditor::applyPaper()
 void ManuscriptEditor::refreshBand()
 {
     const int n = textCursor().blockNumber();
-    const int line = !rows_ && model_->record(n).valid ? n : -1;
+    const int line = !rows_ && (model_->isGeneric() || model_->record(n).valid) ? n : -1;
     if (activeLine_ != line) {
         activeLine_ = line;
         viewport()->update();
@@ -94,15 +94,17 @@ void ManuscriptEditor::paintEvent(QPaintEvent *event)
 
 int ManuscriptEditor::rowPitch() const
 {
+    if (model_->isGeneric())
+        return qMax(1, QFontMetrics(font(), viewport()).height());
     return qMax(1, cursorRect(at(document()->characterCount()-1)).height());
 }
 
 QRect ManuscriptEditor::virtualCaretRect() const
 {
     const auto end = cursorRect(at(document()->characterCount()-1));
-    const int pitch = qMax(1, end.height());
+    const int pitch = rowPitch();
     const qint64 y = virtualTop_ ? qint64(rows_ - virtualTop_) * pitch
-                                 : end.y() + qint64(rows_) * pitch;
+                                 : end.bottom() + 1 + qint64(rows_ - 1) * pitch;
     return QRect(qRound(document()->documentMargin()), int(qBound(qint64(INT_MIN)/2, y, qint64(INT_MAX)/2)), 2, pitch);
 }
 
@@ -270,7 +272,7 @@ void ManuscriptEditor::mousePressEvent(QMouseEvent *e)
         } else if (cursorForPosition(e->position().toPoint()).block() == document()->lastBlock()) {
             const QRect end = cursorRect(at(document()->characterCount()-1));
             if (y >= end.bottom()+1)
-                rows = 1 + (y-end.bottom()-1)/qMax(1, end.height());
+                rows = 1 + (y-end.bottom()-1)/rowPitch();
         }
         if (rows > 0) {
             setFocus(Qt::MouseFocusReason);

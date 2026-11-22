@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "bookmarks.h"
+#include "documentstore.h"
 #include "manuscripteditor.h"
 #include "manuscripttext.h"
 #include "spellcheck.h"
@@ -54,7 +55,9 @@ bool MainWindow::updateCompanions(CompanionAction action, const QString &manuscr
         }
         if (!ok) errors.append(error.isEmpty() ? tr("Could not update a manuscript companion file.") : error);
     };
-    update(bookmarks_);
+    // Relocated bookmarks describe the edited text. Publish those positions
+    // after the matching manuscript save succeeds, including during live save.
+    if (action != CompanionAction::Flush || !store_->isDirty()) update(bookmarks_);
     update(synonyms_);
     update(spelling_);
     if (!errors.isEmpty()) showNotice(errors.join(u'\n'));

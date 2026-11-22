@@ -31,6 +31,7 @@ public:
     void startViSelection();
     bool viSelectionActive() const;
     std::function<void(const QString &)> onViPrompt;
+    std::function<void()> onViAccepted;
 
     void jumpTo(int position, bool center = true);
     void selectRange(int anchor, int position, bool center = true);
@@ -56,9 +57,11 @@ public:
     void undo();
     void redo();
     void cut();
+    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 
 protected:
     bool event(QEvent *event) override;
+    void changeEvent(QEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void inputMethodEvent(QInputMethodEvent *event) override;
     void insertFromMimeData(const QMimeData *source) override;
@@ -72,6 +75,7 @@ protected:
     void showEvent(QShowEvent *event) override;
 
 private:
+    friend class ViSelection;
     enum class Alignment { Visible, Center, Top };
     enum class Input { Typed, Paste, Erase, Replacement };
     enum class EditRun { None, Typing, Backspace, Delete };
@@ -88,6 +92,7 @@ private:
     void replayEdit(bool forward);
     void trackSeparator(const QTextCursor &cursor);
     void typeText(const QString &text, int replaceStart = 0, int replaceLength = 0);
+    void showPreedit(QInputMethodEvent *event);
     void removeByKey(QKeyEvent *event);
     void beginInputBlock(QTextCursor &cursor, EditRun run);
     void eraseSelection(QTextCursor cursor, EditRun run = EditRun::None);

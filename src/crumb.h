@@ -25,7 +25,8 @@ typedef struct {
  * missing, the end of the line is also the tentative start of the body.
  *
  * A recognizable label, positive number and first colon establish a header.
- * The optional work title before // on the first line is outside the header.
+ * The first // outside a URL on line one ends the optional work title.
+ * record_start points just past that delimiter even while the header is unfinished.
  * A zero or overflowing header number is invalid but retains its digit range.
  * Clear a previous result before reusing it. An invalid result can be cleared.
  */

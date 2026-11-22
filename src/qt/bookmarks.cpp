@@ -8,6 +8,7 @@
 #include <QtGui/QAction>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QScreen>
+#include <QtGui/QTextDocument>
 #include <QtWidgets/QComboBox>
 #include <QtWidgets/QDialog>
 #include <QtWidgets/QDialogButtonBox>
@@ -65,14 +66,24 @@ QString displayTitle(int line, int lineCount, const std::function<QString(int)> 
 class Bookmarks::Dialogs final : public QObject {
 public:
     Dialogs(Bookmarks &bookmarks, QWidget *parent, std::function<int()> current,
-            std::function<int()> count, std::function<QString(int)> title,
+            QTextDocument *manuscript, std::function<QString(int)> title,
             std::function<void(int)> jump)
-        : control(bookmarks), owner(parent), currentLine(std::move(current)),
-          lineCount(std::move(count)), titleAtLine(std::move(title)), jumpToLine(std::move(jump))
+        : control(bookmarks), file(manuscript), document(manuscript), owner(parent),
+          currentLine(std::move(current)), titleAtLine(std::move(title)), jumpToLine(std::move(jump))
     {
         refreshTimer.setSingleShot(true);
         refreshTimer.setInterval(100);
         connect(&refreshTimer, &QTimer::timeout, this, [this] { refreshTitles(); });
+        connect(document, &QTextDocument::undoCommandAdded, this, [this] { file.noteUndoCommand(); });
+        connect(document, &QTextDocument::contentsChange, this, [this](int position, int removed, int added) {
+            if (!removed && !added) return;
+            const bool wasPending = file.hasPending();
+            auto *shown = form && form->isVisible() && kind == EditKind::Add ? &formTarget : nullptr;
+            if (file.trackEdit(position, added, shown)) titles.clear();
+            if (shown) updateTargetCaption(shown->line);
+            if (!wasPending && file.hasPending()) changed();
+            control.refresh();
+        });
     }
 
     ~Dialogs() override
@@ -86,9 +97,9 @@ public:
 
     Bookmarks &control;
     BookmarkFile file;
+    QTextDocument *document;
     QPointer<QWidget> owner;
     std::function<int()> currentLine;
-    std::function<int()> lineCount;
     std::function<QString(int)> titleAtLine;
     std::function<void(int)> jumpToLine;
 
@@ -115,7 +126,7 @@ public:
     EditKind kind = EditKind::Add;
     QString originalCategory;
     QString originalName;
-    int targetLine = 0;
+    LineBookmark formTarget;
     QPointer<QMessageBox> confirm;
     quint64 revision = 0;
 
@@ -259,7 +270,7 @@ public:
         if (!manager || !manager->isVisible())
             return;
         QHash<int, QString> current;
-        const int count = lineCount();
+        const int count = file.lineCount();
         for (const LineBookmark &entry : file.entries())
             if (!current.contains(entry.line))
                 current.insert(entry.line, displayTitle(entry.line, count, titleAtLine));
@@ -292,10 +303,10 @@ public:
         items->setRootIsDecorated(tree);
         items->setColumnHidden(1, tree);
         items->setHeaderLabels({tree ? QStringLiteral("Category / Bookmark") : QStringLiteral("Category"),
-                                QStringLiteral("Name"), QStringLiteral("Line"), QStringLiteral("Crumb title")});
+                                QStringLiteral("Name"), QStringLiteral("Line"), QStringLiteral("Manuscript text")});
         QMap<QString, QList<BookmarkRow>> rows;
         QHash<QString, int> totalInCategory;
-        const int count = lineCount();
+        const int count = file.lineCount();
         titles.clear();
         for (const LineBookmark &entry : file.entries()) {
             ++totalInCategory[entry.category];
@@ -369,18 +380,21 @@ public:
         if (!manager || !manager->isVisible() || !items->currentItem())
             return;
         auto *item = items->currentItem();
-        const int line = item->data(0, LineRole).toInt();
-        if (!line) {
+        const auto category = item->data(0, CategoryRole).toString();
+        const auto name = item->data(0, NameRole).toString();
+        if (name.isEmpty()) {
             item->setExpanded(!item->isExpanded());
             items->setFocus();
             return;
         }
-        const int count = lineCount();
-        if (line > count) {
-            message(notice, QStringLiteral("Line %1 is outside this manuscript. The last line is %2.")
-                    .arg(line).arg(count));
-            return;
-        }
+        // The displayed rows refresh on a timer. Enter must always use the
+        // live anchor when the manuscript changed just before activation.
+        const auto &entries = file.entries();
+        const auto found = std::find_if(entries.cbegin(), entries.cend(), [&](const LineBookmark &entry) {
+            return entry.category == category && entry.name == name;
+        });
+        if (found == entries.cend()) return;
+        const int line = found->line;
         manager->hide();
         owner->raise();
         owner->activateWindow();
@@ -438,7 +452,9 @@ public:
         kind = editKind;
         originalCategory = category;
         originalName = name;
-        targetLine = line;
+        formTarget = {};
+        formTarget.line = line;
+        if (line > 0 && line <= file.lineCount()) file.attach(formTarget, line);
         const bool add = kind == EditKind::Add;
         const bool grouped = kind == EditKind::RenameCategory;
         form->setWindowTitle(add ? QStringLiteral("Add Bookmark")
@@ -451,14 +467,7 @@ public:
         nameField->setPlaceholderText(add ? file.nextName(category) : QString());
         nameField->setVisible(!grouped);
         nameLabel->setVisible(!grouped);
-        QString caption;
-        if (!grouped) {
-            caption = QStringLiteral("Line %1").arg(line);
-            const QString title = line > 0 ? displayTitle(line, lineCount(), titleAtLine) : QString();
-            if (!title.isEmpty())
-                caption += QStringLiteral(" — ") + title;
-        }
-        message(target, caption);
+        updateTargetCaption(grouped ? 0 : line);
         message(formError, {});
         const int available = qMin(owner->width(), owner->screen()->availableGeometry().width() * 9 / 10);
         if (firstUse || form->width() > available) {
@@ -469,6 +478,15 @@ public:
         QLineEdit *focus = kind == EditKind::RenameBookmark ? nameField : categoryField->lineEdit();
         focus->setFocus();
         focus->selectAll();
+    }
+
+    void updateTargetCaption(int line)
+    {
+        if (line <= 0) { message(target, {}); return; }
+        QString caption = QStringLiteral("Line %1").arg(line);
+        const auto title = displayTitle(line, file.lineCount(), titleAtLine);
+        if (!title.isEmpty()) caption += QStringLiteral(" — ") + title;
+        message(target, caption);
     }
 
     void editSelection()
@@ -491,11 +509,11 @@ public:
         bool ok;
         switch (kind) {
         case EditKind::Add:
-            if (targetLine < 1 || targetLine > lineCount()) {
+            if (formTarget.anchor.isNull()) {
                 message(formError, QStringLiteral("Choose an existing line in the manuscript and press Ctrl+B."));
                 return;
             }
-            ok = file.add(category, name, targetLine, &error);
+            ok = file.add(category, name, formTarget.line, &error);
             break;
         case EditKind::RenameBookmark:
             ok = file.renameBookmark(originalCategory, originalName, category, name, &error);
@@ -575,7 +593,7 @@ public:
         if (file.manuscriptPath().isEmpty())
             return;
         const auto reloadFromDisk = [this] {
-            BookmarkFile fresh;
+            BookmarkFile fresh(document);
             QString error;
             if (!fresh.openManuscript(file.manuscriptPath(), &error)) {
                 message(notice, error);
@@ -611,9 +629,9 @@ public:
 };
 
 Bookmarks::Bookmarks(QWidget *owner, std::function<int()> currentLine,
-                     std::function<int()> lineCount, std::function<QString(int)> titleAtLine,
+                     QTextDocument *document, std::function<QString(int)> titleAtLine,
                      std::function<void(int)> jumpToLine)
-    : QObject(owner), dialogs_(std::make_unique<Dialogs>(*this, owner, std::move(currentLine), std::move(lineCount),
+    : QObject(owner), dialogs_(std::make_unique<Dialogs>(*this, owner, std::move(currentLine), document,
                                          std::move(titleAtLine), std::move(jumpToLine)))
 {
 }
@@ -650,6 +668,22 @@ bool Bookmarks::flush(QString *error)
 bool Bookmarks::hasPending() const
 {
     return dialogs_->file.hasPending();
+}
+
+void Bookmarks::captureForSave()
+{
+    dialogs_->file.captureForSave();
+}
+
+bool Bookmarks::publishSave(QString *error)
+{
+    const bool wasPending = hasPending();
+    const bool ok = dialogs_->file.publishSave(error);
+    if (wasPending != hasPending()) {
+        if (dialogs_->manager) dialogs_->updateButtons();
+        dialogs_->changed();
+    }
+    return ok;
 }
 
 void Bookmarks::addCurrent()

@@ -3,6 +3,7 @@
 #include <QByteArray>
 #include <QDate>
 #include <QHash>
+#include <QJsonObject>
 #include <QString>
 #include <QVector>
 #include <vector>
@@ -16,8 +17,11 @@ class DailyCount {
 public:
     int count() const { return currentCount_; }
     QDate date() const { return date_; }
+    qint64 wordChange() const { return totalWords_ - baselineWords_; }
+    void setTotalWords(qint64 words);
 
-    QString open(const QString &manuscript, QDate date, const QVector<quint64> &numbers);
+    QString open(const QString &manuscript, QDate date, const QVector<quint64> &numbers,
+                 qint64 words);
     QString saveAs(const QString &manuscript);
     QByteArray snapshot();
     QString publish(const QString &manuscript, const QByteArray &snapshot);
@@ -49,7 +53,9 @@ private:
     QVector<bool> occupied_;
     QString stateFile_;
     QByteArray cached_, committed_, lastDraftCheckpoint_;
+    QJsonObject cachedLayout_;
     QString lastDraftPath_;
     QDate date_;
     int currentCount_ = 0;
+    qint64 totalWords_ = 0, baselineWords_ = 0;
 };

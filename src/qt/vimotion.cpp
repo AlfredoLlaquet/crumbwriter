@@ -2,7 +2,9 @@
 #include "manuscripttext.h"
 
 #include <QAbstractTextDocumentLayout>
+#include <QObject>
 #include <QTextBlock>
+#include <QTextBoundaryFinder>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextLayout>
@@ -147,6 +149,70 @@ std::optional<int> literal(const ViMotion &motion, QTextCursor cursor)
     }
     return {};
 }
+}
+
+std::optional<ViMotion> ViMotion::parse(const QString &command, QString &hint)
+{
+    if (command.isEmpty()) {
+        hint = QObject::tr("Type a movement. Esc cancels.");
+        return {};
+    }
+    ViMotion motion;
+    const QChar op = command.front();
+    motion.name = op;
+    qsizetype pos = 1;
+    if (op == u'g') {
+        if (pos == command.size() || !QStringLiteral("gjk").contains(command[pos])) {
+            hint = QObject::tr("After g, type g, j, or k.");
+            return {};
+        }
+        motion.name += command[pos++];
+    } else if (QStringLiteral("fFtT").contains(op)) {
+        if (pos == command.size()) {
+            hint = QObject::tr("Type a character.");
+            return {};
+        }
+        QTextBoundaryFinder chars(QTextBoundaryFinder::Grapheme, command.constData() + pos, command.size() - pos);
+        const auto length = chars.toNextBoundary();
+        motion.target = command.mid(pos, length);
+        pos += length;
+    } else if (op.toLower() == u'q') {
+        while (pos < command.size() && command[pos] != u'*') {
+            if (command[pos] == u'\\' && pos + 1 < command.size() &&
+                (command[pos + 1] == u'*' || command[pos + 1] == u'\\')) ++pos;
+            motion.target += command[pos++];
+        }
+        if (motion.target.isEmpty()) {
+            hint = QObject::tr("Type a phrase. Use \\* for a literal star.");
+            return {};
+        }
+        if (pos == command.size()) return motion;
+        if (++pos == command.size()) {
+            hint = QObject::tr("Type an occurrence number after *.");
+            return {};
+        }
+    } else if (!QStringLiteral("hlwWbBeEjk0^$G;,").contains(op)) {
+        hint = QObject::tr("Unknown movement. Backspace to edit, or Esc.");
+        return {};
+    }
+
+    if (pos < command.size()) {
+        const QStringView suffix = QStringView(command).mid(pos);
+        bool ok = false;
+        for (const QChar digit : suffix) {
+            if (digit < u'0' || digit > u'9') {
+                hint = QObject::tr("The count must be a positive number.");
+                return {};
+            }
+        }
+        motion.count = suffix.toInt(&ok);
+        if (!ok || motion.count < 1) {
+            hint = QObject::tr("Use a positive count within range.");
+            return {};
+        }
+        motion.explicitCount = true;
+    }
+    return motion;
 }
 
 std::optional<int> ViMotion::destination(QTextCursor cursor) const

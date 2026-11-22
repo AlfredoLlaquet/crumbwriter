@@ -12,6 +12,8 @@ private:
     void refresh(const CrumbModel &model);
     QString summary() const;
     QLabel *crumbs_;
+    QLabel *unitCaption_;
+    QLabel *averageCaption_;
     QLabel *words_;
     QLabel *average_;
 };

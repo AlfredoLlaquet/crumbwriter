@@ -223,7 +223,7 @@ void wholeWordDeletion(ManuscriptEditor &ed)
 
 void undoAndBoundaries(ManuscriptEditor &ed)
 {
-    const QString one = QStringLiteral("Leaf 1: : A");
+    const QString one = QStringLiteral("Leaves//Leaf 1: : A");
     const QString two = one + QStringLiteral("\nLeaf 2: :");
     const QString three = two + QStringLiteral("\nLeaf 3: :");
     ed.loadText(one);
@@ -375,7 +375,7 @@ void unicodeRoundTrip(ManuscriptEditor &ed)
 {
     // Qt uses a paragraph separator and two otherwise valid noncharacters as
     // internal control markers. In the file only CR or LF begins another crumb.
-    const auto prefix = QStringLiteral("Crumb 1: A");
+    const auto prefix = QStringLiteral("Pages//Crumb 1: A");
     const auto title = QStringLiteral("A") + QChar(0x2029) + u'B';
     const auto first = prefix + QChar(0x2029) + QStringLiteral("B: x")
         + QChar(0x00a0) + u'y' + QChar(0x2028) + u'z' + QChar(0xfdd0)
@@ -389,7 +389,8 @@ void unicodeRoundTrip(ManuscriptEditor &ed)
             "official word count sees original Unicode code points");
     ed.jumpTo(0,false);
     ed.copyCrumb();
-    require(QApplication::clipboard()->text() == first, "clipboard restores literal Unicode");
+    require(QApplication::clipboard()->text() == first.sliced(first.indexOf("//") + 2),
+            "clipboard restores literal Unicode and excludes the manuscript title");
     ed.jumpTo(prefix.size()+1,false);
     type(ed, QStringLiteral("Z"));
     expect(ed, QString(original).insert(prefix.size()+1, u'Z'));
@@ -480,17 +481,155 @@ void fieldsAndClipboard(ManuscriptEditor &ed)
     expect(ed, QStringLiteral("Title //\n"));
     ed.appendCrumb();
     expect(ed, QStringLiteral("Title //Note 1: : \n"));
-    ed.loadText(QStringLiteral("Note 1: Haiku #4: x\nNote 2: Haiku : y\n"));
+    const QString haiku = QStringLiteral("Leaves//Note 1: Haiku #4: x\nNote 2: Haiku : y\n");
+    ed.loadText(haiku);
     ed.jumpTo(ed.manuscriptText().lastIndexOf(QStringLiteral(": y")), false);
     type(ed, QStringLiteral("#"));
-    expect(ed, QStringLiteral("Note 1: Haiku #4: x\nNote 2: Haiku #5: y\n"));
+    expect(ed, QString(haiku).replace("Haiku : y", "Haiku #5: y"));
     ed.undo();
-    expect(ed, QStringLiteral("Note 1: Haiku #4: x\nNote 2: Haiku : y\n"));
+    expect(ed, haiku);
     ed.appendCrumb(QStringLiteral("Haiku"));
-    expect(ed, QStringLiteral("Note 1: Haiku #4: x\nNote 2: Haiku : y\nNote 3: Haiku #5: \n"));
+    expect(ed, haiku + QStringLiteral("Note 3: Haiku #5: \n"));
     press(ed, Qt::Key_Up, Qt::ControlModifier);
     ed.undo();
-    expect(ed, QStringLiteral("Note 1: Haiku #4: x\nNote 2: Haiku : y\n"));
+    expect(ed, haiku);
+}
+
+void genericParagraphs(ManuscriptEditor &ed)
+{
+    const QString novel = QStringLiteral("The Clock Merchant\n\nWinter\n\nPeople walked in.\n"
+                                         "Next came the mayor.\n\nSpring\n\nRain.\n");
+    ed.loadText(novel);
+    ed.resize(720, 540);
+    ed.show();
+    ed.jumpTo(0, false);
+    settle();
+    auto block = [&](int line) { return ed.document()->findBlockByNumber(line); };
+    auto rect = [&](int line) { return ed.cursorRect(QTextCursor(block(line))); };
+    auto bold = [&](int line) {
+        const auto ranges = block(line).layout()->formats();
+        return !ranges.isEmpty() && ranges.front().format.fontWeight() == QFont::Bold;
+    };
+    const int body = rect(4).height();
+    require(rect(0).height() > rect(2).height() && rect(2).height() > body &&
+            bold(0) && bold(2) && !bold(4), "document and chapter titles have distinct bold sizes");
+    require(rect(1).height() < body / 2 && rect(2).top() - rect(1).top() < body / 2 &&
+            ed.cursorForPosition(rect(1).center()).blockNumber() == 1,
+            "a blank paragraph has compact native layout, caret and hit testing");
+    require(!ed.document()->isModified() && !ed.document()->isUndoAvailable(),
+            "visual paragraph styles do not modify manuscript or undo history");
+    const auto font = ed.font();
+    QFont enlarged = font;
+    enlarged.setPointSizeF(font.pointSizeF() * 1.5);
+    ed.setFont(enlarged);
+    settle();
+    require(rect(4).height() > body && rect(0).height() > rect(2).height() &&
+            rect(2).height() > rect(4).height() && rect(1).height() < rect(4).height() / 2,
+            "relative heading and separator sizes follow the writing font");
+    ed.setFont(font);
+
+    press(ed, Qt::Key_Tab);
+    require(ed.textCursor().position() == block(2).position(), "Tab visits the next heading");
+    press(ed, Qt::Key_Tab);
+    require(ed.textCursor().position() == block(7).position(), "Tab skips ordinary paragraphs");
+    ed.jumpTo(block(7).position() + 2, false);
+    press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
+    require(ed.textCursor().position() == block(7).position(), "reverse Tab reaches this heading's start");
+    press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
+    require(ed.textCursor().position() == block(2).position(), "reverse Tab visits the preceding heading");
+    press(ed, Qt::Key_Down, Qt::ControlModifier);
+    require(ed.textCursor().position() == block(3).position(), "Ctrl+Down visits a blank paragraph");
+    QTextCharFormat underline;
+    underline.setFontUnderline(true);
+    QInputMethodEvent composing(QStringLiteral("café"), {{QInputMethodEvent::TextFormat, 1, 2, underline}});
+    QApplication::sendEvent(&ed, &composing);
+    bool underlined = false;
+    for (const auto &range : block(3).layout()->formats())
+        if (range.start == 1 && range.length == 2 && range.format.fontUnderline())
+            underlined = true;
+    require(rect(3).height() >= body - 1 && underlined &&
+            ed.inputMethodQuery(Qt::ImFont).value<QFont>().pointSizeF() == font.pointSizeF(),
+            "uncommitted input on compact rows keeps the writing font and candidate styling");
+    QInputMethodEvent canceled;
+    QApplication::sendEvent(&ed, &canceled);
+    require(rect(3).height() < body / 2 && !ed.document()->isUndoAvailable(),
+            "canceling composition restores the compact separator without an edit");
+    expect(ed, novel);
+    type(ed, "No separator.");
+    settle();
+    require(!bold(2) && rect(2).height() == rect(4).height(), "typing after a chapter demotes its heading");
+    ed.undo();
+    settle();
+    expect(ed, novel);
+    require(bold(2), "undo restores the adjacent chapter heading");
+
+    ed.jumpTo(block(4).position() + 3, false);
+    const int anchor = ed.textCursor().position();
+    auto extend = [&](int key, int dest) {
+        press(ed, key, Qt::ControlModifier | Qt::ShiftModifier);
+        require(ed.textCursor().anchor() == anchor && ed.textCursor().position() == dest,
+                "generic navigation extends from the original anchor");
+    };
+    extend(Qt::Key_End, block(5).position() - 1);
+    extend(Qt::Key_Home, block(4).position());
+    extend(Qt::Key_Down, block(5).position());
+    extend(Qt::Key_PageDown, novel.size() - 1);
+    extend(Qt::Key_PageUp, 0);
+
+    ed.jumpTo(block(4).position() + 1, false);
+    press(ed, Qt::Key_Q, Qt::ControlModifier);
+    require(ed.textCursor().selectedText() == "People walked in." &&
+            QApplication::clipboard()->text() == "People walked in.", "Ctrl+Q copies the whole paragraph");
+    press(ed, Qt::Key_1, Qt::ControlModifier);
+    require(ed.textCursor().selectedText() == "People walked in.", "Ctrl+1 leaves generic selections alone");
+    press(ed, Qt::Key_Y, Qt::ControlModifier);
+    expect(ed, QString(novel).remove("People walked in.\n"));
+    require(ed.textCursor().position() == block(4).position(), "deleting a paragraph leaves the next at the caret");
+    ed.undo();
+    press(ed, Qt::Key_N, Qt::ControlModifier);
+    type(ed, "A new paragraph.");
+    expect(ed, novel + "A new paragraph.\n");
+    ed.undo();
+    ed.undo();
+    expect(ed, novel);
+    ed.loadText("One paragraph.");
+    press(ed, Qt::Key_N, Qt::ControlModifier);
+    type(ed, "Second.");
+    expect(ed, "One paragraph.\nSecond.");
+    press(ed, Qt::Key_Y, Qt::ControlModifier);
+    expect(ed, "One paragraph.");
+
+    for (const auto &ending : {QStringLiteral("Last heading"), QStringLiteral("Last paragraph.\n")}) {
+        ed.loadText(ending);
+        ed.jumpTo(ending.size(), false);
+        const int pitch = QFontMetrics(ed.font(), ed.viewport()).height();
+        const QPointF point(25, ed.cursorRect().bottom() + 1 + 2 * pitch + pitch / 2);
+        QMouseEvent click(QEvent::MouseButtonPress, point, point, ed.viewport()->mapToGlobal(point.toPoint()),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(ed.viewport(), &click);
+        require(ed.virtualRows() == 3 && !ed.document()->isModified(),
+                "virtual writing rows keep body size after a large heading or compact final block");
+        ime(ed, "New prose.");
+        expect(ed, ending + "\n\n\nNew prose.");
+        ed.undo();
+        expect(ed, ending);
+    }
+
+    ed.loadText("Book//Leaf 1: Haiku #1: prose.\nLeaf 2: Haiku: more.\n");
+    ed.replaceRangeLiteral(4, 6, {});
+    settle();
+    require(ed.model().isGeneric() && rect(2).height() < rect(1).height() / 2 &&
+            block(1).layout()->formats().size() == 1 && !bold(1),
+            "removing the first-line separator clears crumb styles down the manuscript");
+    ed.undo();
+    settle();
+    require(!ed.model().isGeneric() && rect(2).height() >= rect(1).height() - 2 &&
+            block(1).layout()->formats().size() >= 2,
+            "undoing a mode change restores crumb typography throughout");
+    ed.loadText("Note 1: Haiku #4: prose.\nNote 2: Haiku : more.");
+    ed.jumpTo(ed.manuscriptText().lastIndexOf(": more"), false);
+    type(ed, "#");
+    expect(ed, "Note 1: Haiku #4: prose.\nNote 2: Haiku #: more.");
 }
 
 void openingViewport()
@@ -504,7 +643,7 @@ void openingViewport()
         // A hidden splitter can still allocate a placeholder-sized editor.
         // Loading positions the real caret before the final newline.
         ed.resize(92, 30);
-        QString text;
+        QString text = QStringLiteral("Chapters//");
         const QString body = QStringLiteral("A reference to crumb 1. ").repeated(count == 3 ? 1 : 4).trimmed();
         for (int i = 1; i <= count; ++i)
             text += QStringLiteral("Crumb %1: Notes: %2\n").arg(i).arg(body);
@@ -534,7 +673,7 @@ void openingViewport()
 
 void geometry(ManuscriptEditor &ed)
 {
-    const auto first = QStringLiteral("Crumb 1: A: ") + QStringLiteral("one more word ").repeated(35).trimmed();
+    const auto first = QStringLiteral("Book//Crumb 1: A: ") + QStringLiteral("one more word ").repeated(35).trimmed();
     ed.loadText(first + QStringLiteral("\nCrumb 2: B: done"));
     ed.resize(280,300);
     ed.show();
@@ -582,7 +721,7 @@ void geometry(ManuscriptEditor &ed)
     press(ed, Qt::Key_Q, Qt::ControlModifier);
     require(ed.virtualRows()==0, "copy on virtual row returns to EOF");
     expect(ed, before);
-    ed.loadText(QStringLiteral("Leaf 1: : first\nLeaf 2: : last"));
+    ed.loadText(QStringLiteral("Book//Leaf 1: : first\nLeaf 2: : last"));
     const auto endRect = ed.cursorRect();
     const QPointF blank(25, endRect.center().y()+2*endRect.height());
     QMouseEvent click(QEvent::MouseButtonPress, blank, blank,
@@ -592,7 +731,7 @@ void geometry(ManuscriptEditor &ed)
     press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
     require(ed.virtualRows()==0 && ed.textCursor().blockNumber()==1 &&
             ed.textCursor().positionInBlock()==10, "Shift+Tab from virtual space reaches last body");
-    ed.loadText(QStringLiteral("Crumb 1: A: ") + QStringLiteral("An ordinary wrapped sentence. ").repeated(3)
+    ed.loadText(QStringLiteral("Book//Crumb 1: A: ") + QStringLiteral("An ordinary wrapped sentence. ").repeated(3)
                 + QStringLiteral("End.\nCrumb 2: B: next"));
     auto paper = ed.palette();
     paper.setColor(QPalette::Base, Qt::white);
@@ -641,6 +780,7 @@ int main(int argc, char **argv)
     shiftNavigation(editor);
     unicodeRoundTrip(editor);
     fieldsAndClipboard(editor);
+    genericParagraphs(editor);
     openingViewport();
     geometry(editor);
     std::puts("Qt editor input, clipboard, layout, virtual space and navigation passed.");

@@ -8,6 +8,7 @@
 
 class Bookmarks;
 class DocumentStore;
+class QAction;
 class QDialog;
 class QFileDialog;
 class QLabel;
@@ -43,6 +44,8 @@ protected:
 private:
     void buildToolbar(QVBoxLayout *layout);
     void buildMenu();
+    void updateModeControls();
+    void focusNavigation(bool titlesOrGenres);
     void chooseFile(bool saving);
     void documentStateChanged();
     void showCloseDialog();
@@ -72,10 +75,19 @@ private:
     DocumentStore *store_ = nullptr;
     QSplitter *split_ = nullptr;
     QLabel *status_ = nullptr;
+    QLabel *mode_ = nullptr;
     QLabel *notice_ = nullptr;
     QWidget *noticeBar_ = nullptr;
     QMenu *menu_ = nullptr;
     QToolButton *menuButton_ = nullptr;
+    QAction *appendTool_ = nullptr;
+    QAction *appendAction_ = nullptr;
+    QAction *copyAction_ = nullptr;
+    QAction *deleteAction_ = nullptr;
+    QAction *goToNumberAction_ = nullptr;
+    QAction *indexAction_ = nullptr;
+    QAction *sortAction_ = nullptr;
+    QList<QAction *> crumbOnlyActions_;
     QPointer<QFileDialog> chooser_;
     QPointer<QMessageBox> closeDialog_;
     QPointer<StatisticsDialog> statistics_;

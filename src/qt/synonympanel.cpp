@@ -1,11 +1,11 @@
 #include "synonympanel.h"
+#include "panelsearch.h"
 #include "synonymfile.h"
 #include "synonymresults.h"
 
 #include <QAbstractListModel>
 #include <QAction>
 #include <QDialogButtonBox>
-#include <QHeaderView>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
@@ -14,7 +14,6 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScreen>
-#include <QSortFilterProxyModel>
 #include <QTextDocument>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -39,7 +38,7 @@ public:
     {
         if (!i.isValid() || i.row() >= groups_.size()) return {};
         const auto &group = groups_[i.row()];
-        if (role == Qt::UserRole) return group.join(u'\n'); // Filter the unescaped aliases.
+        if (role == Qt::UserRole) return group.join(u'\n'); // Search the unescaped aliases.
         if (role == Qt::DisplayRole || role == Qt::ToolTipRole)
             return SynonymFile::format(group);
         return {};
@@ -67,8 +66,8 @@ class SynonymPanel::Section final : public QWidget {
 public:
     Section(SynonymPanel &owner, const QString &title, const QString &suffix, const QString &keys)
         : QWidget(&owner), file(suffix), owner_(owner), name_(title), id_(suffix.mid(1)),
-          model_(new GroupModel(this)), proxy_(new QSortFilterProxyModel(this)),
-          filter_(new QLineEdit(this)), list_(new QListView(this)), notice_(new QLabel(this))
+          model_(new GroupModel(this)), list_(new QListView(this)),
+          search_(new PanelSearch(list_, this, Qt::UserRole)), notice_(new QLabel(this))
     {
         setObjectName(id_ + QStringLiteral("Section"));
         auto *layout = new QVBoxLayout(this);
@@ -79,7 +78,7 @@ public:
         QFont font = label->font();
         font.setBold(true);
         label->setFont(font);
-        label->setBuddy(filter_);
+        label->setBuddy(search_);
         header->addWidget(label);
         header->addStretch();
         auto *options = new QToolButton(this);
@@ -100,24 +99,24 @@ public:
         auto *rename = action(QStringLiteral("&Edit…\tF2"), [this] { edit(false); });
         auto *remove = action(QStringLiteral("&Delete…\tDelete"), [this] { askDelete(); });
         menu->addSeparator();
-        auto *find = action(QStringLiteral("&Find all occurrences\tEnter"), [this] { use(false); });
-        auto *insert = action(QStringLiteral("&Insert first synonym\tCtrl+Enter"), [this] { use(true); });
+        auto *find = action(QStringLiteral("&Find all occurrences\tEnter"), [this] { search_->activateCurrent(); });
+        auto *insert = action(QStringLiteral("&Insert first synonym\tCtrl+Enter"), [this] { search_->activateCurrent(true); });
         menu->addSeparator();
         auto *reload = action(QStringLiteral("&Reload list\tF5"), [this] { reloadList(); });
         connect(menu, &QMenu::aboutToShow, this, [this, rename, remove, find, insert, reload] {
-            const bool selected = sourceRow() >= 0;
+            const bool selected = currentRow() >= 0;
             for (auto *a : {rename, remove, find, insert}) a->setEnabled(selected);
             reload->setEnabled(!file.manuscriptPath().isEmpty());
         });
         header->addWidget(options);
         layout->addLayout(header);
-        filter_->setObjectName(id_ + QStringLiteral("Filter"));
-        filter_->setAccessibleName(QStringLiteral("Filter ") + title);
-        filter_->setPlaceholderText(QStringLiteral("Filter ") + id_);
-        filter_->setToolTip(QStringLiteral("Filter by any synonym (%1). Down focuses the list.").arg(keys));
-        filter_->setClearButtonEnabled(true);
-        filter_->installEventFilter(this);
-        layout->addWidget(filter_);
+        search_->setObjectName(id_ + QStringLiteral("Search"));
+        search_->setPlaceholderText(tr("Search %1").arg(id_));
+        search_->setAccessibleName(search_->placeholderText());
+        search_->setToolTip(tr("Search any synonym (%1). Up and Down move between matches. "
+                               "Enter finds occurrences. Ctrl+Enter inserts the first synonym.").arg(keys));
+        search_->installEventFilter(this);
+        layout->addWidget(search_);
         list_->setObjectName(id_ + QStringLiteral("List"));
         list_->setAccessibleName(title);
         list_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -126,15 +125,12 @@ public:
         list_->setMinimumSize(0, 0);
         list_->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
         list_->installEventFilter(this);
-        proxy_->setSourceModel(model_);
-        proxy_->setFilterRole(Qt::UserRole);
-        proxy_->setFilterCaseSensitivity(Qt::CaseInsensitive);
-        list_->setModel(proxy_);
-        connect(filter_, &QLineEdit::textChanged, this, [this](const QString &text) {
-            proxy_->setFilterFixedString(text);
-            if (proxy_->rowCount()) list_->setCurrentIndex(proxy_->index(0, 0));
-        });
-        connect(list_, &QListView::activated, this, [this] { use(false); });
+        list_->setModel(model_);
+        search_->activateRow = [this](bool inserting) { return use(inserting); };
+        search_->returnToEditor = [this] { if (owner_.returnToEditor) owner_.returnToEditor(); };
+        connect(list_, &QListView::activated, this, [this] { search_->activateCurrent(); });
+        setTabOrder(options, search_);
+        setTabOrder(search_, list_);
         layout->addWidget(list_, 1);
         notice_->setTextFormat(Qt::PlainText);
         notice_->setWordWrap(true);
@@ -144,26 +140,21 @@ public:
 
     SynonymFile file;
 
-    void focusFilter()
+    void focusSearch()
     {
-        filter_->setFocus(Qt::ShortcutFocusReason);
-        filter_->selectAll();
+        search_->focusSearch();
     }
     void updateList(const QStringList &select = {})
     {
         model_->setGroups(file.groups());
-        if (select.isEmpty()) {
-            if (proxy_->rowCount()) list_->setCurrentIndex(proxy_->index(0, 0));
-            return;
-        }
-        const QModelIndex mapped = proxy_->mapFromSource(model_->index(file.groups().indexOf(select), 0));
-        if (mapped.isValid()) list_->setCurrentIndex(mapped);
+        if (!select.isEmpty()) list_->setCurrentIndex(model_->index(file.groups().indexOf(select), 0));
+        search_->refresh();
     }
     void clearView()
     {
         if (form_) form_->close();
         if (question_) question_->close();
-        filter_->clear();
+        search_->clear();
         notice_->hide();
     }
 protected:
@@ -173,60 +164,47 @@ protected:
         auto *key = static_cast<QKeyEvent *>(event);
         const auto mods = key->modifiers() & ~Qt::KeypadModifier;
         const int code = key->key();
-        if (code == Qt::Key_Return || code == Qt::Key_Enter) {
-            if (mods != Qt::NoModifier && mods != Qt::ControlModifier) return false;
-            use(mods == Qt::ControlModifier);
-            return true;
-        }
         if (mods != Qt::NoModifier) return false;
         if (code == Qt::Key_Insert) { edit(true); return true; }
         if (code == Qt::Key_F2) { edit(false); return true; }
         if (code == Qt::Key_Delete && object == list_) { askDelete(); return true; }
         if (code == Qt::Key_F5) { reloadList(); return true; }
-        if ((code == Qt::Key_Up || code == Qt::Key_Down) && object == filter_) {
-            if (proxy_->rowCount()) {
-                list_->setFocus();
-                if (!list_->currentIndex().isValid()) list_->setCurrentIndex(proxy_->index(0, 0));
-            }
-            return true;
-        }
-        if (code == Qt::Key_Escape && owner_.returnToEditor) {
-            owner_.returnToEditor();
-            return true;
-        }
         if (object == list_ && !key->text().isEmpty() && key->text().at(0).isPrint()) {
-            focusFilter();
-            filter_->insert(key->text());
+            focusSearch();
+            search_->insert(key->text());
             return true;
         }
         return false;
     }
 
 private:
-    int sourceRow() const
+    int currentRow() const
     {
-        return proxy_->mapToSource(list_->currentIndex()).row();
+        return list_->currentIndex().row();
     }
     void showError(const QString &error)
     {
         notice_->setText(error);
         notice_->setVisible(!error.isEmpty());
     }
-    void use(bool inserting)
+    bool use(bool inserting)
     {
-        const int row = sourceRow();
-        if (row < 0 || row >= file.groups().size()) return;
+        const int row = currentRow();
+        if (row < 0 || row >= file.groups().size()) return false;
         const QStringList group = file.groups().at(row);
         if (inserting) {
-            if (owner_.insertSynonym) owner_.insertSynonym(group.first());
+            if (!owner_.insertSynonym) return false;
+            owner_.insertSynonym(group.first());
         } else {
+            if (!owner_.document_) return false;
             owner_.showOccurrences(group);
         }
+        return true;
     }
     void edit(bool adding)
     {
         if (form_) { showWindow(form_); return; }
-        const int row = sourceRow();
+        const int row = currentRow();
         if (!adding && (row < 0 || row >= file.groups().size())) return;
         const QStringList original = adding ? QStringList{} : file.groups().at(row);
         auto *form = new QDialog(this);
@@ -270,7 +248,7 @@ private:
             if (!fresh) reason = QStringLiteral("The selected group changed. Reopen its editor.");
             if (fresh && SynonymFile::parse(field->text(), parsed, &reason) &&
                 (adding ? file.add(field->text(), &reason) : file.edit(row, field->text(), &reason))) {
-                filter_->clear();
+                search_->clear();
                 updateList(parsed);
                 showError({});
                 form->accept();
@@ -308,7 +286,7 @@ private:
 
     void askDelete()
     {
-        const int row = sourceRow();
+        const int row = currentRow();
         if (row < 0 || row >= file.groups().size()) return;
         const QStringList original = file.groups().at(row);
         confirm(QStringLiteral("Delete the synonym group %1?").arg(SynonymFile::format(original)), QStringLiteral("&Delete"),
@@ -349,9 +327,8 @@ private:
     SynonymPanel &owner_;
     QString name_, id_;
     GroupModel *model_;
-    QSortFilterProxyModel *proxy_;
-    QLineEdit *filter_;
     QListView *list_;
+    PanelSearch *search_;
     QLabel *notice_;
     QPointer<QDialog> form_;
     QPointer<QMessageBox> question_;
@@ -359,8 +336,8 @@ private:
 
 SynonymPanel::SynonymPanel(QTextDocument *document, QWidget *parent)
     : QWidget(parent), document_(document),
-      characters_(new Section(*this, QStringLiteral("Characters"), QStringLiteral(".characters"), QStringLiteral("Alt+1"))),
-      recurring_(new Section(*this, QStringLiteral("Recurring"), QStringLiteral(".recurring"), QStringLiteral("Alt+2")))
+      characters_(new Section(*this, QStringLiteral("Characters"), QStringLiteral(".characters"), QStringLiteral("Ctrl+Shift+1"))),
+      recurring_(new Section(*this, QStringLiteral("Recurring"), QStringLiteral(".recurring"), QStringLiteral("Ctrl+Shift+2")))
 {
     setObjectName(QStringLiteral("synonymPanel"));
     auto *layout = new QVBoxLayout(this);
@@ -371,8 +348,8 @@ SynonymPanel::SynonymPanel(QTextDocument *document, QWidget *parent)
     setMinimumWidth(0);
 }
 
-void SynonymPanel::focusCharacters() { characters_->focusFilter(); }
-void SynonymPanel::focusRecurring() { recurring_->focusFilter(); }
+void SynonymPanel::focusCharacters() { characters_->focusSearch(); }
+void SynonymPanel::focusRecurring() { recurring_->focusSearch(); }
 
 void SynonymPanel::showOccurrences(const QStringList &aliases)
 {

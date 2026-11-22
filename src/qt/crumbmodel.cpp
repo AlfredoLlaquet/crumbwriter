@@ -122,11 +122,15 @@ CrumbRecord parseRecord(const QString &text, bool firstLine, const CrumbRecord *
 {
     CrumbRecord record;
     record.text = text;
+    record.blank = QStringView(text).trimmed().isEmpty();
     QByteArray bytes = text.toUtf8();
     CwCrumb parsed{};
     cw_crumb_parse(bytes.constData(), firstLine, &parsed);
     ColumnMap map(text);
     record.recordStart = map.at(parsed.record_start);
+    record.hasWorkSeparator = parsed.record_start > 0;
+    const char *start = g_utf8_offset_to_pointer(bytes.constData(), parsed.record_start);
+    record.words = int(cw_crumb_words(start, false));
     record.headerStart = map.at(parsed.header_start);
     record.digitsStart = map.at(parsed.digits_start);
     record.headerEnd = map.at(parsed.header_end);
@@ -138,7 +142,6 @@ CrumbRecord parseRecord(const QString &text, bool firstLine, const CrumbRecord *
         record.titleEnd = map.at(parsed.title_end);
         record.bodyStart = map.at(parsed.body_start);
         record.title = text.mid(record.titleStart, record.titleEnd - record.titleStart);
-        record.words = int(cw_crumb_words(bytes.constData(), firstLine));
         if (old && record.title == old->title) {
             record.genres = old->genres;
             const int displacement = record.titleStart - old->titleStart;
@@ -152,17 +155,13 @@ CrumbRecord parseRecord(const QString &text, bool firstLine, const CrumbRecord *
             record.genres = parseGenres(record.title, record.titleStart);
         }
     }
-    // The official whole-file sed expression replaces the first // even if
-    // it is inside a URL or an unfinished line. Individual counts use the
-    // parser's separate first-line work-title rule.
-    if (firstLine) {
-        const qsizetype separator = bytes.indexOf("//");
-        if (separator >= 0) bytes.replace(separator, 2, " ");
-        record.fileWords = separator >= 0 || !record.valid
-            ? int(cw_crumb_words(bytes.constData(), false)) : record.words;
-    } else {
-        record.fileWords = record.valid ? record.words : int(cw_crumb_words(bytes.constData(), false));
-    }
+    // The official whole-manuscript command splits the first literal // on
+    // line 1. A generic document has no work-title stage in its word count.
+    if (record.hasWorkSeparator) {
+        bytes.replace(bytes.indexOf("//"), 2, " ");
+        record.fileWords = int(cw_crumb_words(bytes.constData(), false));
+    } else
+        record.fileWords = record.words;
     cw_crumb_clear(&parsed);
     return record;
 }
@@ -192,7 +191,9 @@ struct CrumbModel::Data {
     std::set<int> recognized;
     std::map<QString, std::set<Occurrence>> genres;
     std::set<int> warningRows;
+    std::map<int, QString> titles;
     qint64 fileWords = 0;
+    int nonblankParagraphs = 0;
     std::function<QDate()> localDate;
     DailyCount daily;
     QTimer dateTimer;
@@ -204,7 +205,76 @@ struct CrumbModel::Data {
         QVector<quint64> headers;
         headers.reserve(rows.size());
         for (const auto &record : rows) headers.append(record.number);
-        return daily.open(manuscript, localDate(), headers);
+        return daily.open(manuscript, localDate(), headers, fileWords);
+    }
+
+    bool generic() const { return rows.empty() || !rows.front().hasWorkSeparator; }
+
+    // A terminal LF ends a file line. Qt adds an editable empty block after
+    // it, but only a second LF can supply a blank separator at that position.
+    int physicalLines() const
+    {
+        return int(rows.size()) - (!rows.empty() && rows.back().text.isEmpty() ? 1 : 0);
+    }
+
+    ParagraphRole classify(int line) const
+    {
+        const auto &row = rows[line];
+        if (row.blank) return ParagraphRole::Blank;
+        const bool followedByBlank = line + 1 < physicalLines() && rows[line + 1].blank;
+        if (line == 0) {
+            if (followedByBlank || !row.text.contains(u'.') ||
+                (row.text.isUpper() && !row.text.isLower()))
+                return ParagraphRole::DocumentTitle;
+        } else if (followedByBlank && rows[line - 1].blank) {
+            return ParagraphRole::ChapterTitle;
+        }
+        return ParagraphRole::Body;
+    }
+
+    void refreshTitles(CrumbChange &change, int oldEnd, int delta)
+    {
+        if (change.modeChanged) {
+            titles.clear();
+            change.firstLine = 0;
+            change.lastLine = int(rows.size()) - 1;
+            change.titlesChanged = true;
+        }
+        if (!generic()) return;
+        if (delta && !change.modeChanged) {
+            // Only indexed headings after the edit need new keys. Paragraph
+            // text and roles farther down the manuscript are already current.
+            auto first = titles.lower_bound(change.firstLine);
+            if (first != titles.end()) {
+                std::map<int, QString> shifted;
+                for (auto it = titles.lower_bound(oldEnd); it != titles.end(); ++it)
+                    shifted.emplace(it->first + delta, it->second);
+                titles.erase(first, titles.end());
+                titles.merge(shifted);
+                change.titlesChanged = true;
+            }
+        }
+        const int first = std::max(0, change.firstLine - 1);
+        const int last = std::min(int(rows.size()) - 1, change.lastLine + 1);
+        for (int i = first; i <= last; ++i) {
+            auto &row = rows[i];
+            const auto role = classify(i);
+            if (row.role != role) {
+                row.role = role;
+                change.firstLine = std::min(change.firstLine, i);
+                change.lastLine = std::max(change.lastLine, i);
+            }
+            auto title = titles.find(i);
+            if (role == ParagraphRole::DocumentTitle || role == ParagraphRole::ChapterTitle) {
+                if (title == titles.end() || title->second != row.text) {
+                    titles.insert_or_assign(i, row.text);
+                    change.titlesChanged = true;
+                }
+            } else if (title != titles.end()) {
+                titles.erase(title);
+                change.titlesChanged = true;
+            }
+        }
     }
 
     int headerPosition(int line) const
@@ -364,7 +434,10 @@ CrumbModel::CrumbModel(QTextDocument *document, std::function<QDate()> localDate
     for (auto block = document->begin(); block.isValid(); block = block.next()) {
         d->rows.push_back(parseRecord(ManuscriptText::blockText(block), block.blockNumber() == 0));
         d->fileWords += d->rows.back().fileWords;
+        if (!d->rows.back().blank) ++d->nonblankParagraphs;
     }
+    initial.lastLine = int(d->rows.size()) - 1;
+    d->refreshTitles(initial, 0, 0);
     d->rebuildIndices(initial);
     markOpened();
     connect(document, &QTextDocument::contentsChange, this, &CrumbModel::update);
@@ -388,6 +461,7 @@ void CrumbModel::update(int position, int removed, int added)
     auto *doc = d->document;
     const int count = doc->blockCount();
     const int oldCount = int(d->rows.size());
+    const bool wasGeneric = d->generic();
     const int delta = count - oldCount;
     const int lastPosition = doc->characterCount() - 1;
     int first = doc->findBlock(std::clamp(position, 0, lastPosition)).blockNumber();
@@ -427,8 +501,15 @@ void CrumbModel::update(int position, int removed, int added)
     }
     const QString dailyError = d->daily.replace(first, oldEnd, d->rows, parsed, editStart, removed, added);
     if (!dailyError.isEmpty() && onDailyCountError) onDailyCountError(dailyError);
-    for (int line = first; line < oldEnd; ++line) d->fileWords -= d->rows[line].fileWords;
-    for (const auto &record : parsed) d->fileWords += record.fileWords;
+    for (int line = first; line < oldEnd; ++line) {
+        d->fileWords -= d->rows[line].fileWords;
+        if (!d->rows[line].blank) --d->nonblankParagraphs;
+    }
+    for (const auto &record : parsed) {
+        d->fileWords += record.fileWords;
+        if (!record.blank) ++d->nonblankParagraphs;
+    }
+    d->daily.setTotalWords(d->fileWords);
 
     CrumbChange change;
     change.firstLine = first;
@@ -450,6 +531,8 @@ void CrumbModel::update(int position, int removed, int added)
     }
     if (!d->recognized.empty())
         d->fallbackLabel = d->rows[*d->recognized.rbegin()].label;
+    change.modeChanged = wasGeneric != d->generic();
+    d->refreshTitles(change, oldEnd, delta);
     notify(change);
 }
 
@@ -472,8 +555,34 @@ QVector<CrumbGenre> CrumbModel::genres() const
 }
 
 int CrumbModel::crumbCount() const { return int(d->recognized.size()); }
+bool CrumbModel::isGeneric() const { return d->generic(); }
+int CrumbModel::paragraphCount() const { return d->nonblankParagraphs; }
+ParagraphRole CrumbModel::paragraphRole(int line) const
+{
+    return isGeneric() ? record(line).role : ParagraphRole::Body;
+}
+
+QVector<int> CrumbModel::titleLines() const
+{
+    QVector<int> lines;
+    lines.reserve(d->titles.size());
+    for (const auto &entry : d->titles) lines.append(entry.first);
+    return lines;
+}
+
+int CrumbModel::neighborTitle(int line, bool backward) const
+{
+    if (backward) {
+        auto it = d->titles.lower_bound(line);
+        return it == d->titles.begin() ? -1 : std::prev(it)->first;
+    }
+    auto it = d->titles.upper_bound(line);
+    return it == d->titles.end() ? -1 : it->first;
+}
+
 qint64 CrumbModel::totalWords() const { return d->fileWords; }
 int CrumbModel::todayCount() const { return d->daily.count(); }
+qint64 CrumbModel::todayWords() const { return d->daily.wordChange(); }
 
 void CrumbModel::markOpened()
 {
@@ -483,14 +592,16 @@ void CrumbModel::markOpened()
     CrumbChange change;
     change.lastLine = std::max(0, int(d->rows.size()) - 1);
     change.genresChanged = true;
+    change.titlesChanged = true;
     notify(change);
 }
 
 QString CrumbModel::openDailyCount(const QString &manuscript)
 {
     const int previous = todayCount();
+    const qint64 previousWords = todayWords();
     const auto error = d->openDaily(manuscript);
-    if (previous != todayCount()) notify({});
+    if (previous != todayCount() || previousWords != todayWords()) notify({});
     return error;
 }
 
@@ -550,6 +661,12 @@ int CrumbModel::findNumber(quint64 number, int origin, bool backward, bool wrap,
 
 int CrumbModel::neighbor(int line, bool backward) const
 {
+    if (isGeneric()) {
+        const int count = d->physicalLines();
+        if (count == 0) return -1;
+        if (backward) return line > 0 ? std::min(count, line) - 1 : -1;
+        return line < count - 1 ? std::max(0, line + 1) : -1;
+    }
     if (backward) {
         const auto it = d->recognized.lower_bound(line);
         return it == d->recognized.begin() ? -1 : *std::prev(it);

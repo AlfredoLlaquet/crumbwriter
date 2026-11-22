@@ -10,6 +10,9 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLayout>
@@ -151,7 +154,7 @@ void testWindow(const QTemporaryDir &tmp)
 void testDuplicateHistory(const QTemporaryDir &tmp)
 {
     const auto path = tmp.filePath("Duplicates.txt");
-    const QByteArray bytes = "Crumb 7: Alpha: red.\nCrumb 7: Beta: blue.";
+    const QByteArray bytes = "Colors//Crumb 7: Alpha: red.\nCrumb 7: Beta: blue.";
     write(path, bytes);
     Preferences prefs(tmp.filePath("duplicates.ini"));
     prefs.settings().setValue("editor/live-save", false);
@@ -165,9 +168,10 @@ void testDuplicateHistory(const QTemporaryDir &tmp)
     const int exact = bytes.indexOf("blue") + 2;
     ed->jumpTo(exact);
     ed->jumpTo(bytes.indexOf("red"));
-    key(Qt::Key_F6);
+    key(Qt::Key_3, Qt::ControlModifier | Qt::ShiftModifier);
     auto *tree = window.findChild<QTreeWidget *>("visitHistory");
-    CHECK(tree && tree->hasFocus());
+    auto *historySearch = window.findChild<QLineEdit *>("historySearch");
+    CHECK(tree && historySearch && historySearch->hasFocus());
     CHECK(tree->columnCount() == 1);
     const auto rows = tree->findItems("Beta", Qt::MatchExactly, 0);
     CHECK(rows.size() == 1);
@@ -176,12 +180,12 @@ void testDuplicateHistory(const QTemporaryDir &tmp)
     CHECK(ed->hasFocus() && ed->textCursor().position() == exact);
     key(Qt::Key_F2);
     CHECK(ed->textCursor().position() == bytes.indexOf("red"));
-    key(Qt::Key_F6);
+    key(Qt::Key_NumberSign, Qt::ControlModifier | Qt::ShiftModifier);
     key(Qt::Key_B, {}, "b");
     key(Qt::Key_E, {}, "e");
     key(Qt::Key_Return);
     CHECK(ed->textCursor().position() == exact);
-    key(Qt::Key_F6);
+    key(Qt::Key_periodcentered, Qt::ControlModifier | Qt::ShiftModifier);
     key(Qt::Key_A, {}, "a");
     key(Qt::Key_L, {}, "l");
     key(Qt::Key_Return);
@@ -251,7 +255,7 @@ void testWritingTools(const QTemporaryDir &tmp)
     CHECK(window.findChild<QLabel *>("todayCount")->text().contains("1"));
     key(Qt::Key_Escape);
 
-    key(Qt::Key_1, Qt::AltModifier);
+    key(Qt::Key_Exclam, Qt::ControlModifier | Qt::ShiftModifier);
     CHECK(!ed->hasFocus());
     key(Qt::Key_Return, Qt::ControlModifier);
     CHECK(until([&] { return ed->hasFocus(); }));
@@ -260,7 +264,7 @@ void testWritingTools(const QTemporaryDir &tmp)
     const int nameStart = ed->manuscriptText().indexOf("Fox, Captain");
     ed->selectRange(nameStart, nameStart + 12, false);
     for (const auto section : {Qt::Key_1, Qt::Key_2}) {
-        key(section, Qt::AltModifier);
+        key(section, Qt::ControlModifier | Qt::ShiftModifier);
         key(Qt::Key_Insert);
         auto *form = window.findChild<QDialog *>(section == Qt::Key_1 ? "charactersEditDialog" : "recurringEditDialog");
         CHECK(form && form->isVisible());
@@ -299,7 +303,7 @@ void testWritingTools(const QTemporaryDir &tmp)
 void testGroupedLiveEdits(const QTemporaryDir &tmp)
 {
     const auto path = tmp.filePath("Live.txt");
-    const QByteArray original = "Crumb 1: : fox";
+    const QByteArray original = "The fox";
     write(path, original);
     Preferences prefs(tmp.filePath("live.ini"));
     prefs.settings().setValue("editor/backup", false);
@@ -329,10 +333,64 @@ void testGroupedLiveEdits(const QTemporaryDir &tmp)
     CHECK(window.close());
 }
 
+void testGenericWindow(const QTemporaryDir &tmp)
+{
+    const QString path = tmp.filePath("Moon.txt");
+    const QByteArray bytes = "Cartography\n\nThe Arrival\n\nA goose counted twice.\nThe moon waited.\n";
+    write(path, bytes);
+    write(path + ".bookmarks",
+          R"({"version":1,"bookmarks":[{"category":"Scenes","name":"Arrival","line":3}]})");
+    Preferences prefs(tmp.filePath("generic.ini"));
+    prefs.settings().setValue("editor/backup", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.loadDocument(path));
+    window.activateManuscript(false);
+    auto *ed = window.editor();
+    CHECK(until([&] { return ed->hasFocus(); }));
+    auto *mode = window.findChild<QLabel *>("documentMode");
+    CHECK(mode && mode->text() == "Generic mode");
+    key(Qt::Key_L, Qt::ControlModifier);
+    auto *number = window.findChild<QLineEdit *>("cw-crumb-number");
+    CHECK(number && number->accessibleName() == "Line number" && number->hasFocus());
+    number->setText("2");
+    key(Qt::Key_Return);
+    CHECK(ed->hasFocus() && ed->textCursor().blockNumber() == 1);
+    key(Qt::Key_Dollar, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *titles = window.findChild<QLineEdit *>("genresSearch");
+    CHECK(titles && titles->hasFocus());
+    titles->setText("rri");
+    key(Qt::Key_Return, Qt::ControlModifier);
+    CHECK(titles->text().isEmpty() && ed->hasFocus() && ed->textCursor().blockNumber() == 2);
+    key(Qt::Key_I, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *stats = window.findChild<QDialog *>("statisticsDialog");
+    auto *count = stats ? stats->findChild<QLabel *>("statisticsCrumbs") : nullptr;
+    CHECK(count && count->text() == "4" && count->accessibleName() == "Paragraphs");
+    window.activateManuscript(false);
+    CHECK(until([&] { return ed->hasFocus(); }));
+    ed->jumpTo(0);
+    ed->insertLiteral("Cranolos//");
+    CHECK(mode->text() == "Crumb mode" && count->accessibleName() == "Crumbs");
+    ed->undo();
+    CHECK(mode->text() == "Generic mode" && count->text() == "4");
+    ed->jumpTo(0);
+    ed->insertLiteral("Preface.\n");
+    auto savedLine = [&] {
+        auto json = QJsonDocument::fromJson(read(path + ".bookmarks")).object();
+        auto rows = json.value("bookmarks").toArray();
+        return rows.isEmpty() ? -1 : rows.first().toObject().value("line").toInt();
+    };
+    CHECK(until([&] { return read(path) == "Preface.\n" + bytes && savedLine() == 4; }));
+    ed->undo();
+    CHECK(until([&] { return read(path) == bytes && savedLine() == 3; }));
+    stats->close();
+    CHECK(window.close());
+}
+
 void testDialogs(const QTemporaryDir &tmp)
 {
     const auto path = tmp.filePath("Stats.txt");
-    QByteArray manuscript;
+    QByteArray manuscript = "Birds//";
     for (int i = 1; i <= 1234; ++i)
         manuscript += "Crumb " + QByteArray::number(i) + ": : owl\n";
     write(path, manuscript);
@@ -351,13 +409,13 @@ void testDialogs(const QTemporaryDir &tmp)
     auto *crumbs = stats->findChild<QLabel *>("statisticsCrumbs");
     auto *words = stats->findChild<QLabel *>("statisticsWords");
     auto *average = stats->findChild<QLabel *>("statisticsAverage");
-    CHECK(crumbs->text() == "1,234" && words->text() == "4,936" && average->text() == "4.00");
+    CHECK(crumbs->text() == "1,234" && words->text() == "4,937" && average->text() == "4.00");
     CHECK(crumbs->alignment().testFlag(Qt::AlignRight));
     CHECK(crumbs->geometry().right() == words->geometry().right() &&
           words->geometry().right() == average->geometry().right());
     CHECK(stats->layout()->contentsMargins().left() >= 20);
     key(Qt::Key_C, Qt::ControlModifier);
-    CHECK(QApplication::clipboard()->text().contains("Total words: 4,936"));
+    CHECK(QApplication::clipboard()->text().contains("Total words: 4,937"));
     key(Qt::Key_Escape);
     QLocale::setDefault(QLocale("es_ES"));
     {
@@ -403,6 +461,7 @@ int main(int argc, char **argv)
     testDuplicateHistory(tmp);
     testWritingTools(tmp);
     testGroupedLiveEdits(tmp);
+    testGenericWindow(tmp);
     testDialogs(tmp);
     std::puts("Main window keyboard, reference jump, duplicate history and close choices passed.");
 }

@@ -1,0 +1,29 @@
+#pragma once
+
+#include <QLineEdit>
+#include <functional>
+
+class QAbstractItemView;
+class QModelIndex;
+
+// Search a flat panel list in place. The view keeps its original model and order.
+class PanelSearch final : public QLineEdit {
+public:
+    PanelSearch(QAbstractItemView *view, QWidget *parent, int role = Qt::DisplayRole);
+    void focusSearch();
+    void refresh();
+    void activateCurrent(bool alternate = false);
+    std::function<bool(bool alternate)> activateRow;
+    std::function<void()> returnToEditor;
+
+protected:
+    void keyPressEvent(QKeyEvent *key) override;
+    bool eventFilter(QObject *object, QEvent *event) override;
+
+private:
+    bool matches(const QModelIndex &index) const;
+    void seek(int step, bool fromCurrent);
+    bool handleKey(QKeyEvent *key, bool inField);
+    QAbstractItemView *view_;
+    int role_;
+};
