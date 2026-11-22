@@ -37,6 +37,50 @@ QVariantMap geometryOf(const QWidget *window)
             {"screen", screen ? screen->name() : QString()}};
 }
 
+bool manuscriptWindow(const QWidget *window)
+{
+    return window->objectName() == QStringLiteral("manuscriptWindow");
+}
+
+bool anotherManuscriptIsVisible(const QWidget *window)
+{
+    const auto windows = QApplication::topLevelWidgets();
+    for (const auto *other : windows)
+        if (other != window && other->isVisible() && manuscriptWindow(other)) return true;
+    return false;
+}
+
+bool hasFloatingBounds(const QWidget *window)
+{
+    if (!window->screen() || (window->windowState() &
+        (Qt::WindowMinimized | Qt::WindowMaximized | Qt::WindowFullScreen))) return false;
+    const QRect work = window->screen()->availableGeometry();
+    const QRect frame = window->frameGeometry();
+    // KWin/Krohnkite gives normal windows tile rectangles; Qt's window state
+    // alone cannot distinguish them. Include window decorations and allow for
+    // compositor gaps and rounding. Wayland does not publish global positions.
+    const int gap = qBound(4, qMin(work.width(), work.height()) / 60, 20);
+    const bool positionsKnown = !QGuiApplication::platformName().startsWith("wayland");
+    const bool fillsWidth = qAbs(frame.width() - work.width()) <= 2 * gap &&
+        (!positionsKnown || qAbs(frame.left() - work.left()) <= gap);
+    const bool fillsHeight = qAbs(frame.height() - work.height()) <= 2 * gap &&
+        (!positionsKnown || qAbs(frame.top() - work.top()) <= gap);
+    if (fillsWidth || fillsHeight) return false;
+    // A stacked edge tile can fill a half or third of each axis. Do not
+    // promote a flush grid cell into the explicit startup position of a
+    // future manuscript. Normally positioned floating windows keep their
+    // size and location, even if their dimensions resemble a grid cell.
+    const bool atSide = qAbs(frame.left() - work.left()) <= gap || qAbs(frame.right() - work.right()) <= gap;
+    const bool atEnd = qAbs(frame.top() - work.top()) <= gap || qAbs(frame.bottom() - work.bottom()) <= gap;
+    auto subdivision = [gap](int length, int extent) {
+        for (int divisor : {2, 3, 4})
+            if (qAbs(length - extent / divisor) <= 2 * gap) return true;
+        return false;
+    };
+    return !(positionsKnown && atSide && atEnd &&
+             (subdivision(frame.width(), work.width()) || subdivision(frame.height(), work.height())));
+}
+
 // Initial geometry is a hint before mapping. A tiled window manager can
 // assign a completely different rectangle. Once mapped, never reposition
 // the window during a resize or in response to a changed desktop layout.
@@ -135,7 +179,14 @@ public:
             connect(shortcut, &QShortcut::activated, this, [this] { arrange(); });
         }
         window->installEventFilter(this);
-        applyGeometry(window, settings_.value(prefix_ + "geometry").toMap());
+        const auto saved = settings_.value(prefix_ + "geometry").toMap();
+        // Additional manuscripts must receive fresh placement from the
+        // compositor. In particular, replaying a sibling's last tile sends
+        // X11 a user-position hint and can make KWin vertically maximize it.
+        // Older snapshots did not distinguish floating windows from tiles.
+        if (!manuscriptWindow(window) || (!anotherManuscriptIsVisible(window) &&
+            saved.value("floating").toBool()))
+            applyGeometry(window, saved);
         restoreParts();
         lastGeometry_ = geometryOf(window);
     }
@@ -148,7 +199,8 @@ public:
         // Retained tools (for example the bookmark manager) share preferences
         // with windows of the same type opened by a second manuscript.
         if (viewMode_) viewMode_->setCurrentIndex(settings_.value(prefix_ + "viewMode", 0).toInt());
-        applyGeometry(window_, settings_.value(prefix_ + "geometry").toMap());
+        if (!manuscriptWindow(window_))
+            applyGeometry(window_, settings_.value(prefix_ + "geometry").toMap());
         lastGeometry_ = geometryOf(window_);
     }
     void arrange() { if (window_) showLayoutEditor(window_, parts_); }
@@ -208,10 +260,19 @@ private:
         if (!window_) return;
         for (auto *part : dirtyParts_) settings_.setValue(prefix_ + part->key, part->save());
         dirtyParts_.clear();
-        const auto geometry = geometryOf(window_);
+        auto geometry = geometryOf(window_);
         if (geometryDirty_ && geometry != lastGeometry_) {
-            settings_.setValue(prefix_ + "geometry", geometry);
             lastGeometry_ = geometry;
+            // Retain the last genuine floating layout when the compositor
+            // tiles a window. The next cold launch can still use that layout.
+            if (manuscriptWindow(window_)) {
+                if (!hasFloatingBounds(window_)) {
+                    geometryDirty_ = false;
+                    return;
+                }
+                geometry.insert("floating", true);
+            }
+            settings_.setValue(prefix_ + "geometry", geometry);
         }
         geometryDirty_ = false;
     }

@@ -231,11 +231,11 @@ Visit history displays crumb titles or the beginnings of generic paragraphs. An 
 
 Press **Ctrl+U** to open **Insert Symbol**. Type `outline heart`, `music`, a literal symbol, or a code point such as `U+2661`. The grid searches 733 symbols in 17 themes. The preview shows the selected glyph in the manuscript font, its name, and its code point. Themes narrow the selection to related symbols, including typography, mathematics, arrows, and music.
 
-**Alt+S** focuses Search. **Alt+T** opens the theme selector. **Down** moves from Search into the grid, where the arrow keys browse. **Enter** or a double-click inserts and closes. **Ctrl+Enter** inserts and keeps the picker open. **Ctrl+D** toggles a favorite, and **Escape** closes. Favorites and recently used symbols are available across manuscripts on the same computer. A chosen symbol is inserted as ordinary Unicode text in one undo step. [Catalog and Unicode data notice](data/symbols.tsv)
+**Alt+S** or **Ctrl+F** focuses Search. **Alt+T** or **Ctrl+T** opens the theme selector. **Down** moves from Search into the grid, where the arrow keys browse. **Enter** or a double-click inserts and closes. **Ctrl+Enter** inserts and keeps the picker open. **Ctrl+D** toggles a favorite, and **Escape** closes. Favorites and recently used symbols are available across manuscripts on the same computer. A chosen symbol is inserted as ordinary Unicode text in one undo step. [Catalog and Unicode data notice](data/symbols.tsv)
 
 ### Arrange panels and columns
 
-Use **View → Arrange Panels and Columns** or **Ctrl+Shift+F10** in a configurable window. Choose a panel or column, press **Space** to show or hide it, and use the move and size controls to adjust its position or dimensions. The editor remembers the arrangement for each kind of window on that computer. Tiled windows use the space assigned by KDE or its window manager.
+Use **View → Arrange Panels and Columns** or **Ctrl+Shift+F10** in a configurable window. Choose a panel or column, press **Space** to show or hide it, and use the move and size controls to adjust its position or dimensions. The editor remembers the arrangement for each kind of window on that computer. A floating window can recover its size. When Krohnkite tiles two manuscripts, each takes the space assigned by the window manager.
 
 **View → Restore Default Layouts** restores the original arrangements across windows. Manuscript text, bookmarks, dictionaries, and writing preferences keep their own settings.
 

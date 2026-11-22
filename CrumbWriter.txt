@@ -519,7 +519,8 @@ The catalog is built into the executable.
 The original themes and search terms accompany Unicode character names.
 The source and distribution notice for the names is in data/symbols.tsv.
 
-Alt+S focuses Search. Alt+T opens the theme selector. Down enters the
+Alt+S or Ctrl+F focuses Search, including from the open theme menu.
+Alt+T or Ctrl+T opens the theme selector. Down enters the
 grid. Use the arrows to browse, Enter or double-click to insert and close,
 or Ctrl+Enter to insert and continue browsing. Ctrl+D toggles Favorite.
 Escape closes. Favorites and the 32 most recently used symbols persist
@@ -537,6 +538,8 @@ Characters and Recurring can be arranged independently, as can the current
 information, visit history, and genres or titles. Previously saved layouts
 fit the available space when a window opens on another display. KDE and
 Krohnkite govern the outer placement and live size of tiled windows.
+A tiled rectangle must never become a saved floating-window size for
+the next manuscript. The second window can then take its own tile.
 
 View → Restore Default Layouts restores the original arrangements for
 the main and auxiliary windows. Layout preferences are per computer.

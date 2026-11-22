@@ -63,7 +63,7 @@ constexpr HelpRow shortcuts[] = {
     {"Names","F5 in manuscript","Accept a suggested ending or open name completions. Use arrows and Enter to choose. Escape dismisses"},
     {"Names","Ctrl+, → Names","Choose completion and underlining for Characters and Recurring, the prefix length, and the underline color"},
     {"Symbols","Ctrl+U","Open Insert Symbol. Search by description, theme, symbol, or Unicode code point"},
-    {"Insert Symbol","Alt+S / Alt+T / Down","Focus Search / Theme / the grid. Browse symbols with the arrow keys"},
+    {"Insert Symbol","Alt+S or Ctrl+F / Alt+T or Ctrl+T","Focus Search / open the theme selector. Down from Search enters the grid, where arrows browse"},
     {"Insert Symbol","Enter / Ctrl+Enter / Ctrl+D","Insert and close / insert and continue browsing / toggle Favorite. Escape closes"},
     {"Editing","Ctrl+, → Writing","Copy deleted text to the clipboard is on by default. Each run of Backspaces or Deletes builds a word in reading order"},
     {"Navigation","Ctrl+L","Go to a crumb number in Crumb mode or a physical line in Generic mode"},

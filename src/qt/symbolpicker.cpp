@@ -90,25 +90,15 @@ SymbolPicker::SymbolPicker(ManuscriptEditor *editor, QSettings &settings, QWidge
     search_->setObjectName("symbolSearch");
     search_->setClearButtonEnabled(true);
     search_->setPlaceholderText(tr("Name, description, theme, symbol, or U+ code"));
-    search_->setToolTip(tr("Search symbols (Alt+S)"));
+    search_->setToolTip(tr("Search symbols (Alt+S or Ctrl+F)"));
     form->addRow(tr("Search"), search_);
-    auto *focusSearch = new QShortcut(QKeySequence("Alt+S"), this);
-    connect(focusSearch, &QShortcut::activated, this, [this] {
-        search_->setFocus(Qt::ShortcutFocusReason);
-        search_->selectAll();
-    });
     theme_ = new QComboBox(this);
     theme_->setObjectName("symbolTheme");
     theme_->addItems({tr("All symbols"), tr("Favorites"), tr("Recently used")});
     theme_->addItems(SymbolCatalog::instance().themes());
     theme_->setMaxVisibleItems(theme_->count());
-    theme_->setToolTip(tr("Choose a theme (Alt+T)"));
+    theme_->setToolTip(tr("Choose a theme (Alt+T or Ctrl+T)"));
     form->addRow(tr("Theme"), theme_);
-    auto *chooseTheme = new QShortcut(QKeySequence("Alt+T"), this);
-    connect(chooseTheme, &QShortcut::activated, this, [this] {
-        theme_->setFocus(Qt::ShortcutFocusReason);
-        theme_->showPopup();
-    });
     layout->addLayout(form);
 
     model_ = new SymbolListModel(this);
@@ -173,8 +163,11 @@ SymbolPicker::SymbolPicker(ManuscriptEditor *editor, QSettings &settings, QWidge
     auto *keepOpen = new QShortcut(QKeySequence("Ctrl+Return"), this);
     keepOpen->setKeys({QKeySequence("Ctrl+Return"), QKeySequence("Ctrl+Enter")});
     connect(keepOpen, &QShortcut::activated, this, [this] { insertCurrent(true); });
-    search_->installEventFilter(this);
-    grid_->installEventFilter(this);
+    // The combo's popup is a separate window. Receive its focused child's
+    // keystrokes even when the platform suspends dialog-level shortcuts.
+    for (auto *child : findChildren<QWidget *>()) child->installEventFilter(this);
+    theme_->view()->installEventFilter(this);
+    theme_->view()->window()->installEventFilter(this);
     setTabOrder(search_, theme_);
     setTabOrder(theme_, grid_);
     setFocusProxy(search_);
@@ -279,11 +272,52 @@ void SymbolPicker::toggleFavorite()
     refresh(entry->code);
 }
 
+void SymbolPicker::focusSearch()
+{
+    if (theme_->view()->isVisible()) theme_->hidePopup();
+    // Some styles restore activation to the combo after releasing the popup
+    // grab. Reclaim the dialog before assigning the new input focus.
+    activateWindow();
+    search_->setFocus(Qt::ShortcutFocusReason);
+    search_->selectAll();
+}
+
 bool SymbolPicker::eventFilter(QObject *watched, QEvent *event)
 {
-    if (event->type() != QEvent::KeyPress) return QDialog::eventFilter(watched, event);
+    const bool overrideShortcut = event->type() == QEvent::ShortcutOverride;
+    if (!overrideShortcut && event->type() != QEvent::KeyPress)
+        return QDialog::eventFilter(watched, event);
+
     auto *key = static_cast<QKeyEvent *>(event);
     const auto mods = key->modifiers() & ~Qt::KeypadModifier;
+    const bool textTarget = watched == search_ || watched == grid_;
+    const bool composed = textTarget && isComposedTextKey(*key);
+    const bool searchKey = (mods == Qt::ControlModifier && key->key() == Qt::Key_F) ||
+                           (mods == Qt::AltModifier && key->key() == Qt::Key_S);
+    const bool themeKey = (mods == Qt::ControlModifier || mods == Qt::AltModifier) && key->key() == Qt::Key_T;
+    if (overrideShortcut) {
+        if (composed || searchKey || themeKey) {
+            key->accept();
+            return true;
+        }
+        return QDialog::eventFilter(watched, event);
+    }
+    if (composed) {
+        // Option on macOS and AltGr elsewhere produce real text, including
+        // with letters that also serve as mnemonics on other layouts.
+        if (watched == grid_) search_->setFocus(Qt::ShortcutFocusReason);
+        search_->insert(key->text());
+        return true;
+    }
+    if (searchKey) { focusSearch(); return true; }
+    if (themeKey) {
+        if (!theme_->view()->isVisible()) {
+            theme_->setFocus(Qt::ShortcutFocusReason);
+            theme_->showPopup();
+        }
+        return true;
+    }
+    if (!textTarget) return QDialog::eventFilter(watched, event);
     if ((key->key() == Qt::Key_Return || key->key() == Qt::Key_Enter) &&
         (mods == Qt::NoModifier || mods == Qt::ControlModifier)) {
         insertCurrent(mods == Qt::ControlModifier);
@@ -303,7 +337,7 @@ bool SymbolPicker::eventFilter(QObject *watched, QEvent *event)
             search_->backspace();
             return true;
         }
-        if ((!mods || mods == Qt::ShiftModifier || isComposedTextKey(*key)) &&
+        if ((!mods || mods == Qt::ShiftModifier) &&
             !key->text().isEmpty() && key->text().front().isPrint()) {
             search_->setFocus();
             search_->insert(key->text());

@@ -211,6 +211,51 @@ void optionalColumns()
     CHECK(table.isColumnHidden(0) && !table.isColumnHidden(1));
 }
 
+void floatingAndTiledManuscripts(QSettings &settings)
+{
+    const QString key = "layouts/v1/manuscriptWindow/geometry";
+    settings.remove("layouts");
+    const QRect work = QGuiApplication::primaryScreen()->availableGeometry();
+    const QSize floating(work.width()*3/5, work.height()*2/5);
+    const QPoint position(work.left()+work.width()/6, work.top()+work.height()/7);
+    {
+        Fixture writer(settings);
+        writer.resize(floating);
+        writer.move(position);
+        events();
+        writer.hide(); // Flush the last visible window state.
+        events();
+        auto saved = settings.value(key).toMap();
+        CHECK(saved.value("floating").toBool());
+        CHECK(saved.value("size").toSize() == floating);
+    }
+    {
+        Fixture first(settings);
+        CHECK(first.size() == floating); // The first floating manuscript reopens at its saved size.
+        // A tiler takes the full height, including decorations. New documents
+        // must not inherit its exact requested size or top-left position.
+        const QSize decoration = first.frameGeometry().size() - first.size();
+        first.move(work.topLeft());
+        first.resize(work.width()/2 - decoration.width(), work.height() - decoration.height());
+        events();
+        QEvent deactivate(QEvent::WindowDeactivate);
+        QApplication::sendEvent(&first, &deactivate);
+        CHECK(settings.value(key).toMap().value("size").toSize() == floating);
+        Fixture second(settings);
+        CHECK(second.size() == QSize(650, 420));
+        first.hide();
+        events();
+    }
+    {
+        Fixture nextSession(settings);
+        CHECK(nextSession.size() == floating); // The tile did not overwrite the last floating frame.
+    }
+    settings.setValue(key, QVariantMap{{"size", QSize(work.width()/2, work.height()-37)},
+        {"position", work.topLeft()}, {"screen", QGuiApplication::primaryScreen()->name()}});
+    Fixture legacy(settings);
+    CHECK(legacy.size() == QSize(650, 420)); // Older snapshots could contain a busy desktop's tile.
+}
+
 void unavailableDisplay(QSettings &settings)
 {
     const auto key = "layouts/v1/manuscriptWindow/geometry";
@@ -233,6 +278,7 @@ int main(int argc, char **argv)
     QSettings settings(tmp.filePath("settings.ini"), QSettings::IniFormat);
     panelAndColumnLayouts(settings);
     optionalColumns();
+    floatingAndTiledManuscripts(settings);
     unavailableDisplay(settings);
     return 0;
 }

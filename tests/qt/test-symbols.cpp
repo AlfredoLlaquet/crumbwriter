@@ -89,9 +89,26 @@ void picker(QSettings &settings)
 
     key(search, Qt::Key_T, Qt::AltModifier);
     check(until([&] { return themes->view()->isVisible(); }), "Alt+T opens the theme selector");
-    themes->hidePopup();
+    key(themes->view(), Qt::Key_S, Qt::AltModifier);
+    check(until([&] { return !themes->view()->isVisible() && search->hasFocus(); }),
+          "Alt+S closes the theme popup and returns to search");
+    themes->setFocus();
     key(themes, Qt::Key_S, Qt::AltModifier);
-    check(until([&] { return search->hasFocus(); }), "Alt+S returns to search");
+    check(until([&] { return search->hasFocus(); }), "Alt+S works on the closed theme selector");
+    key(search, Qt::Key_T, Qt::ControlModifier);
+    check(until([&] { return themes->view()->isVisible(); }), "Ctrl+T opens themes on any keyboard layout");
+    key(themes->view(), Qt::Key_F, Qt::ControlModifier);
+    check(until([&] { return !themes->view()->isVisible() && search->hasFocus(); }),
+          "Ctrl+F returns from the popup on any keyboard layout");
+#ifdef Q_OS_MACOS
+    const auto symbolMods = Qt::AltModifier;
+#else
+    const auto symbolMods = Qt::ControlModifier | Qt::AltModifier;
+#endif
+    key(search, Qt::Key_S, symbolMods, QStringLiteral("ß"));
+    key(search, Qt::Key_T, symbolMods, QStringLiteral("†"));
+    check(search->text() == QStringLiteral("ß†") && !themes->view()->isVisible(),
+          "Option or AltGr text takes precedence in Search");
 
     search->setText("U+1D11E");
     check(list->model()->rowCount() == 1 && details->text().contains("MUSICAL SYMBOL G CLEF"),
@@ -131,6 +148,10 @@ void picker(QSettings &settings)
     search->clear();
     key(search, Qt::Key_Down);
     check(list->hasFocus(), "Down enters the grid");
+    key(list, Qt::Key_T, symbolMods, QStringLiteral("†"));
+    check(search->text() == QStringLiteral("†"), "composed text from the grid searches");
+    search->clear();
+    list->setFocus();
     key(list, Qt::Key_M, Qt::NoModifier, "m");
     check(search->hasFocus() && search->text() == "m", "typing from the grid searches");
     key(search, Qt::Key_Escape);
@@ -155,6 +176,9 @@ void picker(QSettings &settings)
 
 int main(int argc, char **argv)
 {
+#ifdef Q_OS_MACOS
+    QCoreApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
+#endif
     QApplication app(argc, argv);
     QTemporaryDir temp;
     check(temp.isValid(), "temporary settings directory");

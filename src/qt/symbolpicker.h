@@ -27,6 +27,7 @@ private:
     const WriterSymbol *current() const;
     void refresh(const QString &keepCode = {});
     void updatePreview();
+    void focusSearch();
     void insertCurrent(bool keepOpen);
     void toggleFavorite();
 
