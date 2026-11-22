@@ -267,7 +267,7 @@ the moon for bumps." has 11 words. Its full physical line has 15 because the
 work title contributes four (including the freestanding hyphen).
 
 The official whole-file count includes the work title. Use this command
-in the host locale on FreeBSD or Linux.
+in the host locale on FreeBSD, Linux or macOS.
 
     sed -e '1s@//@ @' -e 's/—/ /g' -e 's@ / @ @g' Crumbs.txt | wc -w
 
@@ -279,11 +279,17 @@ before applying only the last two substitutions. Generic mode applies the
 whitespace, em dash and spaced slash rules directly to the prose and
 counts URL slashes as part of their token.
 
-On macOS the native locale supplies word boundaries. Windows has no
-system wc command, so the Windows editor uses the FreeBSD 15 C.UTF-8
-whitespace rules. Nonbreaking space, narrow nonbreaking space and figure
-space separate words there. The Unicode word joiner (U+2060) stays inside
-its word. Changing the Windows display language does not change the count.
+After sed makes those replacements, FreeBSD and Apple wc -w classify
+individual unsigned bytes with the native locale. Their wc decodes whole
+multibyte characters when -m is supplied. GNU wc on Ubuntu reads whole
+characters in a UTF-8 locale.
+
+Windows reproduces FreeBSD 15's wc -w in C.UTF-8 without invoking a
+shell. In this byte range the separator values are ASCII whitespace and
+0xA0. For example, a narrow nonbreaking space (U+202F, bytes E2 80 AF)
+between two letters leaves one word. A word joiner (U+2060, E2 81 A0)
+between the same letters splits them into two words because of its last
+byte. The Windows display language has no effect on these rules.
 
 Ctrl+Shift+I opens modeless Manuscript Statistics. In Crumb mode, Crumbs
 counts recognized records. Total words includes the first-line work title

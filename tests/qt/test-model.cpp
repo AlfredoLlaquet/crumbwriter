@@ -3,6 +3,7 @@
 
 #include <QtCore/QCryptographicHash>
 #include <QtCore/QFile>
+#include <QtCore/QFileInfo>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QTextBlock>
@@ -13,9 +14,17 @@
 
 #include <clocale>
 #include <cstdio>
+#include <cstdlib>
 #include <random>
 
-#define CHECK(condition) do { if (!(condition)) qFatal("%s:%d: %s", __FILE__, __LINE__, #condition); } while (false)
+static void check(bool passed, const char *function, int line, const char *condition)
+{
+    if (!passed) {
+        std::fprintf(stderr, "model:%s:%d: %s\n", function, line, condition);
+        std::exit(EXIT_FAILURE);
+    }
+}
+#define CHECK(condition) check(bool(condition), __func__, __LINE__, #condition)
 
 static void replace(QTextDocument &doc, int start, int length, const QString &text)
 {
@@ -530,15 +539,24 @@ static void dailyWordPersistence(const QString &directory)
 
     // Version 2.2 stored crumb identities without a word baseline.
     const QString legacy = directory + "/Legacy.txt";
-    const auto key = QCryptographicHash::hash(legacy.toUtf8(), QCryptographicHash::Sha256).toHex();
-    QFile state(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/crumbwriter/daily/" + QString::fromLatin1(key) + ".json");
+    QFile manuscript(legacy);
+    CHECK(manuscript.open(QIODevice::WriteOnly));
+    const QByteArray oldText("Work//C 1: A: x\nC 2: B: y");
+    CHECK(manuscript.write(oldText) == oldText.size());
+    manuscript.close();
+    // Match 2.2's key, including expansion of short Windows temp paths.
+    const auto name = QFileInfo(legacy).canonicalFilePath();
+    CHECK(!name.isEmpty());
+    const auto key = QCryptographicHash::hash(name.toUtf8(), QCryptographicHash::Sha256).toHex();
+    const QString data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    QFile state(data + "/crumbwriter/daily/" + QString::fromLatin1(key) + ".json");
     CHECK(state.open(QIODevice::WriteOnly));
     const auto oldState = QByteArray("{\"version\":1,\"headers\":[\"1\"],\"renamed\":[],\"date\":\"") +
                           date.toString(Qt::ISODate).toLatin1() + "\"}";
     CHECK(state.write(oldState) == oldState.size());
     state.close();
     QTextDocument migrated;
-    migrated.setPlainText(QStringLiteral("Work//C 1: A: x\nC 2: B: y"));
+    migrated.setPlainText(QString::fromUtf8(oldText));
     CrumbModel counted(&migrated, clock);
     CHECK(counted.openDailyCount(legacy).isEmpty());
     CHECK(counted.todayCount() == 1 && counted.todayWords() == 0);

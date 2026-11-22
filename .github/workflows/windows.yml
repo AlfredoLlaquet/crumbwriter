@@ -13,6 +13,8 @@ permissions:
 jobs:
   build:
     name: Build and package on Windows x64
+    outputs:
+      installers: ${{ steps.installer_artifact.outcome == 'success' && steps.fixture_artifact.outcome == 'success' }}
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -51,7 +53,7 @@ jobs:
         run: |
           set -eu
           python packaging/shared/stage.py --destination build/test-data
-          export QT_QPA_PLATFORM=windows DICPATH="$(cygpath -m "$PWD/build/test-data/dictionaries")"
+          export QT_QPA_PLATFORM=windows QT_FORCE_STDERR_LOGGING=1 DICPATH="$(cygpath -m "$PWD/build/test-data/dictionaries")"
           ctest --test-dir build --output-on-failure --timeout 180
       - name: Collect the runtime, dictionary, notices and corresponding source
         id: runtime
@@ -64,24 +66,29 @@ jobs:
           python packaging/shared/stage.py --destination build/stage --msys-root "$prefix" --sources build/runtime-sources
           tar -C build -cf build/CrumbWriter-Windows-x64-Sources.tar runtime-sources
       - name: Build the installer and an earlier-version upgrade fixture
+        id: package
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.wizard.outcome == 'success' }}
         shell: pwsh
         run: packaging/windows/installer.ps1 -BuildDir build -WithUpgradeFixture
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: installer_artifact
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         with:
           name: windows-installer
           path: build/CrumbWriter-Windows-x64-Setup.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: fixture_artifact
+        if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         with:
           name: windows-upgrade-fixture
           path: build/CrumbWriter-UpgradeFixture.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-runtime-sources
           path: build/CrumbWriter-Windows-x64-Sources.tar
@@ -93,16 +100,18 @@ jobs:
     name: Install, upgrade and remove on a clean Windows runner
     runs-on: windows-2025
     needs: build
+    # Keep independent installer diagnostics even when a native editor test fails.
+    if: ${{ !cancelled() && needs.build.outputs.installers == 'true' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: windows-installer
           path: dist
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: windows-upgrade-fixture
           path: dist

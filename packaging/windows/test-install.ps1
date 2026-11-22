@@ -89,7 +89,7 @@ if ((Get-ItemProperty $uninstallKey).DisplayVersion -ne (Get-Item $exe).VersionI
 if (!(Test-Path $desktopLink) -or !(Test-Path $startLink)) { throw 'Upgrade did not install selected shortcuts' }
 if (!(Get-Item $openWithKey).GetValueNames().Contains('CrumbWriter.Text')) { throw 'Missing Open with registration' }
 if ((Registered $choiceKey 'ProgId') -ne $txtChoice -or (Registered 'HKCU:\Software\Classes\.txt' '') -ne $txtDefault) { throw 'Default text editor was changed' }
-foreach ($item in 'LICENSE','CrumbWriter.txt','dictionaries/en_US.aff','dictionaries/en_US.dic','third-party','plugins/platforms/qwindows.dll','qt.conf') {
+foreach ($item in 'LICENSE','CrumbWriter.txt','dictionaries/en_US.aff','dictionaries/en_US.dic','third-party/InnoSetup/LICENSE.txt','plugins/platforms/qwindows.dll','qt.conf') {
     if (!(Test-Path -LiteralPath (Join-Path $installDir $item))) { throw "Missing installed component: $item" }
 }
 Assert-Preserved $preserved

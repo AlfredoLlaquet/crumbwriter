@@ -15,6 +15,12 @@ if ($version -notmatch '^\d+\.\d+(\.\d+){0,2}$') {
 $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
 if (!(Test-Path -LiteralPath $compiler)) { $compiler = (Get-Command ISCC.exe -ErrorAction Stop).Source }
 Write-Output ("Installer compiler: " + $compiler + " " + (Get-Item $compiler).VersionInfo.ProductVersion)
+if (!$CheckOnly) {
+    $notice = Join-Path (Split-Path $compiler) 'license.txt'
+    if (!(Test-Path -LiteralPath $notice)) { throw "Missing Inno Setup license beside $compiler" }
+    $target = New-Item -ItemType Directory -Force -Path (Join-Path $payload 'third-party/InnoSetup')
+    Copy-Item -LiteralPath $notice -Destination (Join-Path $target.FullName 'LICENSE.txt')
+}
 function Compile-Installer([string]$Version, [string]$Name) {
     $options = @()
     if ($CheckOnly) { $options += '/O-' }

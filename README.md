@@ -160,13 +160,13 @@ A crumb’s count includes everything from the header label through the end of i
 
 The current-crumb panel skips the general work title on line 1. The **whole-manuscript total includes it**. In the Cranolos example the first crumb has 11 words. Its full file line has 15 because `Cranolos - Manolo’s Crumbs` contributes four, including the separately spaced hyphen. The average divides the whole-file total by the number of recognized crumbs.
 
-The official reference on FreeBSD and Linux is the following command. On line 1, the first substitution replaces the first literal `//` with a single space. On every line, the remaining substitutions replace each em dash and each nonoverlapping literal ` / ` with a space. Finally, `wc -w` counts whitespace-delimited runs according to the active locale. For the first **individual** crumb, remove the work title through the actual delimiter and apply the last two substitutions to the rest of that line.
+The official reference on FreeBSD and Linux is the following command. It also runs on macOS. On line 1, the first substitution replaces the first literal `//` with a single space. On every line, the remaining substitutions replace each em dash and each nonoverlapping literal ` / ` with a space. Finally, `wc -w` counts the resulting words. For the first **individual** crumb, remove the work title through the actual delimiter and apply the last two substitutions to the rest of that line.
 
 ~~~sh
 sed -e '1s@//@ @' -e 's/—/ /g' -e 's@ / @ @g' Crumbs.txt | wc -w
 ~~~
 
-The Mac build follows the native UTF-8 locale’s word boundaries. The Windows build uses the whitespace rules of FreeBSD 15’s UTF-8 locale, so its count is independent of the Windows display language.
+The exact count for unusual Unicode characters depends on the platform’s `wc -w`. FreeBSD and macOS check the remaining UTF-8 bytes individually. On Ubuntu, GNU `wc` reads whole characters in a UTF-8 locale. The Windows build reproduces FreeBSD 15’s `C.UTF-8` result, independent of the Windows display language. [FreeBSD implementation](https://github.com/freebsd/freebsd-src/blob/releng/15.0/usr.bin/wc/wc.c) · [Apple implementation](https://github.com/apple-oss-distributions/text_cmds/blob/main/wc/wc.c) · [GNU word counting](https://www.gnu.org/software/coreutils/manual/html_node/wc-invocation.html)
 
 Generic prose uses the same whitespace, em dash, and spaced slash rules. A URL keeps its slashes. Manuscript Statistics includes headings among the nonblank paragraphs and excludes blank separators from the paragraph count and average.
 

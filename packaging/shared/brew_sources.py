@@ -5,9 +5,12 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import subprocess
+import tempfile
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 
-from source_files import Notices, archive_notices, download, notice_filename, sha256, source_archive
+from source_files import Notices, archive_notices, download, notice_filename, source_archive
 
 
 def brew(*args):
@@ -45,6 +48,59 @@ def formula_sources(recipe):
     return archives, patches
 
 
+def formula_body(path):
+    # Bottling inserts or replaces this block after building; it contains the
+    # published bottle hashes. Every other line of the recipe must match.
+    body = re.sub(r"^  bottle do\n.*?^  end$", "", path.read_text(encoding="utf-8"), flags=re.MULTILINE | re.DOTALL)
+    return [line for line in body.splitlines() if line.strip()]
+
+
+def read_json(url, headers=None):
+    with urlopen(Request(url, headers=headers or {}), timeout=45) as response:
+        return json.load(response)
+
+
+def matching_patch_revision(keg, recipe):
+    name = keg.parent.name
+    # The registry index records the exact git commit used to build a bottle.
+    # Some poured INSTALL_RECEIPTs contain no tap_git_head.
+    info = read_json(f"https://formulae.brew.sh/api/formula/{name}.json")
+    version = info["versions"]["stable"]
+    if info["revision"]:
+        version += f"_{info['revision']}"
+    tags = [keg.name]
+    release = info.get("bottle", {}).get("stable", {}).get("rebuild", 0)
+    if version == keg.name and release:
+        tags.insert(0, f"{keg.name}-{release}")
+    registry = "homebrew/core/" + name.replace("@", "/")
+    token = read_json(f"https://ghcr.io/token?scope=repository:{registry}:pull&service=ghcr.io")["token"]
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.oci.image.index.v1+json"}
+    with tempfile.TemporaryDirectory() as tmp:
+        candidate = Path(tmp) / recipe.name
+        for tag in tags:
+            try:
+                manifest = read_json(f"https://ghcr.io/v2/{registry}/manifests/{tag}", headers)
+            except HTTPError as error:
+                if error.code == 404:
+                    continue
+                raise
+            metadata = manifest["annotations"]
+            revision = metadata["org.opencontainers.image.revision"]
+            source = urlsplit(metadata["org.opencontainers.image.source"]).path
+            path = source.split(f"/blob/{revision}/", 1)[-1]
+            download(f"https://raw.githubusercontent.com/Homebrew/homebrew-core/{revision}/{path}", candidate)
+            if formula_body(candidate) == formula_body(recipe):
+                return revision, {}
+        # A locally compiled keg can match the official current recipe exactly.
+        if version == keg.name:
+            revision = info["tap_git_head"]
+            download(f"https://raw.githubusercontent.com/Homebrew/homebrew-core/{revision}/{info['ruby_source_path']}",
+                     candidate, info["ruby_source_checksum"]["sha256"])
+            if formula_body(candidate) == formula_body(recipe):
+                return revision, info.get("local_patch_checksums", {})
+    raise ValueError(f"Cannot identify the Homebrew source revision for {recipe}")
+
+
 def stage_tap_patches(keg, recipe, patches, folder):
     if not patches:
         return
@@ -52,11 +108,7 @@ def stage_tap_patches(keg, recipe, patches, folder):
     revision = receipt.get("source", {}).get("tap_git_head")
     checksums = {}
     if not revision:
-        info = json.loads(brew("info", "--json=v2", keg.parent.name))["formulae"][0]
-        if info["ruby_source_checksum"]["sha256"] != sha256(recipe):
-            raise ValueError(f"Cannot identify the Homebrew revision for {recipe}")
-        revision = info["tap_git_head"]
-        checksums = info.get("local_patch_checksums", {})
+        revision, checksums = matching_patch_revision(keg, recipe)
     if not re.fullmatch(r"[a-f0-9]{40}", revision):
         raise ValueError(f"Unexpected Homebrew source revision: {revision}")
     for name in patches:

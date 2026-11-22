@@ -20,11 +20,12 @@ python3 packaging/shared/stage.py --destination "$resources" --qt-prefix "$qt" \
 python3 packaging/macos/bundle.py sign "$app"
 python3 packaging/macos/bundle.py verify "$app" "$cpu"
 
+check_status=0
 LC_ALL=en_US.UTF-8 DICPATH="$resources/dictionaries" QT_QPA_PLATFORM=offscreen \
-    ctest --test-dir "$build" --output-on-failure --timeout 240
+    ctest --test-dir "$build" --output-on-failure --timeout 240 || check_status=$?
 env -u DICPATH -u QT_PLUGIN_PATH -u DYLD_LIBRARY_PATH -u DYLD_FRAMEWORK_PATH \
-    "$app/Contents/MacOS/Crumb Writer" --smoke-test
-if ((source_status != 0)); then exit "$source_status"; fi
+    "$app/Contents/MacOS/Crumb Writer" --smoke-test || check_status=$?
+if ((source_status != 0 || check_status != 0)); then exit 1; fi
 mkdir -p "$assets"
 COPYFILE_DISABLE=1 tar -czf "$assets/native-$cpu.tar.gz" -C "$build/installed" 'Crumb Writer.app'
 COPYFILE_DISABLE=1 tar -cf "$assets/CrumbWriter-macOS-$cpu-Sources.tar" -C "$build/runtime-sources" .
