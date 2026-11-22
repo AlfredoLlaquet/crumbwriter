@@ -157,6 +157,9 @@ SpellDictionaryDialog::SpellDictionaryDialog(QWidget *owner) : QDialog(owner)
     auto *refresh = new QShortcut(QKeySequence(Qt::Key_F5), this);
     connect(refresh, &QShortcut::activated, read, &QPushButton::click);
     auto *del = new QShortcut(QKeySequence(Qt::Key_Delete), words_);
+#ifdef Q_OS_MACOS
+    del->setKeys({QKeySequence(Qt::Key_Delete), QKeySequence(Qt::Key_Backspace)});
+#endif
     del->setContext(Qt::WidgetShortcut);
     connect(del, &QShortcut::activated, remove, &QPushButton::click);
 }

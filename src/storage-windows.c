@@ -119,8 +119,11 @@ identity(HANDLE handle, const gchar *path, CwFileIdentity *id, GError **error)
         win_error(error, "Cannot inspect", path, GetLastError());
         return FALSE;
     }
-    if (GetFileType(handle) != FILE_TYPE_DISK ||
-        (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) {
+    FILE_ATTRIBUTE_TAG_INFO tag;
+    gboolean link = (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
+        (!GetFileInformationByHandleEx(handle, FileAttributeTagInfo, &tag, sizeof tag) ||
+         IsReparseTagNameSurrogate(tag.ReparseTag));
+    if (GetFileType(handle) != FILE_TYPE_DISK || (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || link) {
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_REGULAR_FILE,
                     "“%s” is not a regular file.", path);
         return FALSE;
@@ -170,7 +173,7 @@ gboolean
 cw_disk_read(const gchar *path, const CwTargetStamp *stamp, CwDiskSnapshot *disk, GError **error)
 {
     g_autofree wchar_t *wide = native_path(path);
-    HANDLE h = open_target(wide, GENERIC_READ, FILE_SHARE_READ, FILE_FLAG_OPEN_REPARSE_POINT);
+    HANDLE h = open_target(wide, GENERIC_READ, FILE_SHARE_READ, 0);
     if (h == INVALID_HANDLE_VALUE) {
         win_error(error, "Cannot open", path, GetLastError());
         return FALSE;
@@ -217,7 +220,7 @@ stage_bytes(const gchar *path, const gchar *bytes, gsize size, CwFileIdentity *i
     g_autofree gchar *dir = g_path_get_dirname(path);
     g_autofree wchar_t *wide = NULL;
     HANDLE h;
-    do {
+    for (;;) {
         g_autofree gchar *uuid = g_uuid_string_random();
         g_autofree gchar *base = g_strconcat(".crumbwriter-", uuid, ".tmp", NULL);
         g_autofree gchar *sibling = g_build_filename(dir, base, NULL);
@@ -225,10 +228,13 @@ stage_bytes(const gchar *path, const gchar *bytes, gsize size, CwFileIdentity *i
         wide = native_path(sibling);
         h = CreateFileW(wide, GENERIC_WRITE | FILE_READ_ATTRIBUTES, 0, NULL,
                         CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-    } while (h == INVALID_HANDLE_VALUE && GetLastError() == ERROR_FILE_EXISTS);
-    if (h == INVALID_HANDLE_VALUE) {
-        win_error(error, "Cannot create a temporary file in", dir, GetLastError());
-        return NULL;
+        if (h != INVALID_HANDLE_VALUE)
+            break;
+        DWORD code = GetLastError();
+        if (code != ERROR_FILE_EXISTS) {
+            win_error(error, "Cannot create a temporary file in", dir, code);
+            return NULL;
+        }
     }
     gboolean ok = TRUE;
     for (gsize pos = 0; pos < size;) {
@@ -314,8 +320,7 @@ matches_baseline(HANDLE h, const gchar *path, const CwDiskSnapshot *disk, GError
 static HANDLE
 lock_baseline(const wchar_t *wide, const gchar *path, const CwDiskSnapshot *disk, GError **error)
 {
-    HANDLE h = open_target(wide, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE,
-                           FILE_FLAG_OPEN_REPARSE_POINT);
+    HANDLE h = open_target(wide, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, 0);
     if (h == INVALID_HANDLE_VALUE) {
         DWORD code = GetLastError();
         if (missing(code))

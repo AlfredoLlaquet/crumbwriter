@@ -334,29 +334,70 @@ external_edits(Fixture *f, gconstpointer data)
     cw_file_free(file);
 }
 
-#ifndef G_OS_WIN32
+static gboolean
+make_link(const gchar *target, const gchar *name)
+{
+#ifdef G_OS_WIN32
+    g_autofree gunichar2 *to = g_utf8_to_utf16(target, -1, NULL, NULL, NULL);
+    g_autofree gunichar2 *link_name = g_utf8_to_utf16(name, -1, NULL, NULL, NULL);
+    if (CreateSymbolicLinkW((wchar_t *)link_name, (wchar_t *)to,
+                            SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE))
+        return TRUE;
+    if (GetLastError() == ERROR_PRIVILEGE_NOT_HELD) {
+        g_test_skip("This account cannot create a symbolic link");
+        return FALSE;
+    }
+    g_error("Cannot create test symlink: %lu", (unsigned long)GetLastError());
+#else
+    g_assert_cmpint(symlink(target, name), ==, 0);
+#endif
+    return TRUE;
+}
+
+static gboolean
+is_link(const gchar *path)
+{
+#ifdef G_OS_WIN32
+    g_autofree gunichar2 *wide = g_utf8_to_utf16(path, -1, NULL, NULL, NULL);
+    DWORD attributes = GetFileAttributesW((wchar_t *)wide);
+    return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT);
+#else
+    return g_file_test(path, G_FILE_TEST_IS_SYMLINK);
+#endif
+}
+
 static void
 symlinks(Fixture *f, gconstpointer data)
 {
     (void)data;
     put_bytes(f->path, "target", 6);
     g_autofree gchar *alias = g_build_filename(f->directory, "alias", NULL);
-    g_assert_cmpint(symlink("Crumbs.txt", alias), ==, 0);
+    if (!make_link("Crumbs.txt", alias))
+        return;
     g_autofree gchar *text = NULL;
     GError *error = NULL;
     CwFile *file = cw_file_open(alias, TRUE, &text, &error);
     g_assert_no_error(error);
     g_assert_nonnull(file);
+#ifdef G_OS_WIN32
+    /* Windows temp paths may have different spelling through the shell. */
+    CwTargetStamp canonical, sought;
+    g_assert_true(cw_file_stamp_target(cw_file_path(file), &canonical, &error));
+    g_assert_true(cw_file_stamp_target(f->path, &sought, &error));
+    g_assert_cmpuint(canonical.identity.file_id, ==, sought.identity.file_id);
+    g_assert_cmpuint(canonical.identity.volume, ==, sought.identity.volume);
+#else
     g_assert_cmpstr(cw_file_path(file), ==, f->path);
+#endif
     g_assert_true(cw_file_save(file, "saved", &error));
     g_assert_no_error(error);
     expect_bytes(f->path, "saved", 5);
-    g_assert_true(g_file_test(alias, G_FILE_TEST_IS_SYMLINK));
+    g_assert_true(is_link(alias));
 
     g_autofree gchar *other = g_build_filename(f->directory, "other.txt", NULL);
     put_bytes(other, "untouched", 9);
     g_assert_cmpint(g_remove(f->path), ==, 0);
-    g_assert_cmpint(symlink("other.txt", f->path), ==, 0);
+    g_assert_true(make_link("other.txt", f->path));
     g_assert_false(cw_file_save(file, "stale", &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG);
     g_clear_error(&error);
@@ -366,11 +407,9 @@ symlinks(Fixture *f, gconstpointer data)
     g_assert_null(cw_file_save_as(f->path, "new", TRUE, &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_FILENAME);
     g_clear_error(&error);
-    g_assert_true(g_file_test(f->path, G_FILE_TEST_IS_SYMLINK));
+    g_assert_true(is_link(f->path));
     cw_file_free(file);
 }
-
-#endif
 
 static void
 save_again_after_copy(Fixture *f, gconstpointer data)
@@ -452,9 +491,7 @@ main(int argc, char **argv)
     g_test_add("/storage/manuscript-spacing", Fixture, NULL, setup, manuscript_spacing, teardown);
     g_test_add("/storage/external-edits", Fixture, NULL, setup, external_edits, teardown);
     g_test_add("/storage/save-again-after-copy", Fixture, NULL, setup, save_again_after_copy, teardown);
-#ifndef G_OS_WIN32
     g_test_add("/storage/symlinks", Fixture, NULL, setup, symlinks, teardown);
-#endif
     g_test_add("/storage/invalid-input", Fixture, NULL, setup, invalid_input, teardown);
     return g_test_run();
 }

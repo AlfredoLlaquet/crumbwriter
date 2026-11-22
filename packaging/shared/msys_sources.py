@@ -10,7 +10,9 @@ from source_files import Notices, archive_notices, download, notice_filename
 def pacman_fields(path):
     result = {}
     for block in path.read_text(encoding="utf-8").strip().split("\n\n"):
-        header, *values = block.splitlines()
+        if not block.strip():
+            continue
+        header, *values = block.strip().splitlines()
         result[header.strip("%")] = values
     return result
 

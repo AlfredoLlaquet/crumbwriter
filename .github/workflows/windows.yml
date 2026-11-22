@@ -24,6 +24,7 @@ jobs:
           msystem: UCRT64
           update: true
           install: >-
+            tar zstd lzip
             mingw-w64-ucrt-x86_64-gcc
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
@@ -33,13 +34,28 @@ jobs:
             mingw-w64-ucrt-x86_64-hunspell
             mingw-w64-ucrt-x86_64-python
       - name: Compile the shared editor and its tests
+        id: compile
         shell: msys2 {0}
         run: |
           set -eu
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           cmake --build build --parallel 4
           cmake --install build --prefix "$(cygpath -m "$PWD/build/stage")"
+      - name: Check the installer wizard with the native Inno Setup compiler
+        id: wizard
+        shell: pwsh
+        run: packaging/windows/installer.ps1 -BuildDir build -CheckOnly
+      - name: Run the editor tests using Windows Qt
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        shell: msys2 {0}
+        run: |
+          set -eu
+          python packaging/shared/stage.py --destination build/test-data
+          export QT_QPA_PLATFORM=windows DICPATH="$(cygpath -m "$PWD/build/test-data/dictionaries")"
+          ctest --test-dir build --output-on-failure --timeout 180
       - name: Collect the runtime, dictionary, notices and corresponding source
+        id: runtime
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
         shell: msys2 {0}
         run: |
           set -eu
@@ -47,13 +63,8 @@ jobs:
           python packaging/windows/deploy.py build/stage "$prefix"
           python packaging/shared/stage.py --destination build/stage --msys-root "$prefix" --sources build/runtime-sources
           tar -C build -cf build/CrumbWriter-Windows-x64-Sources.tar runtime-sources
-      - name: Run the editor tests using Windows Qt
-        shell: msys2 {0}
-        run: |
-          set -eu
-          export QT_QPA_PLATFORM=windows DICPATH="$(cygpath -m "$PWD/build/stage/dictionaries")"
-          ctest --test-dir build --output-on-failure --timeout 180
       - name: Build the installer and an earlier-version upgrade fixture
+        if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.wizard.outcome == 'success' }}
         shell: pwsh
         run: packaging/windows/installer.ps1 -BuildDir build -WithUpgradeFixture
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

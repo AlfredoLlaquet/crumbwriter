@@ -54,7 +54,7 @@ int runPackageSmokeTest()
         return fail("The manuscript icon could not be decoded.");
     if (!readBytes(":/license/LICENSE").contains("WITHOUT WARRANTY"))
         return fail("The offline software license is missing.");
-    if (!SpellWords::available() || !SpellWords().issues(QStringLiteral("I’m writing in color")).isEmpty() ||
+    if (!SpellWords::available() || !SpellWords().issues(QStringLiteral("She’s writing in color")).isEmpty() ||
         SpellWords().issues("zzqzwrrp").isEmpty())
         return fail("The American English spelling dictionary is unusable.");
 #if defined(Q_OS_MACOS) || defined(Q_OS_WIN)

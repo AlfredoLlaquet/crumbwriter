@@ -249,6 +249,9 @@ public:
             if (source == items) { editSelection(); return true; }
             break;
         case Qt::Key_Delete:
+#ifdef Q_OS_MACOS
+        case Qt::Key_Backspace:
+#endif
             if (source == items) { deleteSelection(); return true; }
             break;
         case Qt::Key_F5:

@@ -36,4 +36,17 @@ if [[ $remote != "$local_assets" ]]; then
     exit 1
 fi
 gh release edit "$TAG" --draft=false --latest
+# Immutable releases have a second, GitHub-generated release attestation.
+# It can take a moment to appear after the draft becomes public.
+verified=false
+for delay in 2 4 8 16 30 30; do
+    if gh release verify "$TAG"; then verified=true; break; fi
+    sleep "$delay"
+done
+if [[ $verified != true ]]; then
+    echo "::error::The release was published but GitHub could not verify its immutable release record."
+    exit 1
+fi
+gh release verify-asset "$TAG" CrumbWriter-Windows-x64-Setup.exe
+gh release verify-asset "$TAG" CrumbWriter-macOS-Universal.dmg
 gh release view "$TAG" --json url,isDraft,isImmutable

@@ -116,6 +116,13 @@ def prepare(app, qt, record):
     run(qt / "bin/macdeployqt", app, "-no-plugins", "-no-strip", "-verbose=1")
     (app / "Contents/Resources/qt.conf").write_text("[Paths]\nPlugins = PlugIns\n", encoding="ascii")
 
+    # CMake can remove every build rpath during install. macdeployqt rewrites
+    # existing rpaths, so an installed executable can still need its first one.
+    main = app_executable(app)
+    _, main_paths = load_commands(main, cpu)
+    if "@executable_path/../Frameworks" not in main_paths:
+        run("install_name_tool", "-add_rpath", "@executable_path/../Frameworks", main)
+
     # Discard any search path to a build machine. dyld may use only bundle or OS libraries.
     for relative in sorted(mach_files(app)):
         binary = app / relative
@@ -192,6 +199,10 @@ def verify(app, cpus):
     files = mach_files(app)
     if main.relative_to(app) not in files:
         raise ValueError("Missing Mach-O application executable")
+    for cpu in cpus:
+        _, rpaths = load_commands(main, cpu)
+        if "@executable_path/../Frameworks" not in rpaths:
+            raise ValueError(f"{cpu} executable has no run path to its packaged frameworks")
     for rel in sorted(files):
         binary = app / rel
         slices = set(output("lipo", "-archs", binary).split())

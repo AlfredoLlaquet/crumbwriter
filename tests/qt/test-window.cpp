@@ -266,7 +266,11 @@ void testWritingTools(const QTemporaryDir &tmp)
     ed->selectRange(nameStart, nameStart + 12, false);
     for (const auto section : {Qt::Key_1, Qt::Key_2}) {
         key(section, Qt::ControlModifier | Qt::ShiftModifier);
+#ifdef Q_OS_MACOS
+        key(Qt::Key_I, Qt::ControlModifier);
+#else
         key(Qt::Key_Insert);
+#endif
         auto *form = window.findChild<QDialog *>(section == Qt::Key_1 ? "charactersEditDialog" : "recurringEditDialog");
         CHECK(form && form->isVisible());
         auto *field = form->findChild<QLineEdit *>("synonymText");
@@ -288,7 +292,12 @@ void testWritingTools(const QTemporaryDir &tmp)
     key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
     auto *chooser = window.findChild<QFileDialog *>();
     CHECK(chooser && chooser->isVisible());
+    // Qt preserves whatever the focused filename field currently contains
+    // when selectFile() is called on a visible widget dialog.
+    chooser->hide();
     chooser->selectFile(copy);
+    chooser->show();
+    CHECK(chooser->selectedFiles() == QStringList{copy});
     static_cast<QDialog *>(chooser)->accept();
     CHECK(until([&] { return window.path() == copy && QFile::exists(copy + ".dictionary"); }));
     for (auto suffix : {".characters", ".recurring", ".dictionary"})
@@ -504,6 +513,7 @@ void testDialogs(const QTemporaryDir &tmp)
 
 int main(int argc, char **argv)
 {
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
 #ifdef Q_OS_MACOS
     QApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
 #endif

@@ -100,6 +100,8 @@ constexpr HelpRow shortcuts[] = {
     {"Mac keyboard","Command+,","Open Settings"},
     {"Mac keyboard","Command+W / Command+Q","Close this window / quit Crumb Writer, with normal save confirmation"},
     {"Mac keyboard","Control+Shift+B / Control+Shift+W","Open Bookmarks / toggle Wrap in Find. Option combinations can still type special characters"},
+    {"Mac synonym lists","Control+I","Add a group from the manuscript selection while Characters or Recurring has focus. Works in its search field or list"},
+    {"Mac lists","Backspace","Remove the selected entry in a focused synonym, bookmark, or manuscript dictionary list. In search and edit fields, Backspace edits the text"},
 #endif
     {"Window","Ctrl+, / F10 / F1","Settings / Document menu / Keyboard Shortcuts"}
 };

@@ -445,8 +445,9 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
     }
     // StandardKey on macOS describes physical Command. The manuscript also
     // accepts its documented physical Control alternatives.
-    if (mods == (Qt::ControlModifier | Qt::ShiftModifier) && key == Qt::Key_Z) { redo(); return; }
-    if (mods == Qt::ControlModifier) {
+    if ((mods == (Qt::ControlModifier | Qt::ShiftModifier) || mods == (Qt::MetaModifier | Qt::ShiftModifier)) &&
+        key == Qt::Key_Z) { redo(); return; }
+    if (mods == Qt::ControlModifier || mods == Qt::MetaModifier) {
         switch (key) {
         case Qt::Key_A: selectAll(); return;
         case Qt::Key_C: copy(); return;

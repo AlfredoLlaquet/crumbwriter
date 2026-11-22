@@ -166,9 +166,9 @@ static gboolean
 wc_space(gunichar c)
 {
 #ifdef G_OS_WIN32
-    /* FreeBSD 15 C.UTF-8 space characters. A Windows wint_t holds only a
-     * UTF-16 code unit, so never feed a full Unicode scalar to iswspace. */
-    return c < 128 ? (c == ' ' || (c >= '\t' && c <= '\r')) : g_unichar_isspace(c);
+    /* wc -w tests unsigned bytes. In FreeBSD 15 C.UTF-8 the space-class
+     * values in that range are ASCII whitespace and 0xa0. */
+    return c == ' ' || (c >= '\t' && c <= '\r') || c == 0xa0;
 #else
     if (iswspace((wint_t)c))
         return TRUE;
@@ -185,8 +185,9 @@ guint
 cw_crumb_words(const gchar *line, gboolean first_line)
 {
     const gchar *p = record_start(line, first_line);
-#ifdef __FreeBSD__
-    /* FreeBSD wc -w reads bytes. Its multibyte decoding is enabled by -m. */
+#if defined(__FreeBSD__) || defined(__APPLE__) || defined(G_OS_WIN32)
+    /* The BSD and macOS wc decode multibyte characters only with -m. Windows
+     * follows the FreeBSD command in a UTF-8 locale, without shelling out. */
     const gboolean bytewise = TRUE;
 #else
     const gboolean bytewise = MB_CUR_MAX == 1;

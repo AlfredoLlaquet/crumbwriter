@@ -593,6 +593,10 @@ list, Enter finds every occurrence of all aliases in the selected group.
 Ctrl+Enter inserts its first synonym. Either action clears the search field.
 Escape returns focus to the manuscript.
 Insert opens Add with the selected manuscript text suggested as one alias.
+On macOS, physical Control+I does the same in either the Characters or
+Recurring search field or list. On a compact Mac keyboard, Backspace (often
+labeled Delete) removes the selection in a focused synonym, bookmark, or
+manuscript dictionary list. In a search or edit field it edits the text.
 The field selects the suggestion so typing can replace it. Commas and quotes
 are escaped using the companion-file syntax. Physical line breaks become
 spaces and surrounding whitespace is trimmed. An empty selection opens a
@@ -779,6 +783,10 @@ adapter keeps file bytes, clipboard text and search positions consistent.
     src/qt/main.cpp, application.*         Command line, desktop ID and icon,
                                            local single-instance activation,
                                            recovery and manuscript windows
+    src/qt/packagesmoke.*                  Packaged GUI, resources, spelling,
+                                           Unicode manuscript and companion checks
+    src/qt/textkeys.h                      Distinguishes text input using AltGr
+                                           or Option from editor shortcuts
     src/qt/mainwindow.*, windowcommands.cpp Window actions, focus, closing,
                                            opening, save and bookmark wiring
     src/qt/manuscripttools.cpp             Window wiring for companion files,
@@ -928,20 +936,36 @@ finished bundle locally and places it in a disk image.
 
 Native runner labels, dependency installation and packaging commands
 live in .github/workflows/windows.yml and .github/workflows/macos.yml.
+The installed-program test runs the packaged executable with --smoke-test.
+It opens a real editor window, decodes the icon, reads the embedded license,
+checks US spelling and a curly-apostrophe contraction, and round-trips a
+Unicode-named manuscript with its backup and personal dictionary. The
+Windows and Mac checks require the dictionary shipped inside that package.
+Fresh runner jobs exercise installing, updating and removing the desktop app.
 The public release workflow also runs the FreeBSD and Linux suites.
 A release request must identify a commit already on the default branch,
 and the requested version must match buildinfo.h. A v2.4 tag or a
 release/v2.4 branch requests version 2.4. A manual release workflow on the
 default branch can also take its version from buildinfo.h.
 
-All required platform jobs must pass before the publishing job collects
-their exact installers and source archives. That job computes SHA256SUMS
-and obtains GitHub build attestations for the Windows setup file, Mac
-disk image and checksum list. It verifies the attestations, checks the
-uploaded draft assets against their local digests and then publishes the
-draft. A retry can repair an unpublished draft for the same commit.
-Publishing a correction to a public release requires a new version.
+All required platform jobs must pass before publication. The publishing job
+collects their tested installers and matching source archives, computes
+SHA256SUMS, and obtains GitHub build attestations for both installers and the
+checksum list. It uploads everything to a draft, checks the uploaded file
+digests, and publishes the release. It then verifies GitHub’s immutable
+release record and both downloadable installers with gh release verify and
+gh release verify-asset. A correction to a published build uses a new version.
 The installed editor and ordinary downloads do not require GitHub CLI.
+
+This repository has enabled immutable releases. The repository control is
+under GitHub Settings > General > Releases > Enable release immutability.
+For a new fork, enabling it before publication protects subsequent releases.
+GitHub locks each published release's tag to its source commit and prevents
+changes to the attached files. The workflow independently refuses to replace
+an existing public release. GitHub's signed build record verifies which
+repository and workflow produced a downloaded file, including a copy
+acquired elsewhere.
+    https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes
 
 Verification
 ------------

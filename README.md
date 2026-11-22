@@ -51,6 +51,8 @@ A successful check identifies the repository, build workflow, and source revisio
 
 For a quick integrity check, compare the file’s SHA-256 digest with its entry in `SHA256SUMS` on that release page. In Windows PowerShell, run `Get-FileHash .\CrumbWriter-Windows-x64-Setup.exe -Algorithm SHA256`. In Mac Terminal, run `shasum -a 256 CrumbWriter-macOS-Universal.dmg`.
 
+The repository uses GitHub’s **immutable releases**. When a release is published with this setting, GitHub locks the tag to its source commit and locks the attached files. The signed build record independently lets a reader verify the downloaded bytes. [GitHub’s immutable release guide](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
+
 ## Build and run on FreeBSD
 
 ### First installation
@@ -253,6 +255,8 @@ Search starts case-insensitive, with wrap enabled. Regular expressions prefer th
 ## Characters, Recurring, and spelling
 
 Use **Ctrl+Shift+1** for **Search Characters** or **Ctrl+Shift+2** for **Search Recurring**. Type part of any synonym. The first matching group is highlighted and the other rows remain visible. **Up** and **Down** cycle through the matches. From the field or the list, **Enter** finds passages containing any alias in the highlighted group and **Ctrl+Enter** inserts its first alias at the manuscript caret. Activating a result clears the search field. **Escape** returns to the manuscript. **Insert** opens Add with the selected manuscript text suggested as one synonym. The suggestion is selected for editing or replacement. With an empty selection, the field opens blank. **Enter** saves the group. **F2** edits a group, and **Delete** removes it after confirmation.
+
+On a compact Mac keyboard, **Control+I** opens Add while either the Characters or Recurring search field or list has focus. **Backspace** (the key labeled **Delete** on many Macs) removes the selected entry in a focused synonym, bookmark, or manuscript dictionary list. In a text field it deletes the preceding character.
 
 The right panel follows the same search convention. **Ctrl+Shift+3** searches visits. **Ctrl+Shift+4** searches genres or titles. In either field, **Enter** or **Ctrl+Enter** activates the highlighted row and clears the search text. A visit or title opens its passage. A genre starts its next crumb.
 

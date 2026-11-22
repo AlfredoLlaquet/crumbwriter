@@ -105,8 +105,8 @@ test_native_wc(void)
     gchar sample[] = "Fólio 4: : a—/—b / / c\t/\td\u2002e\u00a0f\u202fg\u2007h\u2060i";
 #ifdef G_OS_WIN32
     /* The same fixture under the reference FreeBSD 15 C.UTF-8 wc. */
-    g_assert_cmpuint(cw_crumb_words(sample, FALSE), ==, 13);
-    g_assert_cmpuint(cw_crumb_words("a\U00010020b", FALSE), ==, 1);
+    g_assert_cmpuint(cw_crumb_words(sample, FALSE), ==, 11);
+    g_assert_cmpuint(cw_crumb_words("a\U00010020b", FALSE), ==, 2);
 #else
     gchar *args[] = {
         "/bin/sh", "-c",

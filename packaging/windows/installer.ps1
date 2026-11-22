@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$BuildDir,
-    [switch]$WithUpgradeFixture
+    [switch]$WithUpgradeFixture,
+    [switch]$CheckOnly
 )
 $ErrorActionPreference = 'Stop'
 $build = (Resolve-Path $BuildDir).Path
@@ -11,12 +12,13 @@ $version = (Get-Item (Join-Path $payload 'crumbwriter.exe')).VersionInfo.Product
 if ($version -notmatch '^\d+\.\d+(\.\d+){0,2}$') {
     throw "Invalid Crumb Writer version resource: '$version'"
 }
-$iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-if ($iscc) { $compiler = $iscc.Source }
-else { $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe' }
-if (!(Test-Path -LiteralPath $compiler)) { throw 'Inno Setup 6 (ISCC.exe) is required.' }
+$compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+if (!(Test-Path -LiteralPath $compiler)) { $compiler = (Get-Command ISCC.exe -ErrorAction Stop).Source }
+Write-Output ("Installer compiler: " + $compiler + " " + (Get-Item $compiler).VersionInfo.ProductVersion)
 function Compile-Installer([string]$Version, [string]$Name) {
-    & $compiler "/DAppVersion=$Version" "/DPayloadDir=$payload" "/DOutputFolder=$build" "/DInstallerName=$Name" (Join-Path $PSScriptRoot 'setup.iss')
+    $options = @()
+    if ($CheckOnly) { $options += '/O-' }
+    & $compiler @options "/DAppVersion=$Version" "/DPayloadDir=$payload" "/DOutputFolder=$build" "/DInstallerName=$Name" (Join-Path $PSScriptRoot 'setup.iss')
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
 }
 Compile-Installer $version 'CrumbWriter-Windows-x64-Setup'

@@ -132,15 +132,17 @@ void MainWindow::buildMenu()
         connect(action, &QAction::triggered, this, fn);
         menu->addAction(action);
     };
-    native(file, "New Window", QKeySequence::New, [this] { if (newRequested) newRequested(); });
-    native(file, "Open…", QKeySequence::Open, [this] { chooseFile(false); });
-    native(file, "Save", QKeySequence::Save, [this] { save(false); });
-    native(file, "Save As…", QKeySequence::SaveAs, [this] { save(true); });
-    native(file, "Close Window", QKeySequence::Close, [this] { close(); });
-    native(file, "Settings…", QKeySequence::Preferences, [this] { prefs_.show(this); }, QAction::PreferencesRole);
+    // AA_MacDontSwapCtrlAndMeta assigns physical Command to Meta. Bind it
+    // explicitly even when a theme supplies PC-style StandardKey defaults.
+    native(file, "New Window", Qt::META | Qt::Key_N, [this] { if (newRequested) newRequested(); });
+    native(file, "Open…", Qt::META | Qt::Key_O, [this] { chooseFile(false); });
+    native(file, "Save", Qt::META | Qt::Key_S, [this] { save(false); });
+    native(file, "Save As…", Qt::META | Qt::SHIFT | Qt::Key_S, [this] { save(true); });
+    native(file, "Close Window", Qt::META | Qt::Key_W, [this] { close(); });
+    native(file, "Settings…", Qt::META | Qt::Key_Comma, [this] { prefs_.show(this); }, QAction::PreferencesRole);
     native(file, "About Crumb Writer", {}, [this] { showAbout(); }, QAction::AboutRole);
-    native(file, "Quit Crumb Writer", QKeySequence::Quit, [] { QApplication::closeAllWindows(); }, QAction::QuitRole);
-    native(bar->addMenu("Navigate"), "Find…", QKeySequence::Find, [this] { search_->find(false); });
+    native(file, "Quit Crumb Writer", Qt::META | Qt::Key_Q, [] { QApplication::closeAllWindows(); }, QAction::QuitRole);
+    native(bar->addMenu("Navigate"), "Find…", Qt::META | Qt::Key_F, [this] { search_->find(false); });
 #else
     add(menu_, "Close window", "Alt+W", [this] { close(); });
 #endif

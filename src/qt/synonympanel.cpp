@@ -95,7 +95,11 @@ public:
             connect(a, &QAction::triggered, this, method);
             return a;
         };
+#ifdef Q_OS_MACOS
+        action(QStringLiteral("&Add…\tCtrl+I"), [this] { edit(true); });
+#else
         action(QStringLiteral("&Add…\tInsert"), [this] { edit(true); });
+#endif
         auto *rename = action(QStringLiteral("&Edit…\tF2"), [this] { edit(false); });
         auto *remove = action(QStringLiteral("&Delete…\tDelete"), [this] { askDelete(); });
         menu->addSeparator();
@@ -164,6 +168,10 @@ protected:
         auto *key = static_cast<QKeyEvent *>(event);
         const auto mods = key->modifiers() & ~Qt::KeypadModifier;
         const int code = key->key();
+#ifdef Q_OS_MACOS
+        if (mods == Qt::ControlModifier && code == Qt::Key_I) { edit(true); return true; }
+        if (!mods && code == Qt::Key_Backspace && object == list_) { askDelete(); return true; }
+#endif
         if (mods != Qt::NoModifier) return false;
         if (code == Qt::Key_Insert) { edit(true); return true; }
         if (code == Qt::Key_F2) { edit(false); return true; }

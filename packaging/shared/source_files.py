@@ -129,13 +129,7 @@ def archive_notices(path, notices, nested=False):
 
 
 def source_index(folder):
-    lines = [
-        "Crumb Writer bundled dependency sources",
-        "",
-        "These are the upstream sources and distribution build recipes used for this download.",
-        "The SHA-256 value on each line identifies the exact file.",
-        "",
-    ]
+    lines = []
     for file in sorted(folder.rglob("*")):
         if file.is_file() and file != folder / "SHA256SUMS.txt":
             lines.append(f"{sha256(file)}  {file.relative_to(folder).as_posix()}")
