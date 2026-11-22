@@ -4,6 +4,7 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QEvent>
 #include <QFile>
 #include <QLabel>
 #include <QPlainTextEdit>
@@ -14,6 +15,26 @@
 #include <QVBoxLayout>
 
 namespace {
+class RepositoryLink final : public QLabel {
+public:
+    explicit RepositoryLink(QWidget *parent) : QLabel(parent) { updateLink(); }
+
+protected:
+    void changeEvent(QEvent *event) override
+    {
+        QLabel::changeEvent(event);
+        if (event->type() == QEvent::PaletteChange) updateLink();
+    }
+
+private:
+    void updateLink()
+    {
+        // Rich-text anchors can retain the HTML renderer's default blue.
+        setText(QStringLiteral("<a href=\"%1\" style=\"color:%2\">%1</a>")
+                    .arg(CrumbWriter::repository, palette().link().color().name()));
+    }
+};
+
 void showLicense(QDialog *about)
 {
     auto *dialog = about->findChild<QDialog *>("licenseDialog", Qt::FindDirectChildrenOnly);
@@ -73,7 +94,7 @@ void MainWindow::showAbout()
         notice->setWordWrap(true);
         layout->addWidget(notice);
 
-        auto *link = new QLabel(QStringLiteral("<a href=\"%1\">%1</a>").arg(CrumbWriter::repository), dialog);
+        auto *link = new RepositoryLink(dialog);
         link->setObjectName("repositoryLink");
         link->setAccessibleName(tr("Crumb Writer GitHub repository"));
         link->setWordWrap(true);

@@ -9,12 +9,16 @@
 #include <QFile>
 #include <QImage>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPersistentModelIndex>
+#include <QStyle>
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextLayout>
 #include <QThread>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <cmath>
 #include <cstdio>
@@ -68,8 +72,24 @@ void checkPalette(const QPalette &colors)
     check(contrast(colors.highlightedText().color(), colors.highlight().color()) >= 4.5, "selection colors");
     check(contrast(colors.toolTipText().color(), colors.toolTipBase().color()) >= 4.5, "tooltips");
     check(contrast(colors.link().color(), colors.window().color()) >= 4.5, "dialog links");
+    check(contrast(colors.buttonText().color(), colors.button().color()) >= 4.5, "toolbar labels");
+    check(contrast(colors.placeholderText().color(), base) >= 4.5, "empty search fields");
     check(contrast(colors.text().color(), EditorColors::searchPaper(colors)) >= 4.5, "search hits");
     check(contrast(EditorColors::warning(base), EditorColors::searchPaper(colors)) >= 4.5, "number in a search hit");
+}
+
+bool paintsLink(const QLabel &label, const QColor &expected)
+{
+    const auto image = const_cast<QLabel &>(label).grab().toImage().convertToFormat(QImage::Format_RGB32);
+    for (int y = 0; y < image.height(); ++y) {
+        const auto *row = reinterpret_cast<const QRgb *>(image.constScanLine(y));
+        for (int x = 0; x < image.width(); ++x) {
+            const auto pixel = row[x];
+            if (qAbs(qRed(pixel) - expected.red()) + qAbs(qGreen(pixel) - expected.green()) +
+                qAbs(qBlue(pixel) - expected.blue()) < 18) return true;
+        }
+    }
+    return false;
 }
 
 void key(QWidget *target, int code, Qt::KeyboardModifiers modifiers = {})
@@ -116,6 +136,8 @@ int main(int argc, char **argv)
     QApplication app(argc, argv);
     QTemporaryDir temp;
     check(temp.isValid(), "temporary settings and manuscript");
+    const bool desktopDialogsDisabled = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);
+    const QString desktopStyle = QApplication::style()->name();
     const auto original = QApplication::palette();
     const auto dark = EditorColors::explicitTheme(original, true);
     const auto light = EditorColors::explicitTheme(dark, false);
@@ -127,10 +149,10 @@ int main(int argc, char **argv)
     desktop.setColor(QPalette::Inactive, QPalette::Text, Qt::black);
     QApplication::setPalette(desktop);
     Preferences prefs(temp.filePath("appearance.ini"));
-    check(prefs.paletteForDesktop().base() == desktop.base(), "desktop theme follows the desktop paper");
+    check(prefs.applyControlTheme().base() == desktop.base(), "desktop theme follows the desktop paper");
     {
         ManuscriptEditor styled;
-        styled.setPaperPalette(prefs.paletteForDesktop());
+        styled.setPaperPalette(QApplication::palette());
         styled.setPaperActive(false);
         check(styled.palette().color(QPalette::Inactive, QPalette::Base) ==
               EditorColors::inactivePaper(desktop.color(QPalette::Active, QPalette::Base)) &&
@@ -147,6 +169,13 @@ int main(int argc, char **argv)
     file.write("\nCrumb 2: Audit #3: The moon was quiet.");
     file.close();
     MainWindow window(prefs);
+    check(QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs), "explicit theme uses themeable dialogs");
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    check(QApplication::style()->name().compare("Fusion", Qt::CaseInsensitive) == 0,
+          "explicit theme uses a widget style that honors palette colors");
+#else
+    check(QApplication::style()->name() == desktopStyle, "explicit theme preserves the desktop widget style");
+#endif
     window.setAttribute(Qt::WA_DeleteOnClose, false);
     check(window.loadDocument(path), "open manuscript");
     window.resize(720, 540);
@@ -185,17 +214,28 @@ int main(int argc, char **argv)
     const QPersistentModelIndex genre = genres->model()->index(0, 1);
     check(genre.data(Qt::ForegroundRole).value<QBrush>().color() == EditorColors::warning(base), "dark genre warning");
 
-    QDialog dialog(&window);
-    dialog.show();
-    until([&] { return dialog.isVisible() && dialog.palette().base() == dark.base(); }, "dark auxiliary dialog");
+    for (const char *name : {"charactersMenu", "recurringMenu"}) {
+        auto *button = window.findChild<QToolButton *>(name);
+        check(button && button->menu() && button->menu()->palette().window() == dark.window(),
+              "panel actions menus use the dark window color");
+    }
+    auto *documentMenu = window.findChild<QToolButton *>("documentMenuButton");
+    check(documentMenu && documentMenu->menu(), "document menu");
+    for (auto *action : documentMenu->menu()->actions())
+        if (action->text().contains("About Crumb Writer")) action->trigger();
+    auto *dialog = window.findChild<QDialog *>("aboutDialog");
+    auto *link = dialog ? dialog->findChild<QLabel *>("repositoryLink") : nullptr;
+    until([&] { return link && dialog->isVisible() && dialog->palette().base() == dark.base() &&
+                       paintsLink(*link, dark.link().color()); }, "About renders its link in readable dark-theme ink");
     prefs.settings().setValue("editor/theme", "light");
     window.applyPreferences();
     until([&] { return showsMarks(*editor, light) && firstWarning(*editor) == EditorColors::warning(Qt::white); },
           "switching themes updates search, spelling and header warnings at the same positions");
     check(genre.isValid() && genre.data(Qt::ForegroundRole).value<QBrush>().color() == EditorColors::warning(Qt::white),
           "existing genre row recolored in place");
-    check(dialog.palette().base() == light.base() && dialog.palette().link() == light.link(), "open dialog follows theme");
-    dialog.close();
+    until([&] { return dialog->palette().base() == light.base() && paintsLink(*link, light.link().color()); },
+          "open About dialog and HTML link follow theme changes");
+    dialog->close();
 
     prefs.settings().setValue("editor/theme", "dark");
     window.applyPreferences();
@@ -217,6 +257,9 @@ int main(int argc, char **argv)
     peer.hide();
     prefs.settings().setValue("editor/theme", "desktop");
     window.applyPreferences();
+    check(QApplication::style()->name() == desktopStyle && QApplication::palette().base() == desktop.base() &&
+          QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs) == desktopDialogsDisabled,
+          "Follow desktop restores the original widget style and native dialog behavior");
     auto newDesktop = light;
     newDesktop.setColor(QPalette::Base, QColor(244, 247, 238));
     QApplication::setPalette(newDesktop);

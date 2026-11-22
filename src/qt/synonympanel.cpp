@@ -1,4 +1,5 @@
 #include "synonympanel.h"
+#include "commandicons.h"
 #include "panelsearch.h"
 #include "synonymfile.h"
 #include "synonymmatch.h"
@@ -84,13 +85,9 @@ public:
         label->setBuddy(search_);
         header->addWidget(label);
         header->addStretch();
-        auto *options = new QToolButton(this);
+        const QString actionsLabel = title + QStringLiteral(" actions");
+        auto *options = CommandIcons::menuButton(this, actionsLabel, actionsLabel);
         options->setObjectName(id_ + QStringLiteral("Menu"));
-        options->setText(QStringLiteral("⋯"));
-        options->setAccessibleName(title + QStringLiteral(" actions"));
-        options->setToolTip(title + QStringLiteral(" actions"));
-        options->setFocusPolicy(Qt::StrongFocus);
-        options->setPopupMode(QToolButton::InstantPopup);
         auto *menu = new QMenu(options);
         options->setMenu(menu);
         auto action = [&](const QString &text, auto method) {

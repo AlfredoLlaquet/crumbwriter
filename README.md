@@ -1,6 +1,6 @@
 # Crumb Writer
 
-Crumb Writer 2.5 is a keyboard-driven Qt 6 editor for FreeBSD with KDE Plasma, Ubuntu, Windows, and macOS. Use **Crumb mode** for a numbered collection of short pieces or **Generic mode** for a novel, an essay, or other paragraph-based prose. Both write plain UTF-8 without a byte order mark (BOM) and wrap the text to the full width of the writing area.
+Crumb Writer 2.5.1 is a keyboard-driven Qt 6 editor for FreeBSD with KDE Plasma, Ubuntu, Windows, and macOS. Use **Crumb mode** for a numbered collection of short pieces or **Generic mode** for a novel, an essay, or other paragraph-based prose. Both write plain UTF-8 without a byte order mark (BOM) and wrap the text to the full width of the writing area.
 
 Programmed by **ChatGPT** for Alfredo Llaquet-Alsina.
 
@@ -82,7 +82,7 @@ For a personal installation, run `make install PREFIX="$HOME/.local"` as your de
 
 ### Update
 
-An installation that already builds versions 2.1 through 2.4 has the dependencies for 2.5. For older checkouts, run the package command under First installation. Save the manuscript, close all Crumb Writer windows, and update the existing checkout as your desktop account.
+An installation that already builds versions 2.1 through 2.5 has the dependencies for 2.5.1. For older checkouts, run the package command under First installation. Save the manuscript, close all Crumb Writer windows, and update the existing checkout as your desktop account.
 
 ~~~sh
 cd crumbwriter
@@ -215,7 +215,9 @@ On a Mac, **Ctrl** means the physical **Control** key and **Alt** means **Option
 | Ctrl+, / F10 / F1 | Settings / document menu / searchable keyboard reference |
 | F10, then A | About Crumb Writer. Enter opens the repository link. Alt+L opens the license offline |
 
-A light blue band follows the current crumb or paragraph in a light theme. Dark themes use a slightly lighter neutral gray across its wrapped lines. When another window becomes active, the whole writing area changes to a softer gray. Search and the side panels belong to the active manuscript window. Settings offers Follow desktop, Light, Dark, and a choice of font family and size.
+Press **Ctrl+,** and choose **Appearance** to follow the desktop or select **Light** or **Dark**. The choice applies to the toolbar, search fields, lists, menus, and editor dialogs. The three-line button beside **Find** opens the document menu (**F10**). The same symbol beside **Characters** and **Recurring** opens actions for that list. A focused menu button opens with **Space**, **Enter**, or **Down**. **Escape** closes the menu.
+
+A light blue band follows the current crumb or paragraph in a light theme. Dark themes use a slightly lighter neutral gray across its wrapped lines. When another window becomes active, the whole writing area changes to a softer gray. Search and the side panels belong to the active manuscript window. The manuscript font and size can also be changed in Settings.
 
 Smart punctuation writes curly quotes and apostrophes, em dashes, and ellipses into the manuscript as typing supplies context. Paste cleans tabs, repeated spaces, and trailing spaces in one undoable operation. Backspacing over the last word leaves its preceding space at the caret for the replacement word, even through an autosave. Saved files omit trailing spaces and use UTF-8 without a BOM.
 

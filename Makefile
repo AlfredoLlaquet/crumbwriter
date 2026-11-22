@@ -23,7 +23,7 @@ EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o
                  src/qt/editorviewport.o src/qt/committedpunctuation.o src/qt/vimotion.o src/qt/viselection.o
 SEARCH_OBJECTS = $(EDITOR_OBJECTS) src/qt/searchpanel.o src/qt/searchengine.o src/qt/searchhistory.o
 BOOKMARK_OBJECTS = src/qt/bookmarks.o src/qt/bookmarkfile.o src/qt/bookmarkanchors.o src/qt/manuscripttext.o
-SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o src/qt/synonymmatch.o src/qt/panelsearch.o
+SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o src/qt/synonymmatch.o src/qt/panelsearch.o src/qt/commandicons.o
 SPELL_OBJECTS = src/qt/textcompanion.o src/qt/spellcheck.o src/qt/spellreview.o src/qt/spellwords.o
 STORE_OBJECTS = src/qt/documentstore.o
 QT_SOURCES != find src/qt -name '*.cpp' ! -name 'main.cpp' | sort
@@ -101,6 +101,9 @@ tests/qt/test-layout: tests/qt/test-layout.cpp
 tests/qt/test-symbols tests/qt/test-synonymwriting tests/qt/test-appearance tests/qt/test-layout: $(APP_OBJECTS)
 	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
 
+tests/qt/test-gui-audit: tests/qt/test-gui-audit.cpp tests/qt/gui-audit-windows.cpp tests/qt/gui-audit.h $(APP_OBJECTS)
+	$(TEST_LINK) tests/qt/gui-audit-windows.cpp $(APP_OBJECTS) $(LIBS)
+
 check-core: tests/test-crumb tests/test-storage
 	./tests/test-crumb
 	./tests/test-storage
@@ -126,6 +129,6 @@ install: crumbwriter
 	install -m 644 CrumbWriter.txt LICENSE "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 
 clean:
-	rm -f $(APP_OBJECTS) src/qt/main.o data/qt-icons.cpp crumbwriter tests/test-crumb tests/test-storage $(QT_TESTS)
+	rm -f $(APP_OBJECTS) src/qt/main.o data/qt-icons.cpp crumbwriter tests/test-crumb tests/test-storage $(QT_TESTS) tests/qt/test-gui-audit
 
 .PHONY: all check check-core check-gui install clean

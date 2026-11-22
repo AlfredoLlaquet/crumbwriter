@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 2.5. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 2.5.1. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Build, update and launch
 ------------------------
@@ -140,7 +140,7 @@ application ID share the identifier org.thecrumbs.CrumbWriter.
 Update
 ~~~~~~
 
-Versions 2.1 through 2.4 already have the FreeBSD build dependencies for 2.5. Older
+Versions 2.1 through 2.5 already have the FreeBSD build dependencies for 2.5.1. Older
 checkouts can use the full package list above. Save the manuscript and close
 all Crumb Writer windows. In the existing checkout on main, update as the
 desktop account.
@@ -332,6 +332,24 @@ Replace belongs to the main window. Selections, search matches, warnings,
 spelling marks, and synonym hints use colors appropriate to the chosen
 palette. Settings offers Follow desktop, Light, Dark, and a manuscript font
 from 6 to 96 points.
+
+The three-line button beside Find opens the document menu (F10). The same
+symbol beside Characters and Recurring opens the actions for that list.
+Space, Enter, or Down opens a focused menu button. Escape closes its menu.
+The toolbar draws its Open, New, Save, Find, and menu symbols using the
+current foreground color. Their shapes scale with the display. This gives
+the document menu a recognizable icon on a desktop with no icon theme.
+On a narrow toolbar the Document menu also appears in the overflow menu.
+F10 opens it at either width. From a Characters or Recurring search field,
+Shift+Tab focuses its menu button.
+
+Explicit Light or Dark applies to the complete application, including
+popups, the About link, file and color pickers, and confirmations. On
+Windows and macOS these choices use Qt's Fusion controls so the style
+paints the background and foreground together. Follow desktop restores
+the desktop style and system dialogs. FreeBSD and Linux keep their
+desktop widget style. Opening another manuscript clears the previous
+file's notice before displaying any warning about the newly opened file.
 
 In Crumb mode, Ctrl+N uses the last recognizable label and one greater
 than the largest valid header number. With no earlier label it uses Crumb.
@@ -892,6 +910,8 @@ adapter keeps file bytes, clipboard text and search positions consistent.
     src/qt/dailycount.*                    Dated crumb identities and net word
                                            baselines for manuscripts and drafts
     src/qt/preferences.*                   Shared settings and F1 reference
+    src/qt/commandicons.*                  Scalable toolbar icons and keyboard
+                                           handling for the three menu buttons
     src/qt/navigation.*                    Mode-specific metrics, visits, Genres
                                            or Titles, and back/forward marks
     src/qt/panelsearch.*                   Shared in-place list search, keyboard
@@ -1091,6 +1111,40 @@ The layout suite opens two manuscripts under simulated tiling and reopens
 a saved floating window after its monitor disappears. It checks that the
 width fits the available display and the saved height is recovered.
 The same Makefile supports FreeBSD base make and GNU make.
+
+Visual checks for controls and windows
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Whenever a control or window is added or changed, open it by its usual
+keyboard route in both Light and Dark. Inspect its parent window, menus,
+and any dialog it opens. Check empty prompts and typed text, selections,
+focus, enabled and disabled actions, icons, and the fit of labels at a
+narrow window width. Switch back to Follow desktop and check the native
+appearance. Include the affected view in the native appearance audit so
+the change can be exercised again.
+
+The audit drives the editor with a disposable manuscript. On FreeBSD and
+Linux, build it with make tests/qt/test-gui-audit. In an X11 desktop,
+these commands capture either just Settings or the full application:
+
+    ./tests/qt/test-gui-audit --platform-name xcb --output /tmp/cw-settings --view 'settings-*'
+    ./tests/qt/test-gui-audit --platform-name xcb --output /tmp/cw-appearance
+
+The CMake target is also called test-gui-audit. Use its executable with
+--platform-name windows on Windows and --platform-name cocoa on macOS.
+Each theme gets its own PNG images and report.json. The report records
+the Qt version, platform, measured contrast, and failed checks. Review
+the rendered images as well as the numbers. A readable menu can still
+show the wrong symbol, and an offscreen test can miss native painting.
+
+For a new window or a change to shared icons, styles, or palettes, run
+the full audit on Windows, macOS, FreeBSD, and Linux. Inspect the main
+window, both manuscript modes, the search and panel menus, and every
+auxiliary window. The native CI jobs preserve the pictures and reports
+as gui-audit artifacts, including available evidence from a failed run.
+Correct each defect, repeat its focused check, and rerun the affected
+platforms and themes. Before a cross-platform appearance release, review
+the four-platform full run on the revision being shipped.
 
 Check live movements with t-2 across crumbs, j then j2 followed by
 Backspace, q and Q phrase previews with a count and a literal asterisk,

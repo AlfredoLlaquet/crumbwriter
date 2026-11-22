@@ -4,7 +4,7 @@ on:
   workflow_call:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, 'appearance/**']
   pull_request:
 
 permissions:
@@ -55,6 +55,22 @@ jobs:
           python packaging/shared/stage.py --destination build/test-data
           export QT_QPA_PLATFORM=windows QT_FORCE_STDERR_LOGGING=1 DICPATH="$(cygpath -m "$PWD/build/test-data/dictionaries")"
           ctest --test-dir build --output-on-failure --timeout 180
+      - name: Check light and dark windows on the native Windows desktop
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        timeout-minutes: 6
+        shell: msys2 {0}
+        run: |
+          set -eu
+          export QT_QPA_PLATFORM=windows QT_FORCE_STDERR_LOGGING=1 DICPATH="$(cygpath -m "$PWD/build/test-data/dictionaries")"
+          ./build/test-gui-audit.exe --output build/gui-audit --platform-name windows
+      - name: Preserve the Windows appearance evidence
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gui-audit-windows
+          path: build/gui-audit
+          if-no-files-found: warn
+          retention-days: 14
       - name: Collect the runtime, dictionary, notices and corresponding source
         id: runtime
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}

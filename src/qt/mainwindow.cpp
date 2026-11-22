@@ -29,6 +29,7 @@
 MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     : QWidget(parent), prefs_(preferences)
 {
+    prefs_.applyControlTheme();
     setAttribute(Qt::WA_DeleteOnClose);
     setObjectName("manuscriptWindow");
     setMinimumSize(1, 1);
@@ -192,6 +193,7 @@ bool MainWindow::loadDocument(const QString &name, bool recovery)
     const bool ok = recovery ? store_->openDraft(name, &text, &error)
                              : store_->open(name, prefs_.enabled("backup"), &text, &error);
     if (ok) {
+        showNotice({});
         trail_.clear();
         search_->reset();
         editor_->loadText(text);
@@ -224,8 +226,7 @@ void MainWindow::activateManuscript(bool goToEnd)
 
 void MainWindow::applyPreferences()
 {
-    const QPalette p = prefs_.paletteForDesktop();
-    setPalette(p);
+    const QPalette p = prefs_.applyControlTheme();
     editor_->setPaperPalette(p);
     editor_->setPaperActive(isActiveWindow());
     const QFont font = prefs_.manuscriptFont();

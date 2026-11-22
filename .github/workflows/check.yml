@@ -29,7 +29,7 @@ jobs:
             pkg install -y qt6-base glib pkgconf hunspell en-hunspell xorg-vfbserver dejavu
           run: |
             set -eu
-            make -j2
+            make -j2 crumbwriter tests/qt/test-gui-audit
             # Xvfb reports the chosen display only after it can accept clients.
             display_file=$(mktemp)
             Xvfb -screen 0 1280x800x24 -nolisten tcp -displayfd 1 > "$display_file" &
@@ -56,8 +56,25 @@ jobs:
             fi
             command -v kwin_x11
             dbus-uuidgen --ensure
+            timeout 360 dbus-run-session -- sh tests/gui-audit-x11.sh kwin_x11 \
+              ./tests/qt/test-gui-audit /tmp/crumbwriter-gui-audit || suite_status=$?
             python3 tests/check-krohnkite.py --existing-display ./crumbwriter .ci-krohnkite
             exit "$suite_status"
+      - name: Retrieve FreeBSD screenshots and reports from the VM
+        if: ${{ !cancelled() }}
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/gui-audit"
+          ssh -o BatchMode=yes -o ConnectTimeout=10 freebsd 'tar -C /tmp/crumbwriter-gui-audit -cf - .' \
+            | tar -C "$RUNNER_TEMP/gui-audit" -xf -
+      - name: Preserve the FreeBSD appearance evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gui-audit-freebsd
+          path: ${{ runner.temp }}/gui-audit
+          if-no-files-found: warn
+          retention-days: 14
 
   linux:
     name: Linux
@@ -71,14 +88,28 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us \
-            libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon
+            libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon openbox x11-utils
       - name: Build
         id: build
-        run: make -j2
+        run: make -j2 crumbwriter tests/qt/test-gui-audit
       - name: Test on X11
         env:
           QT_QPA_PLATFORM: xcb
         run: xvfb-run -a make check
+      - name: Check light and dark windows on native X11
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 6
+        run: |
+          xvfb-run -a -s "-screen 0 1440x900x24" dbus-run-session -- \
+            sh tests/gui-audit-x11.sh openbox ./tests/qt/test-gui-audit "$RUNNER_TEMP/gui-audit"
+      - name: Preserve the Linux appearance evidence
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gui-audit-linux
+          path: ${{ runner.temp }}/gui-audit
+          if-no-files-found: warn
+          retention-days: 14
       - name: Check the installed icon and type into the native Wayland editor
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |

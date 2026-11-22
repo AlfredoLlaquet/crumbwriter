@@ -83,4 +83,7 @@ if(BUILD_TESTING)
         target_link_libraries(test-${suite} PRIVATE crumbgui)
         add_test(NAME ${suite} COMMAND test-${suite})
     endforeach()
+    # Run on a native desktop so the images show the controls people use.
+    add_executable(test-gui-audit tests/qt/test-gui-audit.cpp tests/qt/gui-audit-windows.cpp)
+    target_link_libraries(test-gui-audit PRIVATE crumbgui)
 endif()

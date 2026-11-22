@@ -25,6 +25,8 @@
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QThread>
+#include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <cstdio>
 #include <cstdlib>
@@ -594,6 +596,49 @@ void testDialogs(const QTemporaryDir &tmp)
     key(Qt::Key_Escape);
     CHECK(window.isVisible() && window.close());
 }
+
+void testMenuAccess(const QTemporaryDir &tmp)
+{
+    Preferences prefs(tmp.filePath("menus.ini"));
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    window.activateManuscript(false);
+    auto *toolbar = window.findChild<QToolBar *>("manuscriptToolbar");
+    CHECK(toolbar);
+    auto *documentButton = toolbar->findChild<QToolButton *>("documentMenuButton");
+    CHECK(documentButton);
+    auto dismissMenu = [](QMenu *menu) {
+        QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+        QApplication::sendEvent(menu, &escape);
+        CHECK(until([&] { return !menu->isVisible(); }));
+    };
+    for (const char *name : {"documentMenuButton", "charactersMenu", "recurringMenu"}) {
+        auto *button = window.findChild<QToolButton *>(name);
+        CHECK(button && button->menu() && !button->accessibleName().isEmpty());
+        button->setFocus();
+        CHECK(until([&] { return button->hasFocus(); }));
+        key(Qt::Key_Space);
+        CHECK(until([&] { return button->menu()->isVisible() && button->menu()->activeAction(); }));
+        dismissMenu(button->menu());
+    }
+
+    window.resize(190, 420);
+    CHECK(until([&] { return !documentButton->isVisible(); }));
+    // QWidget actions without a popup representation disappear in narrow tiles.
+    bool reachable = false;
+    for (auto *button : toolbar->findChildren<QToolButton *>()) {
+        if (button->isVisible() && button->menu()) {
+            for (auto *entry : button->menu()->actions())
+                if (entry->menu() == documentButton->menu() && !entry->text().isEmpty()) reachable = true;
+        }
+    }
+    CHECK(reachable);
+    window.editor()->setFocus();
+    key(Qt::Key_F10);
+    CHECK(until([&] { return documentButton->menu()->isVisible(); }));
+    dismissMenu(documentButton->menu());
+    CHECK(window.close());
+}
 }
 
 int main(int argc, char **argv)
@@ -614,5 +659,6 @@ int main(int argc, char **argv)
     testKeyboardLayouts(tmp);
     testGenericWindow(tmp);
     testDialogs(tmp);
+    testMenuAccess(tmp);
     std::puts("Main window keyboard, reference jump, duplicate history and close choices passed.");
 }

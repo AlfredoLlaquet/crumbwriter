@@ -18,7 +18,7 @@ public:
     bool enabled(const QString &key) const;
     int saveDelay() const;
     QFont manuscriptFont() const;
-    QPalette paletteForDesktop() const;
+    QPalette applyControlTheme() const;
     SynonymWritingSettings synonymSettings() const;
     QString lastDocument() const;
     void remember(const QString &path);

@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "bookmarks.h"
+#include "commandicons.h"
 #include "manuscripteditor.h"
 #include "manuscripttext.h"
 #include "preferences.h"
@@ -20,14 +21,37 @@
 #endif
 #include <QRegularExpression>
 #include <QSplitter>
-#include <QStyle>
 #include <QTextBlock>
 #include <QTextLayout>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 
 namespace {
+// QToolBar drops addWidget() actions from its overflow menu. Supply a button
+// for the toolbar and let the overflow menu use the action's ordinary submenu.
+class DocumentMenuAction final : public QWidgetAction {
+public:
+    DocumentMenuAction(QMenu *documentMenu, QToolBar *bar) : QWidgetAction(bar)
+    {
+        setText("Document menu");
+        setToolTip("Document menu (F10)");
+        setIcon(CommandIcons::icon(CommandIcons::Symbol::Menu, bar));
+        setMenu(documentMenu);
+    }
+
+protected:
+    QWidget *createWidget(QWidget *parent) override
+    {
+        if (!qobject_cast<QToolBar *>(parent)) return nullptr;
+        auto *button = CommandIcons::menuButton(parent, text(), toolTip());
+        button->setObjectName("documentMenuButton");
+        button->setMenu(menu());
+        return button;
+    }
+};
+
 // cursorForPosition snaps to an insertion point even in the empty margin.
 // Look up the actual character so clicking unused paper cannot follow a name.
 int characterUnderPointer(ManuscriptEditor *editor, const QPoint &point)
@@ -46,38 +70,35 @@ int characterUnderPointer(ManuscriptEditor *editor, const QPoint &point)
 
 void MainWindow::buildToolbar(QVBoxLayout *layout)
 {
+    using CommandIcons::Symbol;
     auto *bar = new QToolBar("Manuscript tools", this);
+    bar->setObjectName("manuscriptToolbar");
     bar->setIconSize(QSize(18, 18));
     bar->setMovable(false);
     bar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    auto tool = [&](const QString &name, const QString &icon, QStyle::StandardPixmap fallback,
-                    const QString &tip, auto fn) {
-        auto *action = bar->addAction(QIcon::fromTheme(icon, style()->standardIcon(fallback)), name);
+    auto tool = [&](const QString &name, Symbol symbol, const QString &tip, auto fn) {
+        auto *action = bar->addAction(CommandIcons::icon(symbol, bar), name);
         action->setToolTip(tip);
         connect(action, &QAction::triggered, this, fn);
         return action;
     };
-    tool("Open", "document-open", QStyle::SP_DialogOpenButton, "Open a manuscript (Ctrl+O)",
+    tool("Open", Symbol::Open, "Open a manuscript (Ctrl+O)",
          [this] { chooseFile(false); });
-    appendTool_ = tool("New Crumb", "list-add", QStyle::SP_FileIcon, "Append a crumb (Ctrl+N)",
+    appendTool_ = tool("New Crumb", Symbol::Add, "Append a crumb (Ctrl+N)",
                        [this] { appendCrumb(); });
-    tool("Save", "document-save", QStyle::SP_DialogSaveButton, "Save (Ctrl+S)",
+    tool("Save", Symbol::Save, "Save (Ctrl+S)",
          [this] { save(false); });
-    tool("Find", "edit-find", QStyle::SP_FileDialogContentsView, "Find forward (Ctrl+F)",
+    tool("Find", Symbol::Find, "Find forward (Ctrl+F)",
          [this] { search_->find(false); });
-    menuButton_ = new QToolButton(bar);
-    menuButton_->setIcon(QIcon::fromTheme("application-menu", style()->standardIcon(QStyle::SP_TitleBarMenuButton)));
-    menuButton_->setAccessibleName("Document menu");
-    menuButton_->setToolTip("Document menu (F10)");
-    menuButton_->setPopupMode(QToolButton::InstantPopup);
-    bar->addWidget(menuButton_);
+    menu_ = new QMenu("Document", this);
+    auto *menuAction = new DocumentMenuAction(menu_, bar);
+    bar->addAction(menuAction);
+    menuButton_ = qobject_cast<QToolButton *>(bar->widgetForAction(menuAction));
     layout->addWidget(bar);
 }
 
 void MainWindow::buildMenu()
 {
-    menu_ = new QMenu("Document", this);
-    menuButton_->setMenu(menu_);
     auto add = [this](QMenu *menu, const QString &name, const QString &keys, auto fn) {
         auto *action = menu->addAction(keys.isEmpty() ? name : name + "\t" + keys);
         connect(action, &QAction::triggered, this, fn);
@@ -282,17 +303,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
 {
     if (watched == qApp && e->type() == QEvent::ApplicationPaletteChange)
         applyPreferences();
-    if (e->type() == QEvent::Polish) {
-        auto *child = qobject_cast<QWidget *>(watched);
-        if (child && child->isWindow()) {
-            for (auto *owner = child->parentWidget(); owner; owner = owner->parentWidget()) {
-                if (owner == this) {
-                    child->setAttribute(Qt::WA_WindowPropagation);
-                    break;
-                }
-            }
-        }
-    }
     if (e->type() == QEvent::MouseButtonPress && watched == editor_->viewport()) {
         const auto *click = static_cast<QMouseEvent *>(e);
         const auto mods = click->modifiers() & ~Qt::ShiftModifier;
@@ -372,9 +382,11 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
         switch (code) {
         case Qt::Key_F1: showShortcutHelp(this); return true;
         case Qt::Key_F9: showSidebar(side_->isHidden()); return true;
-        case Qt::Key_F10:
-            menu_->popup(menuButton_->mapToGlobal(QPoint(0, menuButton_->height())));
+        case Qt::Key_F10: {
+            auto *anchor = menuButton_->isVisible() ? static_cast<QWidget *>(menuButton_) : menuButton_->parentWidget();
+            menu_->popup(anchor->mapToGlobal(QPoint(0, anchor->height())));
             return true;
+        }
         default: break;
         }
     }
