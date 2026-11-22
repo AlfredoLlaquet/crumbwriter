@@ -1176,3 +1176,10 @@ inactive paper colors with tests/sample-x11-paper.c.
 Update this manual in the same change as each modification to Crumb Writer.
 Update README.md and the in-app shortcut reference when controls, platform
 dependencies or build commands change.
+
+This diagnostic branch records the released 2.5 controls on Windows and
+macOS. Its native probe links the original editor and captures the main
+window, both side panels' empty and filled search fields, the toolbar and
+all three menu buttons in light and dark appearances. On macOS it also
+records whether the system menu bar can be captured with existing desktop
+permissions. The inspection workflow publishes these images as test artifacts.
