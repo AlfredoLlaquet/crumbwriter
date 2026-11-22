@@ -8,7 +8,9 @@
 #include <QColorDialog>
 #include <QComboBox>
 #include <QContextMenuEvent>
+#include <QDebug>
 #include <QDialog>
+#include <QDialogButtonBox>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
@@ -134,12 +136,16 @@ void useLargeManuscriptFont(ManuscriptEditor *editor)
     editor->setFont(font);
 }
 
-void checkControlFont(GuiAudit &audit, QWidget *widget, const QString &name)
+void checkControlFont(GuiAudit &audit, QWidget *widget, const QFont &controlFont, const QString &name)
 {
-    const QFontInfo expected(QApplication::font(widget));
+    const QFontInfo expected(controlFont);
     const QFontInfo actual(widget->font());
+    const auto description = [](const QFontInfo &info) {
+        return QString("%1, %2 pt, %3 px").arg(info.family()).arg(info.pointSizeF()).arg(info.pixelSize());
+    };
+    qInfo().noquote() << name << description(actual) << "(reference:" << description(expected) + ')';
     audit.require(actual.family() == expected.family() && actual.pixelSize() == expected.pixelSize(),
-                  name + " uses the desktop control font with a 96-point manuscript");
+                  name + " with a 96-point manuscript: " + description(actual) + "; expected " + description(expected));
 }
 
 void auditMenus(GuiAudit &audit, MainWindow &window)
@@ -207,6 +213,8 @@ void auditSettings(GuiAudit &audit, MainWindow &window)
     audit.capture("settings-names", settings);
     button(*settings, "Choose color…")->click();
     auto *picker = visible<QColorDialog>(*settings, "underlineColorDialog");
+    visible<QDialogButtonBox>(*picker);
+    visible<QLineEdit>(*picker);
     audit.capture("underline-color", picker);
     dismiss(picker);
     audit.require(color->isVisible(), "The underline color field remains available after canceling the chooser");
@@ -242,6 +250,24 @@ void auditInformation(GuiAudit &audit, MainWindow &window)
     dismiss(layout);
 }
 
+QDialog *openBookmarks(MainWindow &window)
+{
+    action(action(documentMenu(window), "Navigate")->menu(), "Bookmarks…")->trigger();
+    return visible<QDialog>(window, "bookmarkWindow");
+}
+
+void captureBookmarkList(GuiAudit &audit, QDialog *manager)
+{
+    visible<QComboBox>(*manager, "bookmarkViewMode")->setCurrentIndex(1);
+    auto *tree = visible<QTreeWidget>(*manager, "bookmarkResults");
+    auto *filter = visible<QLineEdit>(*manager, "bookmarkFilter");
+    filter->setText("Scenes");
+    tree->setCurrentItem(tree->topLevelItem(0));
+    audit.capture("bookmarks-list", manager);
+    filter->clear();
+    tree->setCurrentItem(tree->topLevelItem(0));
+}
+
 void auditBookmarks(GuiAudit &audit, MainWindow &window)
 {
     key(window.editor(), Qt::Key_B, Qt::ControlModifier);
@@ -250,8 +276,7 @@ void auditBookmarks(GuiAudit &audit, MainWindow &window)
     audit.capture("bookmark-add", form);
     dismiss(form);
 
-    action(action(documentMenu(window), "Navigate")->menu(), "Bookmarks…")->trigger();
-    auto *manager = visible<QDialog>(window, "bookmarkWindow");
+    auto *manager = openBookmarks(window);
     auto *tree = visible<QTreeWidget>(*manager, "bookmarkResults");
     auto *view = visible<QComboBox>(*manager, "bookmarkViewMode");
     view->setCurrentIndex(0);
@@ -264,13 +289,7 @@ void auditBookmarks(GuiAudit &audit, MainWindow &window)
     audit.capture("bookmark-rename-category", form);
     dismiss(form);
 
-    view->setCurrentIndex(1);
-    auto *filter = visible<QLineEdit>(*manager, "bookmarkFilter");
-    filter->setText("Scenes");
-    tree->setCurrentItem(tree->topLevelItem(0));
-    audit.capture("bookmarks-list", manager);
-    filter->clear();
-    tree->setCurrentItem(tree->topLevelItem(0));
+    captureBookmarkList(audit, manager);
     key(tree, Qt::Key_F2);
     form = visible<QDialog>(window, "bookmarkEditWindow");
     audit.capture("bookmark-edit", form);
@@ -291,7 +310,16 @@ void auditBookmarks(GuiAudit &audit, MainWindow &window)
 void auditSynonyms(GuiAudit &audit, MainWindow &window, const QString &section)
 {
     auto *control = visible<QToolButton>(window, section + "Menu");
-    inspectMenu(audit, control->menu(), control, section + "-menu");
+    auto *search = visible<QLineEdit>(window, section + "Search");
+    key(window.editor(), section == "characters" ? Qt::Key_1 : Qt::Key_2, Qt::ControlModifier | Qt::ShiftModifier);
+    waitFor([search] { return search->hasFocus(); }, section + " search shortcut did not focus the field");
+    key(search, Qt::Key_Backtab, Qt::ShiftModifier);
+    waitFor([control] { return control->hasFocus(); }, "Shift+Tab did not focus the " + section + " menu button");
+    key(control, Qt::Key_Space);
+    auto *menu = control->menu();
+    waitFor([menu] { return menu && menu->isVisible() && menu->activeAction(); }, section + " keyboard menu failed to open");
+    audit.capture(section + "-menu", menu);
+    key(menu, Qt::Key_Escape);
     auto *list = visible<QListView>(window, section + "List");
     list->setCurrentIndex(list->model()->index(0, 0));
     for (bool add : {true, false}) {
@@ -351,7 +379,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (!menu) return;
         opened = true;
         audit.capture("editor-context-menu", menu);
-        checkControlFont(audit, menu, "The manuscript context menu");
+        checkControlFont(audit, menu, documentMenu(window)->font(), "The manuscript context menu");
         QMenu *spelling = nullptr;
         for (auto *item : menu->actions())
             if (item->menu() && item->menu()->title() == "Spelling") spelling = item->menu();
@@ -359,7 +387,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (spelling) {
             spelling->popup(menu->mapToGlobal(QPoint(menu->width(), 0)));
             audit.capture("spelling-menu", spelling);
-            checkControlFont(audit, spelling, "The spelling submenu");
+            checkControlFont(audit, spelling, documentMenu(window)->font(), "The spelling submenu");
             spelling->hide();
         }
         menu->close();
@@ -377,7 +405,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
     audit.require(opened, "The manuscript context menu was visible");
 }
 
-void auditTools(GuiAudit &audit, MainWindow &window)
+void auditSymbols(GuiAudit &audit, MainWindow &window)
 {
     auto *editor = window.editor();
     key(editor, Qt::Key_U, Qt::ControlModifier);
@@ -389,7 +417,11 @@ void auditTools(GuiAudit &audit, MainWindow &window)
     if (!arrow.isEmpty()) grid->setCurrentIndex(arrow.first());
     audit.capture("symbols", picker);
     dismiss(picker);
+}
 
+void auditNameCompletion(GuiAudit &audit, MainWindow &window)
+{
+    auto *editor = window.editor();
     const auto manuscriptFont = editor->font();
     const auto restoreFont = qScopeGuard([&] { editor->setFont(manuscriptFont); });
     useLargeManuscriptFont(editor);
@@ -400,7 +432,20 @@ void auditTools(GuiAudit &audit, MainWindow &window)
     key(editor, Qt::Key_F5);
     auto *choices = visible<QListView>(*editor, "synonymChoiceList");
     audit.capture("name-completion", choices->window());
-    checkControlFont(audit, choices, "The name completion list");
+    // Cocoa can specialize the resolved font on item views. Compare with an
+    // actual visible list and label in the same window and on the same screen.
+    auto *referenceList = visible<QListView>(window, "charactersList");
+    auto *referenceHeading = visible<QLabel>(window, "wordCount");
+    auto *heading = visible<QLabel>(*choices->window());
+    checkControlFont(audit, choices, referenceList->font(), "The name completion list");
+    checkControlFont(audit, heading, referenceHeading->font(), "The name completion heading");
+    const auto rowHeight = [](QListView *list) {
+        return list->visualRect(list->model()->index(0, 0)).height();
+    };
+    const int expectedRow = rowHeight(referenceList), actualRow = rowHeight(choices);
+    audit.require(actualRow > 0 && expectedRow > 0 && qAbs(actualRow - expectedRow) <= 2,
+                  QString("The completion row is %1 px high at a 96-point manuscript font; "
+                          "the Characters list row is %2 px high").arg(actualRow).arg(expectedRow));
     key(choices, Qt::Key_Escape);
 }
 
@@ -410,6 +455,8 @@ void auditFiles(GuiAudit &audit, MainWindow &window)
         key(window.editor(), saving ? Qt::Key_S : Qt::Key_O,
             saving ? Qt::ControlModifier | Qt::ShiftModifier : Qt::ControlModifier);
         auto *dialog = visible<QFileDialog>(window);
+        visible<QLineEdit>(*dialog, "fileNameEdit");
+        visible<QDialogButtonBox>(*dialog);
         audit.capture(saving ? "file-save-as" : "file-open", dialog);
         dismiss(dialog);
         editorFocus(window);
@@ -452,8 +499,7 @@ void auditReloadWarnings(GuiAudit &audit, MainWindow &window)
         dismiss(question);
         dismiss(dictionary);
 
-        action(action(documentMenu(window), "Navigate")->menu(), "Bookmarks…")->trigger();
-        auto *bookmarks = visible<QDialog>(window, "bookmarkWindow");
+        auto *bookmarks = openBookmarks(window);
         button(*bookmarks, "Reload")->click();
         question = visible<QMessageBox>(*bookmarks);
         audit.capture("bookmark-reload", question);
@@ -511,6 +557,28 @@ void auditUnsaved(GuiAudit &audit, MainWindow &window)
 }
 }
 
+void auditDesktopSearches(GuiAudit &audit, MainWindow &window)
+{
+    for (const QString &id : {QStringLiteral("bookmarks-list"), QStringLiteral("symbols")}) {
+        if (!audit.wantsView(id)) continue;
+        try {
+            editorFocus(window);
+            if (id == "bookmarks-list") {
+                auto *manager = openBookmarks(window);
+                captureBookmarkList(audit, manager);
+                dismiss(manager);
+            } else {
+                auditSymbols(audit, window);
+            }
+        } catch (const std::exception &error) {
+            audit.require(false, id + ": " + QString::fromUtf8(error.what()));
+            for (auto *dialog : window.findChildren<QDialog *>())
+                if (dialog->isVisible()) dialog->reject();
+            settle();
+        }
+    }
+}
+
 void auditWindows(GuiAudit &audit, MainWindow &window)
 {
     // Keep independent paths running when one view fails to open. No
@@ -545,7 +613,8 @@ void auditWindows(GuiAudit &audit, MainWindow &window)
         inspect(views, [&] { auditSynonyms(audit, window, name); });
     }
     inspect({"spelling", "dictionary", "editor-context-menu", "spelling-menu"}, [&] { auditSpelling(audit, window); });
-    inspect({"symbols", "name-completion"}, [&] { auditTools(audit, window); });
+    inspect({"symbols"}, [&] { auditSymbols(audit, window); });
+    inspect({"name-completion"}, [&] { auditNameCompletion(audit, window); });
     inspect({"file-open", "file-save-as"}, [&] { auditFiles(audit, window); });
     inspect({"characters-reload", "recurring-reload", "dictionary-reload", "bookmark-reload"},
             [&] { auditReloadWarnings(audit, window); });

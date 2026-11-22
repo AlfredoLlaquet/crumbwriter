@@ -24,6 +24,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScreen>
+#include <QSignalBlocker>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleOptionButton>
@@ -290,7 +291,32 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
     if (id == "symbols" || id == "bookmarks-list") {
         auto *field = widget->findChild<QLineEdit *>(id == "symbols" ? "symbolSearch" : "bookmarkFilter");
         require(field && field->isVisible() && !field->text().isEmpty(), id + " shows a filled search");
-        if (field) measure(id + "/clear button", clearButtonContrast(*field), 3.0);
+        if (field) {
+            measure(id + "/clear button", clearButtonContrast(*field), 3.0);
+            // Keep the chosen row and filtering model intact during this pair
+            // of grabs. The resulting screenshot still shows the filled field.
+            const QSignalBlocker blocker(field);
+            const auto value = field->text(), placeholder = field->placeholderText();
+            const int caret = field->cursorPosition(), start = field->selectionStart();
+            const int length = field->selectedText().size();
+            field->setCursorPosition(0);
+            const auto typed = actualControl(field);
+            field->clear();
+            const auto ink = actualControl(field);
+            const int left = field->hasFocus() ? field->inputMethodQuery(Qt::ImCursorRectangle).toRect().right() + 1 : 4;
+            const auto text = field->rect().adjusted(qMax(4, left), 3, -24, -3);
+            field->setPlaceholderText({});
+            const auto blank = actualControl(field);
+            field->setPlaceholderText(placeholder);
+            field->setText(value);
+            if (start >= 0)
+                field->setSelection(caret == start ? start + length : start, caret == start ? -length : length);
+            else
+                field->setCursorPosition(caret);
+            measure(id + "/search text", paintedContrast(typed, text, &blank), 4.5);
+            if (!placeholder.isEmpty())
+                measure(id + "/placeholder", paintedContrast(ink, text, &blank), 4.5);
+        }
     }
     // These two compact toolbar-style controls were especially faint in Aqua.
     // Keep the focus ring outside the sample, which measures the actual label.
@@ -356,20 +382,32 @@ void GuiAudit::checkMainControls(MainWindow &window)
         if (!button) continue;
         const auto image = actualControl(button);
         require(button->width() >= 26 && button->height() >= 26, QString(name) + " has a usable target");
-        const QRect glyph = pixels(image, QRect(QPoint(), button->size()).adjusted(3, 3, -3, -3));
-        const QRgb paper = background(image, glyph);
+        // Aqua can shade each toolbar row differently. Subtract the same
+        // button painted with an empty icon, so gradients and borders cancel.
+        // Equal icon sizes preserve the button's normal style and geometry.
+        const auto original = button->icon();
+        QPixmap transparent(button->iconSize());
+        transparent.fill(Qt::transparent);
+        button->setIcon(QIcon(transparent));
+        const auto paper = actualControl(button);
+        button->setIcon(original);
+        require(image.size() == paper.size(), QString(name) + " keeps the same bounds with a blank icon");
+        if (image.size() != paper.size()) continue;
+        QRect square(QPoint(), button->iconSize().boundedTo(button->size()));
+        square.moveCenter(button->rect().center());
+        const QRect glyph = pixels(image, square);
         // The three strokes must cross the same three columns. This rejects
         // a Qt application logo, a row of dots, and a lone disclosure arrow.
-        for (const double fraction : {0.41, 0.50, 0.59}) {
-            const int x = qRound((image.width() - 1) * fraction);
+        for (const double fraction : {0.25, 0.50, 0.75}) {
+            const int x = glyph.left() + qRound((glyph.width() - 1) * fraction);
             int strokes = 0;
             bool inside = false;
             for (int y = glyph.top(); y <= glyph.bottom(); ++y) {
-                const bool ink = contrast(image.pixel(x, y), paper) >= 3.0;
+                const bool ink = contrast(image.pixel(x, y), paper.pixel(x, y)) >= 3.0;
                 if (ink && !inside) ++strokes;
                 inside = ink;
             }
-            require(strokes == 3, QString("%1 shows %2 strokes at %3% width (expected three)")
+            require(strokes == 3, QString("%1 shows %2 strokes at %3% of its icon (expected three)")
                                       .arg(name).arg(strokes).arg(qRound(100 * fraction)));
         }
     }
@@ -389,7 +427,7 @@ void GuiAudit::checkMainControls(MainWindow &window)
         field->setPlaceholderText(placeholder);
         const auto text = field->rect().adjusted(4, 3, -20, -3);
         const auto paper = background(blank, pixels(blank, text));
-        double minimumPrompt = 4.5, minimumSelection = 4.5;
+        double minimumSelection = 4.5;
         if (theme_ == "desktop") {
             // Native styles choose their own placeholder and selection ink.
             // Paint a stock field on the same display and font, including
@@ -407,8 +445,7 @@ void GuiAudit::checkMainControls(MainWindow &window)
             native.setPlaceholderText({});
             const auto nativeBlank = actualControl(&native);
             const double reference = paintedContrast(nativePrompt, text, &nativeBlank);
-            measure(QString(name) + "/desktop reference placeholder", reference, 1.5);
-            minimumPrompt = qBound(1.5, reference * 0.90, 4.5);
+            measure(QString(name) + "/desktop reference placeholder", reference, 1.0);
             native.setFocus(Qt::TabFocusReason);
             settle();
             const int start = qMax(text.left(), native.inputMethodQuery(Qt::ImCursorRectangle).toRect().right() + 1);
@@ -428,7 +465,7 @@ void GuiAudit::checkMainControls(MainWindow &window)
         } else {
             require((qGray(paper) < 128) == (theme_ == "dark"), QString(name) + " paints the selected background");
         }
-        measure(QString(name) + "/placeholder", paintedContrast(prompt, text, &blank), minimumPrompt);
+        measure(QString(name) + "/placeholder", paintedContrast(prompt, text, &blank), 4.5);
         measure(QString(name) + "/entry", paintedContrast(filled, text, &blank), 4.5);
 
         auto *previousFocus = QApplication::focusWidget();
@@ -447,7 +484,7 @@ void GuiAudit::checkMainControls(MainWindow &window)
         promptArea.setLeft(qMax(text.left(), emptyCaretRight + 1));
         auto typedArea = promptArea;
         typedArea.setRight(qMin(text.right(), filledCaretLeft - 1));
-        measure(QString(name) + "/focused placeholder", paintedContrast(focusPrompt, promptArea, &focusBlank), minimumPrompt);
+        measure(QString(name) + "/focused placeholder", paintedContrast(focusPrompt, promptArea, &focusBlank), 4.5);
         measure(QString(name) + "/focused entry", paintedContrast(focusInk, typedArea, &focusBlank), 4.5);
         measure(QString(name) + "/clear button", clearButtonContrast(*field), 3.0);
         field->selectAll();
@@ -554,7 +591,7 @@ int main(int argc, char **argv)
     parser.addHelpOption();
     parser.addOption({"output", "Save screenshots and a JSON report for each theme.", "directory"});
     parser.addOption({"platform-name", "Require this Qt window system (xcb, windows or cocoa).", "platform"});
-    parser.addOption({"theme", "Limit the audit to light, dark or the default desktop overview.", "theme"});
+    parser.addOption({"theme", "Limit the audit to light, dark or the default desktop overview and searches.", "theme"});
     parser.addOption({"view", "Limit measured views and images to a shell wildcard.", "pattern", "*"});
     parser.process(app);
     if (parser.isSet("platform-name") && parser.value("platform-name") != QGuiApplication::platformName()) {
@@ -568,8 +605,11 @@ int main(int argc, char **argv)
         themes = {parser.value("theme")};
     } else {
         const QRegularExpression requested(QRegularExpression::wildcardToRegularExpression(parser.value("view")));
-        if (!requested.match("main").hasMatch() && !requested.match("panel-searches").hasMatch() &&
-            !requested.match("macos-menu-bar").hasMatch() && !requested.match("native-title-bar").hasMatch())
+        const QStringList desktopViews{"main", "panel-searches", "bookmarks-list", "symbols",
+                                       "macos-menu-bar", "native-title-bar"};
+        if (std::none_of(desktopViews.cbegin(), desktopViews.cend(), [&](const QString &id) {
+                return requested.match(id).hasMatch();
+            }))
             themes.removeAll("desktop");
     }
     const auto desktopStyle = QApplication::style()->objectName();
@@ -603,7 +643,8 @@ int main(int argc, char **argv)
         audit.capture("main", &window);
         audit.checkMainControls(window);
         audit.captureDesktopChrome(window);
-        if (theme != "desktop") auditWindows(audit, window);
+        if (theme == "desktop") auditDesktopSearches(audit, window);
+        else auditWindows(audit, window);
         window.hide();
         passed = audit.finish() && passed;
     }

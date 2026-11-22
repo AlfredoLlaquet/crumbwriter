@@ -22,8 +22,8 @@ MODEL_OBJECTS = src/qt/crumbmodel.o src/qt/dailycount.o src/qt/manuscripttext.o
 EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o \
                  src/qt/editorviewport.o src/qt/committedpunctuation.o src/qt/vimotion.o src/qt/viselection.o
 SEARCH_OBJECTS = $(EDITOR_OBJECTS) src/qt/searchpanel.o src/qt/searchengine.o src/qt/searchhistory.o
-BOOKMARK_OBJECTS = src/qt/bookmarks.o src/qt/bookmarkfile.o src/qt/bookmarkanchors.o src/qt/manuscripttext.o src/qt/commandicons.o
-SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o src/qt/synonymmatch.o src/qt/panelsearch.o src/qt/commandicons.o
+BOOKMARK_OBJECTS = src/qt/bookmarks.o src/qt/bookmarkfile.o src/qt/bookmarkanchors.o src/qt/manuscripttext.o src/qt/commandicons.o src/qt/promptlineedit.o
+SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o src/qt/synonymmatch.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o
 SPELL_OBJECTS = src/qt/textcompanion.o src/qt/spellcheck.o src/qt/spellreview.o src/qt/spellwords.o
 STORE_OBJECTS = src/qt/documentstore.o
 QT_SOURCES != find src/qt -name '*.cpp' ! -name 'main.cpp' | sort
@@ -79,8 +79,8 @@ tests/qt/test-vi: tests/qt/test-vi.cpp $(EDITOR_OBJECTS) $(CORE_OBJECTS)
 tests/qt/test-search: tests/qt/test-search.cpp $(SEARCH_OBJECTS) $(CORE_OBJECTS)
 	$(TEST_LINK) $(SEARCH_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
-tests/qt/test-navigation: tests/qt/test-navigation.cpp src/qt/navigation.o src/qt/panelsearch.o src/qt/commandicons.o $(EDITOR_OBJECTS) $(CORE_OBJECTS)
-	$(TEST_LINK) src/qt/navigation.o src/qt/panelsearch.o src/qt/commandicons.o $(EDITOR_OBJECTS) $(CORE_OBJECTS) $(LIBS)
+tests/qt/test-navigation: tests/qt/test-navigation.cpp src/qt/navigation.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o $(EDITOR_OBJECTS) $(CORE_OBJECTS)
+	$(TEST_LINK) src/qt/navigation.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o $(EDITOR_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
 tests/qt/test-synonyms: tests/qt/test-synonyms.cpp $(SYNONYM_OBJECTS) src/qt/manuscripttext.o
 	$(TEST_LINK) $(SYNONYM_OBJECTS) src/qt/manuscripttext.o $(LIBS)

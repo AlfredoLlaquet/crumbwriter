@@ -2,6 +2,7 @@
 #include "mainwindow.h"
 #include "manuscripteditor.h"
 #include "preferences.h"
+#include "promptlineedit.h"
 
 #include <QApplication>
 #include <QDialog>
@@ -82,6 +83,45 @@ void checkPalette(const QPalette &colors)
     check(contrast(EditorColors::warning(base), EditorColors::searchPaper(colors)) >= 4.5, "number in a search hit");
 }
 
+void checkNativePrompts()
+{
+    QWidget container;
+    QPalette native;
+    native.setColor(QPalette::Window, Qt::white);
+    native.setColor(QPalette::Base, Qt::white);
+    native.setColor(QPalette::Text, QColor("#152b30"));
+    native.setColor(QPalette::PlaceholderText, QColor(20, 40, 55, 60));
+    const QColor disabled(80, 80, 80, 74);
+    native.setColor(QPalette::Disabled, QPalette::PlaceholderText, disabled);
+    container.setPalette(native);
+    PromptLineEdit field(&container);
+    field.setPlaceholderText("Search the manuscript");
+    const auto legible = [&](QPalette::ColorGroup group) {
+        const QPalette p = field.palette();
+        const auto hint = p.color(group, QPalette::PlaceholderText);
+        return hint.alpha() == 255 && contrast(hint, p.color(group, QPalette::Base)) >= 5.0;
+    };
+    check(legible(QPalette::Active) && legible(QPalette::Inactive), "faint translucent native hints gain contrast");
+    check(field.palette().color(QPalette::Disabled, QPalette::PlaceholderText) == disabled &&
+          field.palette().text() == native.text(), "disabled hints and ordinary text preserve their native colors");
+
+    const QColor readable(12, 27, 85, 240);
+    native.setColor(QPalette::Active, QPalette::PlaceholderText, readable);
+    container.setPalette(native);
+    until([&] { return field.palette().color(QPalette::Active, QPalette::PlaceholderText) == readable; },
+          "a readable replacement desktop hint recovers its exact hue and alpha");
+    native.setColor(QPalette::Base, QColor("#202124"));
+    native.setColor(QPalette::Text, QColor("#ececec"));
+    native.setColor(QPalette::PlaceholderText, QColor(240, 240, 240, 40));
+    container.setPalette(native);
+    until([&] { return legible(QPalette::Active) && legible(QPalette::Inactive); }, "live dark desktop prompt adjustment");
+    QPalette local;
+    local.setColor(QPalette::Active, QPalette::PlaceholderText, Qt::yellow);
+    field.setPalette(local);
+    until([&] { return field.palette().color(QPalette::Active, QPalette::PlaceholderText) == Qt::yellow &&
+                       legible(QPalette::Inactive); }, "readable field-specific ink survives palette refresh");
+}
+
 bool paintsLink(QLabel &label, const QColor &expected)
 {
     const auto image = label.grab().toImage().convertToFormat(QImage::Format_RGB32);
@@ -138,6 +178,7 @@ int main(int argc, char **argv)
     QApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
 #endif
     QApplication app(argc, argv);
+    checkNativePrompts();
     QTemporaryDir temp;
     check(temp.isValid(), "temporary settings and manuscript");
     const bool desktopDialogsDisabled = QCoreApplication::testAttribute(Qt::AA_DontUseNativeDialogs);

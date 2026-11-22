@@ -5,7 +5,7 @@
 #include <QKeyEvent>
 
 PanelSearch::PanelSearch(QAbstractItemView *view, QWidget *parent, int role)
-    : QLineEdit(parent), view_(view), role_(role)
+    : PromptLineEdit(parent), view_(view), role_(role)
 {
     CommandIcons::addSearchClearButton(this);
     view_->installEventFilter(this);
@@ -99,5 +99,5 @@ bool PanelSearch::eventFilter(QObject *object, QEvent *event)
 {
     if (object == view_ && event->type() == QEvent::KeyPress &&
         handleKey(static_cast<QKeyEvent *>(event), false)) return true;
-    return QLineEdit::eventFilter(object, event);
+    return PromptLineEdit::eventFilter(object, event);
 }

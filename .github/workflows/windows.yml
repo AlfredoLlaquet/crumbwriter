@@ -15,6 +15,7 @@ jobs:
     name: Build and package on Windows x64
     outputs:
       installers: ${{ steps.installer_artifact.outcome == 'success' && steps.fixture_artifact.outcome == 'success' }}
+      client_audit: ${{ steps.installer_artifact.outcome == 'success' && steps.audit_driver.outcome == 'success' }}
     runs-on: windows-2025
     timeout-minutes: 60
     steps:
@@ -71,6 +72,15 @@ jobs:
           path: build/gui-audit
           if-no-files-found: warn
           retention-days: 14
+      - name: Preserve the x64 audit driver for the installed Windows 11 check
+        id: audit_driver
+        if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-gui-audit-driver
+          path: build/test-gui-audit.exe
+          if-no-files-found: error
+          retention-days: 2
       - name: Collect the runtime, dictionary, notices and corresponding source
         id: runtime
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
@@ -134,3 +144,33 @@ jobs:
       - name: Exercise the installer and the installed editor
         shell: pwsh
         run: packaging/windows/test-install.ps1 -Setup dist/CrumbWriter-Windows-x64-Setup.exe -Baseline dist/CrumbWriter-UpgradeFixture.exe
+
+  windows11:
+    name: Check the installed x64 editor on Windows 11 Arm
+    runs-on: windows-11-arm
+    needs: build
+    if: ${{ !cancelled() && needs.build.outputs.client_audit == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-installer
+          path: dist
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: windows-gui-audit-driver
+          path: dist
+      - name: Install and capture the editor on the Windows 11 desktop
+        shell: pwsh
+        run: tests/gui-audit-windows11.ps1 -Setup dist/CrumbWriter-Windows-x64-Setup.exe -Driver dist/test-gui-audit.exe
+      - name: Preserve the Windows 11 appearance evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gui-audit-windows-11
+          path: ${{ runner.temp }}/gui-audit
+          if-no-files-found: warn
+          retention-days: 14

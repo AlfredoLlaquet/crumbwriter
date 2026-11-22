@@ -1,4 +1,5 @@
 #include "preferences.h"
+#include "promptlineedit.h"
 #include "synonymwriting.h"
 
 #include <QColorDialog>
@@ -78,7 +79,7 @@ QWidget *Preferences::synonymPage(QWidget *parent)
                      [this](int value) { set("completion-prefix", value); });
 
     auto *row = new QHBoxLayout;
-    auto *color = new QLineEdit(page);
+    auto *color = new PromptLineEdit(page);
     color->setObjectName("underline-color");
     color->setAccessibleName("Underline color");
     color->setPlaceholderText("Theme color");

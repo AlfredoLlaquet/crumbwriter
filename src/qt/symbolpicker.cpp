@@ -2,6 +2,7 @@
 
 #include "commandicons.h"
 #include "manuscripteditor.h"
+#include "promptlineedit.h"
 #include "symbolcatalog.h"
 #include "textkeys.h"
 
@@ -87,7 +88,7 @@ SymbolPicker::SymbolPicker(ManuscriptEditor *editor, QSettings &settings, QWidge
     setModal(false);
     auto *layout = new QVBoxLayout(this);
     auto *form = new QFormLayout;
-    search_ = new QLineEdit(this);
+    search_ = new PromptLineEdit(this);
     search_->setObjectName("symbolSearch");
     CommandIcons::addSearchClearButton(search_);
     search_->setPlaceholderText(tr("Name, description, theme, symbol, or U+ code"));

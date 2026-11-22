@@ -651,7 +651,8 @@ void testMenuAccess(const QTemporaryDir &tmp)
         }
     }
     CHECK(reachable);
-    window.editor()->setFocus();
+    window.activateManuscript(false);
+    CHECK(until([&] { return window.editor()->hasFocus(); }));
     key(Qt::Key_F10);
     CHECK(until([&] { return documentButton->menu()->isVisible(); }));
     dismissMenu(documentButton->menu());

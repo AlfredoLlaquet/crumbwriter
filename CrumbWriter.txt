@@ -924,6 +924,8 @@ adapter keeps file bytes, clipboard text and search positions consistent.
                                            handling for the three menu buttons
     src/qt/controltheme.*                  Application palette, desktop style
                                            restoration and standard button icons
+    src/qt/promptlineedit.*                Readable placeholder text for search
+                                           fields across desktop palette changes
     src/qt/navigation.*                    Mode-specific metrics, visits, Genres
                                            or Titles, and back/forward marks
     src/qt/panelsearch.*                   Shared in-place list search, keyboard
@@ -1162,12 +1164,23 @@ Correct each defect, repeat its focused check, and rerun the affected
 platforms and themes. Before a cross-platform appearance release, review
 the four-platform full run on the revision being shipped.
 
-The full run also captures the main window after returning to Follow
-desktop. Use --theme desktop --view main for that check alone. Compare
-the sidebar's placeholders and selection with a stock input field on
-the same desktop. Native system colors can differ from the two explicit
-palettes. Keyboard checks include opening the overflow menu in a narrow
-toolbar and dismissing a manuscript notice.
+The full run also captures the main window, sidebar searches, Bookmarks,
+and Insert Symbol after returning to Follow desktop. Use --theme desktop
+--view main for the main window alone. Compare the sidebar's placeholders
+and selection with a stock input field on
+the same desktop. A desktop may supply very faint placeholder text.
+Check that enabled search prompts reach a contrast ratio of at least
+4.5:1 against the painted field, including in the native Mac style.
+Keyboard checks include opening the overflow menu in a narrow toolbar
+and dismissing a manuscript notice.
+
+The Windows job first exercises the x64 build on Windows Server. A
+separate Windows 11 Arm desktop installs the same x64 setup program and
+uses its Windows x64 emulation to run the installed editor and the
+appearance audit with the packaged Qt libraries. Its gui-audit-windows-11
+artifact includes the Windows edition, build, and host architecture.
+The Mac jobs use Cocoa on both Apple silicon and Intel. Inspect the title
+bar and Mac system menu screenshots alongside the application controls.
 
 Check live movements with t-2 across crumbs, j then j2 followed by
 Backspace, q and Q phrase previews with a count and a literal asterisk,

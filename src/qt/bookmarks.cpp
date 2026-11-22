@@ -2,6 +2,7 @@
 #include "commandicons.h"
 #include "layoutcolumns.h"
 #include "bookmarkfile.h"
+#include "promptlineedit.h"
 
 #include <QtCore/QFileInfo>
 #include <QtCore/QPointer>
@@ -148,7 +149,7 @@ public:
         auto *layout = new QVBoxLayout(manager);
         auto *filters = new QHBoxLayout;
         auto *filterLabel = new QLabel(QStringLiteral("&Filter"), manager);
-        filter = new QLineEdit(manager);
+        filter = new PromptLineEdit(manager);
         filter->setObjectName(QStringLiteral("bookmarkFilter"));
         CommandIcons::addSearchClearButton(filter);
         filterLabel->setBuddy(filter);
@@ -428,7 +429,7 @@ public:
         categoryField->setInsertPolicy(QComboBox::NoInsert);
         categoryField->setCompleter(nullptr);
         fields->addRow(QStringLiteral("&Category"), categoryField);
-        nameField = new QLineEdit(form);
+        nameField = new PromptLineEdit(form);
         nameField->setObjectName(QStringLiteral("bookmarkName"));
         nameLabel = new QLabel(QStringLiteral("&Name"), form);
         nameLabel->setBuddy(nameField);

@@ -31,3 +31,4 @@ private:
 };
 
 void auditWindows(GuiAudit &audit, MainWindow &window);
+void auditDesktopSearches(GuiAudit &audit, MainWindow &window);

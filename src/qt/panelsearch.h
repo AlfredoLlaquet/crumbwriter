@@ -1,13 +1,13 @@
 #pragma once
 
-#include <QLineEdit>
+#include "promptlineedit.h"
 #include <functional>
 
 class QAbstractItemView;
 class QModelIndex;
 
 // Search a flat panel list in place. The view keeps its original model and order.
-class PanelSearch final : public QLineEdit {
+class PanelSearch final : public PromptLineEdit {
 public:
     PanelSearch(QAbstractItemView *view, QWidget *parent, int role = Qt::DisplayRole);
     void focusSearch();

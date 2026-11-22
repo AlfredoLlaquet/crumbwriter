@@ -1,5 +1,6 @@
 #include "preferences.h"
 #include "controltheme.h"
+#include "promptlineedit.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -236,7 +237,7 @@ void showShortcutHelp(QWidget *parent)
     dialog->setObjectName("shortcutHelp");
     dialog->setWindowTitle("Keyboard Shortcuts — Crumb Writer");
     auto *layout = new QVBoxLayout(dialog);
-    auto *filter = new QLineEdit(dialog);
+    auto *filter = new PromptLineEdit(dialog);
     filter->setPlaceholderText("Filter shortcuts");
     filter->setAccessibleName("Filter shortcuts");
     auto *list = new QTreeWidget(dialog);
