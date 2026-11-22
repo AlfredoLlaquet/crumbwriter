@@ -2,6 +2,7 @@
 #include "draft.h"
 #include "documentstore.h"
 
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QMetaObject>
@@ -37,7 +38,22 @@ struct Result {
 
 QString localPath(const char *name)
 {
+#ifdef Q_OS_WIN
+    // GLib filenames are UTF-8 on Windows. Qt's encodeName/decodeName use
+    // the legacy system code page there, which can lose manuscript names.
+    return name ? QDir::fromNativeSeparators(QString::fromUtf8(name)) : QString();
+#else
     return name ? QFile::decodeName(name) : QString();
+#endif
+}
+
+QByteArray diskPath(const QString &name)
+{
+#ifdef Q_OS_WIN
+    return name.toUtf8();
+#else
+    return QFile::encodeName(name);
+#endif
 }
 
 QString takeError(GError *&error)
@@ -84,11 +100,11 @@ public:
             case Operation::SaveAs: {
                 QFileInfo destination(request.destination);
                 const QString source = localPath(cw_file_path(file));
-                if (!source.isEmpty() && (source == destination.canonicalFilePath() ||
-                                          source == destination.absoluteFilePath())) {
+                if (!source.isEmpty() && (source == destination.absoluteFilePath() ||
+                                          destination == QFileInfo(source))) {
                     result.ok = cw_file_save_guarded(file, utf8.constData(), gate, &error);
                 } else {
-                    const QByteArray name = QFile::encodeName(request.destination);
+                    const QByteArray name = diskPath(request.destination);
                     CwFile *copy = cw_file_save_as_guarded(file, name.constData(), utf8.constData(),
                                                           request.backup, request.stamp.get(),
                                                           gate, &error);
@@ -370,7 +386,7 @@ bool DocumentStore::load(const QString &path, bool backup, bool recovery, QStrin
         return false;
     char *contents = nullptr;
     GError *failure = nullptr;
-    const QByteArray filename = QFile::encodeName(path);
+    const QByteArray filename = diskPath(path);
     CwFile *file = cw_file_open(filename.constData(), backup, &contents, &failure);
     if (!file) {
         const QString message = takeError(failure);
@@ -464,7 +480,7 @@ void DocumentStore::saveAs(const QString &path, bool backup, bool closeAfter)
     state->awaitingName = false;
     auto stamp = std::make_shared<CwTargetStamp>();
     GError *failure = nullptr;
-    if (!cw_file_stamp_target(QFile::encodeName(path).constData(), stamp.get(), &failure)) {
+    if (!cw_file_stamp_target(diskPath(path).constData(), stamp.get(), &failure)) {
         state->closing = Closing::No;
         state->message = QStringLiteral("Save As failed");
         state->schedule();

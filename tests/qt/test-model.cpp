@@ -3,6 +3,7 @@
 
 #include <QtCore/QCryptographicHash>
 #include <QtCore/QFile>
+#include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextCursor>
@@ -530,7 +531,7 @@ static void dailyWordPersistence(const QString &directory)
     // Version 2.2 stored crumb identities without a word baseline.
     const QString legacy = directory + "/Legacy.txt";
     const auto key = QCryptographicHash::hash(legacy.toUtf8(), QCryptographicHash::Sha256).toHex();
-    QFile state(directory + "/crumbwriter/daily/" + QString::fromLatin1(key) + ".json");
+    QFile state(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/crumbwriter/daily/" + QString::fromLatin1(key) + ".json");
     CHECK(state.open(QIODevice::WriteOnly));
     const auto oldState = QByteArray("{\"version\":1,\"headers\":[\"1\"],\"renamed\":[],\"date\":\"") +
                           date.toString(Qt::ISODate).toLatin1() + "\"}";
@@ -550,6 +551,9 @@ int main(int argc, char **argv)
     QTemporaryDir temp;
     CHECK(temp.isValid());
     qputenv("XDG_DATA_HOME", temp.path().toLocal8Bit());
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
+    QStandardPaths::setTestModeEnabled(true);
+#endif
     QApplication app(argc, argv);
     std::setlocale(LC_CTYPE, "");
     fieldsAndWords();

@@ -1,5 +1,6 @@
 #include "spellwords.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -46,11 +47,35 @@ bool wordAt(const QString &text, int index)
     return QChar::isLetterOrNumber(u) || QChar::isMark(u) || u == '_';
 }
 
+QString packagedDictionaryDirectory()
+{
+#ifdef Q_OS_MACOS
+    return QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../Resources/dictionaries");
+#elif defined(Q_OS_WIN)
+    return QCoreApplication::applicationDirPath() + "/dictionaries";
+#else
+    return {};
+#endif
+}
+
+QByteArray hunspellFilename(const QString &path)
+{
+#ifdef Q_OS_WIN
+    // The executable has a UTF-8 active code page, including for Hunspell's
+    // narrow filename interface in the UCRT64 build.
+    return QDir::toNativeSeparators(path).toUtf8();
+#else
+    return QFile::encodeName(path);
+#endif
+}
+
 class AmericanDictionary {
 public:
     AmericanDictionary()
     {
         QStringList roots = qEnvironmentVariable("DICPATH").split(QDir::listSeparator(), Qt::SkipEmptyParts);
+        const QString bundled = packagedDictionaryDirectory();
+        if (!bundled.isEmpty()) roots.prepend(bundled);
         for (const auto &dir : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
             roots << dir + "/hunspell" << dir + "/myspell/dicts";
         }
@@ -61,16 +86,20 @@ public:
             const QString base = QDir(root).filePath("en_US");
             const QString aff = base + ".aff", dic = base + ".dic";
             if (!QFileInfo(aff).isReadable() || !QFileInfo(dic).isReadable()) continue;
-            handle_.reset(Hunspell_create(QFile::encodeName(aff).constData(), QFile::encodeName(dic).constData()));
+            handle_.reset(Hunspell_create(hunspellFilename(aff).constData(), hunspellFilename(dic).constData()));
             if (!handle_) continue;
             const char *charset = Hunspell_get_dic_encoding(handle_.get());
             encoding_ = charset ? QStringConverter::encodingForName(charset) : std::nullopt;
-            if (encoding_) break;
+            if (encoding_ && Hunspell_spell(handle_.get(), "word")) {
+                bundled_ = root == bundled;
+                break;
+            }
             handle_.reset();
         }
     }
 
     bool available() const { return bool(handle_); }
+    bool bundled() const { return bundled_; }
 
     bool correct(const QString &word)
     {
@@ -107,6 +136,7 @@ private:
     std::unique_ptr<Hunhandle, decltype(&Hunspell_destroy)> handle_{nullptr, &Hunspell_destroy};
     std::optional<QStringConverter::Encoding> encoding_;
     QHash<QString, bool> known_;
+    bool bundled_ = false;
 };
 
 const std::shared_future<std::unique_ptr<AmericanDictionary>> &loadedDictionary()
@@ -133,6 +163,7 @@ bool SpellWords::loading()
 }
 
 bool SpellWords::available() { return american().available(); }
+bool SpellWords::usingBundledDictionary() { return american().bundled(); }
 
 QStringList SpellWords::suggestions(const QString &word) { return american().suggest(word); }
 

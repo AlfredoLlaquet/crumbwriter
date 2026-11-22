@@ -207,6 +207,9 @@ public:
         connect(close, &QPushButton::clicked, manager, &QDialog::reject);
         auto *find = new QAction(manager);
         find->setShortcut(QKeySequence::Find);
+#ifdef Q_OS_MACOS
+        find->setShortcuts({QKeySequence(Qt::CTRL | Qt::Key_F), QKeySequence(Qt::META | Qt::Key_F)});
+#endif
         manager->addAction(find);
         connect(find, &QAction::triggered, this, [this] { filter->setFocus(); filter->selectAll(); });
         filter->installEventFilter(this);

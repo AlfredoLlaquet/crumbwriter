@@ -89,7 +89,18 @@ constexpr HelpRow shortcuts[] = {
     {"Window","Ctrl+S / Ctrl+Shift+S","Save / Save As"},
     {"Window","Alt+W","Close the manuscript window. In Find controls, toggle Wrap"},
     {"Window","Ctrl+Shift+I","Show manuscript statistics. Ctrl+C in the dialog copies the figures"},
-    {"Window","F10, A","About Crumb Writer. Enter opens the focused repository link. Escape closes About"},
+    {"Window","F10, A","Open About Crumb Writer. Enter opens the focused repository link"},
+    {"About","Alt+L","View License offline. Scroll or copy the full terms. Escape returns to About"},
+#ifdef Q_OS_MACOS
+    {"Mac keyboard","Control / Option","Ctrl means the physical Control key. Option is Alt. On a media-key keyboard, hold Fn for F1 through F10"},
+    {"Mac keyboard","Control+Shift+Space","Start a movement selection when Control+Space switches input sources"},
+    {"Mac keyboard","Command+A / X / C / V","Select all / cut / copy / paste"},
+    {"Mac keyboard","Command+Z / Command+Shift+Z","Undo / redo"},
+    {"Mac keyboard","Command+N / O / S / Shift+S / F","New window / open / save / Save As / find"},
+    {"Mac keyboard","Command+,","Open Settings"},
+    {"Mac keyboard","Command+W / Command+Q","Close this window / quit Crumb Writer, with normal save confirmation"},
+    {"Mac keyboard","Control+Shift+B / Control+Shift+W","Open Bookmarks / toggle Wrap in Find. Option combinations can still type special characters"},
+#endif
     {"Window","Ctrl+, / F10 / F1","Settings / Document menu / Keyboard Shortcuts"}
 };
 }

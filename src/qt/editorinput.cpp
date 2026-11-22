@@ -1,4 +1,5 @@
 #include "manuscripteditor.h"
+#include "textkeys.h"
 #include "committedpunctuation.h"
 #include "manuscripttext.h"
 #include "viselection.h"
@@ -436,6 +437,26 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
     const int key = e->key();
     const auto mods = e->modifiers() & ~Qt::KeypadModifier;
     const bool enter = key == Qt::Key_Return || key == Qt::Key_Enter;
+    if (isComposedTextKey(*e)) { typeText(e->text()); return; }
+#ifdef Q_OS_MACOS
+    if (mods == (Qt::ControlModifier | Qt::ShiftModifier) && key == Qt::Key_Space) {
+        startViSelection();
+        return;
+    }
+    // StandardKey on macOS describes physical Command. The manuscript also
+    // accepts its documented physical Control alternatives.
+    if (mods == (Qt::ControlModifier | Qt::ShiftModifier) && key == Qt::Key_Z) { redo(); return; }
+    if (mods == Qt::ControlModifier) {
+        switch (key) {
+        case Qt::Key_A: selectAll(); return;
+        case Qt::Key_C: copy(); return;
+        case Qt::Key_V: paste(); return;
+        case Qt::Key_X: cut(); return;
+        case Qt::Key_Z: undo(); return;
+        default: break;
+        }
+    }
+#endif
     if (enter && mods == Qt::ControlModifier) { centerCurrentLine(); return; }
     if (enter && mods == Qt::AltModifier) { topCurrentCrumb(); return; }
     if ((mods == Qt::ControlModifier || mods == (Qt::ControlModifier | Qt::ShiftModifier)) &&
@@ -482,10 +503,8 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
         typeText(QStringLiteral("\n"));
         return;
     }
-    const bool altGr = mods.testFlag(Qt::GroupSwitchModifier) ||
-                      (mods.testFlag(Qt::ControlModifier) && mods.testFlag(Qt::AltModifier));
     if (!e->text().isEmpty() && e->text().front().unicode() >= 0x20 &&
-        (altGr || !(mods & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)))) {
+        !(mods & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier))) {
         typeText(e->text());
         return;
     }

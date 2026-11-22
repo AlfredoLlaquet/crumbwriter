@@ -165,6 +165,11 @@ sed_space_width(const gchar *p)
 static gboolean
 wc_space(gunichar c)
 {
+#ifdef G_OS_WIN32
+    /* FreeBSD 15 C.UTF-8 space characters. A Windows wint_t holds only a
+     * UTF-16 code unit, so never feed a full Unicode scalar to iswspace. */
+    return c < 128 ? (c == ' ' || (c >= '\t' && c <= '\r')) : g_unichar_isspace(c);
+#else
     if (iswspace((wint_t)c))
         return TRUE;
 #ifdef __GLIBC__
@@ -173,6 +178,7 @@ wc_space(gunichar c)
         return getenv("POSIXLY_CORRECT") == NULL;
 #endif
     return FALSE;
+#endif
 }
 
 guint

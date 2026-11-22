@@ -6,11 +6,15 @@
 #include "searchpanel.h"
 #include "spellcheck.h"
 #include "synonympanel.h"
+#include "textkeys.h"
 
 #include <QApplication>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMenu>
+#ifdef Q_OS_MACOS
+#include <QMenuBar>
+#endif
 #include <QRegularExpression>
 #include <QSplitter>
 #include <QStyle>
@@ -74,7 +78,14 @@ void MainWindow::buildMenu()
     add(edit, "Previous spelling issue…", "Shift+F8", [this] { spelling_->next(true); });
     add(edit, "Manuscript dictionary…", "Ctrl+Shift+D", [this] { spelling_->showDictionary(); });
     auto *nav = menu_->addMenu("Navigate");
-    add(nav, "Select by movement", "Ctrl+Space", [this] {
+#ifdef Q_OS_MACOS
+    const QString motionKeys = "Ctrl+Shift+Space";
+    const QString bookmarkKeys = "Ctrl+Shift+B";
+#else
+    const QString motionKeys = "Ctrl+Space";
+    const QString bookmarkKeys = "Alt+B";
+#endif
+    add(nav, "Select by movement", motionKeys, [this] {
         editor_->setFocus();
         editor_->startViSelection();
     });
@@ -90,7 +101,7 @@ void MainWindow::buildMenu()
     crumbOnlyActions_ << add(nav, "Next numbering warning", "F4", [this] { numberingWarning(false); });
     crumbOnlyActions_ << add(nav, "Previous numbering warning", "Shift+F4", [this] { numberingWarning(true); });
     add(nav, "Add bookmark…", "Ctrl+B", [this] { bookmarks_->addCurrent(); });
-    add(nav, "Bookmarks…", "Alt+B", [this] { bookmarks_->showWindow(); });
+    add(nav, "Bookmarks…", bookmarkKeys, [this] { bookmarks_->showWindow(); });
     add(nav, "Search Characters", "Ctrl+Shift+1", [this] { focusSynonyms(false); });
     add(nav, "Search Recurring", "Ctrl+Shift+2", [this] { focusSynonyms(true); });
     add(nav, "Search visit history", "Ctrl+Shift+3", [this] { focusNavigation(false); });
@@ -105,7 +116,34 @@ void MainWindow::buildMenu()
     add(menu_, "Settings…", "Ctrl+,", [this] { prefs_.show(this); });
     add(menu_, "Keyboard Shortcuts…", "F1", [this] { showShortcutHelp(this); });
     add(menu_, "&About Crumb Writer…", {}, [this] { showAbout(); });
+#ifdef Q_OS_MACOS
+    add(menu_, "Close window", "Cmd+W", [this] { close(); });
+    // Keep the same F10 menu as the other desktops. Finder users also get
+    // a native File menu and the standard application-menu roles.
+    auto *bar = new QMenuBar(this);
+    bar->setNativeMenuBar(true);
+    layout()->setMenuBar(bar);
+    auto *file = bar->addMenu("File");
+    auto native = [this](QMenu *menu, const QString &name, QKeySequence shortcut,
+                         auto fn, QAction::MenuRole role = QAction::NoRole) {
+        auto *action = new QAction(name, menu);
+        action->setMenuRole(role);
+        action->setShortcut(shortcut);
+        connect(action, &QAction::triggered, this, fn);
+        menu->addAction(action);
+    };
+    native(file, "New Window", QKeySequence::New, [this] { if (newRequested) newRequested(); });
+    native(file, "Open…", QKeySequence::Open, [this] { chooseFile(false); });
+    native(file, "Save", QKeySequence::Save, [this] { save(false); });
+    native(file, "Save As…", QKeySequence::SaveAs, [this] { save(true); });
+    native(file, "Close Window", QKeySequence::Close, [this] { close(); });
+    native(file, "Settings…", QKeySequence::Preferences, [this] { prefs_.show(this); }, QAction::PreferencesRole);
+    native(file, "About Crumb Writer", {}, [this] { showAbout(); }, QAction::AboutRole);
+    native(file, "Quit Crumb Writer", QKeySequence::Quit, [] { QApplication::closeAllWindows(); }, QAction::QuitRole);
+    native(bar->addMenu("Navigate"), "Find…", QKeySequence::Find, [this] { search_->find(false); });
+#else
     add(menu_, "Close window", "Alt+W", [this] { close(); });
+#endif
 }
 
 void MainWindow::updateModeControls()
@@ -201,10 +239,18 @@ void MainWindow::followReference()
 bool MainWindow::eventFilter(QObject *watched, QEvent *e)
 {
     if (e->type() != QEvent::KeyPress) return false;
+    auto *key = static_cast<QKeyEvent *>(e);
+#ifdef Q_OS_MACOS
+    if (watched == menu_ && key->key() == Qt::Key_A && !key->modifiers()) {
+        menu_->hide();
+        showAbout();
+        return true;
+    }
+#endif
     auto *widget = qobject_cast<QWidget *>(watched);
     if (!widget || widget->window() != this) return false;
     if (widget == editor_ && editor_->viSelectionActive()) return false;
-    auto *key = static_cast<QKeyEvent *>(e);
+    if (isComposedTextKey(*key)) return false;
     const bool inSynonyms = widget == synonyms_ || synonyms_->isAncestorOf(widget);
     const bool inPanel = inSynonyms || widget == side_ || side_->isAncestorOf(widget);
     if (!inPanel && search_->handleKey(key)) return true;
@@ -221,6 +267,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
         default: break;
         }
     } else if (mods == (Qt::ControlModifier | Qt::ShiftModifier)) {
+#ifdef Q_OS_MACOS
+        if (code == Qt::Key_B) { bookmarks_->showWindow(); return true; }
+#endif
         // Qt can deliver either the digit or its shifted symbol (e.g. Spanish ·).
         switch (code) {
         case Qt::Key_1: case Qt::Key_Exclam: focusSynonyms(false); return true;

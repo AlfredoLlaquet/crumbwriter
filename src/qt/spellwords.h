@@ -16,6 +16,7 @@ public:
     static QString key(QString word);
     static bool loading();
     static bool available();
+    static bool usingBundledDictionary();
     static QStringList suggestions(const QString &word);
 
     void setExceptions(const QStringList &aliases, const QStringList &dictionary);

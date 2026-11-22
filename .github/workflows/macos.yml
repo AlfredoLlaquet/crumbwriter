@@ -1,0 +1,97 @@
+name: macOS build and installer
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Build and test on ${{ matrix.cpu }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cpu: arm64, runner: macos-15 }
+          - { cpu: x86_64, runner: macos-15-intel }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install build dependencies
+        run: |
+          test "$(uname -m)" = "${{ matrix.cpu }}"
+          brew install glib hunspell pkgconf ninja
+          python3 -m venv "$RUNNER_TEMP/aqt"
+          "$RUNNER_TEMP/aqt/bin/python" -m pip install 'aqtinstall==3.3.0'
+          "$RUNNER_TEMP/aqt/bin/aqt" install-qt mac desktop 6.8.3 clang_64 --archives qtbase --outputdir "$RUNNER_TEMP/Qt"
+      - name: Build, deploy, and test the native app
+        run: |
+          bash packaging/macos/build.sh "$RUNNER_TEMP/Qt/6.8.3/macos" "$RUNNER_TEMP/build" "$RUNNER_TEMP/assets"
+      - name: Preserve the native app and framework symlinks
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-native-${{ matrix.cpu }}
+          path: ${{ runner.temp }}/assets/native-${{ matrix.cpu }}.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+      - name: Make the matching dependency sources available
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-runtime-sources-${{ matrix.cpu }}
+          path: ${{ runner.temp }}/assets/CrumbWriter-macOS-${{ matrix.cpu }}-Sources.tar
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+  image:
+    name: Create the universal disk image
+    needs: native
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: macos-native-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/slices
+      - name: Merge, ad hoc sign, verify, and package
+        run: bash packaging/macos/dmg.sh "$RUNNER_TEMP/slices" "$RUNNER_TEMP/CrumbWriter-macOS-Universal.dmg"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: macos-installer
+          path: ${{ runner.temp }}/CrumbWriter-macOS-Universal.dmg
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 7
+
+  install:
+    name: Install the finished DMG on ${{ matrix.runner }}
+    needs: image
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: macos-installer
+          path: ${{ runner.temp }}/installer
+      - name: Open, upgrade, and remove the installed app
+        run: bash packaging/macos/test-dmg.sh "$RUNNER_TEMP/installer/CrumbWriter-macOS-Universal.dmg"

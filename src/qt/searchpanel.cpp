@@ -187,7 +187,11 @@ void SearchPanel::buildUi()
     wholeWords->setToolTip(QStringLiteral("Whole words (Ctrl+W)"));
     wrap = new QCheckBox(QStringLiteral("Wrap"));
     wrap->setObjectName(QStringLiteral("cw-search-wrap"));
+#ifdef Q_OS_MACOS
+    wrap->setToolTip(QStringLiteral("Wrap around document (Ctrl+Shift+W)"));
+#else
     wrap->setToolTip(QStringLiteral("Wrap around document (Alt+W)"));
+#endif
     for (auto control : {matchCase, wholeWords, wrap}) {
         toggles->addWidget(control);
         connect(control, &QCheckBox::toggled, this, [this] {
@@ -1036,7 +1040,11 @@ bool SearchPanel::handleKey(QKeyEvent *event)
         default: break;
         }
     }
-    if (inSearch && mods == Qt::AltModifier && key == Qt::Key_W) {
+    bool wrapShortcut = mods == Qt::AltModifier;
+#ifdef Q_OS_MACOS
+    wrapShortcut |= mods == (Qt::ControlModifier | Qt::ShiftModifier);
+#endif
+    if (inSearch && wrapShortcut && key == Qt::Key_W) {
         wrap->toggle();
         return true;
     }

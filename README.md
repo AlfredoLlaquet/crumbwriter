@@ -1,8 +1,55 @@
 # Crumb Writer
 
-Crumb Writer 2.3 is a keyboard-driven Qt 6 editor for FreeBSD 15+ and KDE Plasma 6+. It also runs on Ubuntu. Use **Crumb mode** for a numbered collection of short pieces or **Generic mode** for a novel, an essay, or other paragraph-based prose. Both write plain UTF-8 without a byte order mark (BOM) and wrap the text to the full width of the writing area.
+Crumb Writer 2.4 is a keyboard-driven Qt 6 editor for FreeBSD with KDE Plasma, Ubuntu, Windows, and macOS. Use **Crumb mode** for a numbered collection of short pieces or **Generic mode** for a novel, an essay, or other paragraph-based prose. Both write plain UTF-8 without a byte order mark (BOM) and wrap the text to the full width of the writing area.
 
 Programmed by **ChatGPT** for Alfredo Llaquet-Alsina.
+
+## Download Crumb Writer
+
+Crumb Writer is free to download and use.
+
+| Platform | Download or build |
+| --- | --- |
+| Windows 10 (1903 or later) or Windows 11, x64 | [Download the Windows installer (.exe)](https://github.com/AlfredoLlaquet/crumbwriter/releases/latest/download/CrumbWriter-Windows-x64-Setup.exe) |
+| macOS 15 or later, Apple silicon or Intel | [Download the Mac disk image (.dmg)](https://github.com/AlfredoLlaquet/crumbwriter/releases/latest/download/CrumbWriter-macOS-Universal.dmg) |
+| FreeBSD 15 or later with KDE Plasma 6 | [Build and install on FreeBSD](#build-and-run-on-freebsd) |
+| Ubuntu | [Build and install on Ubuntu](#build-and-run-on-ubuntu) |
+
+The Windows and Mac downloads include Qt and American English spelling. The same manuscript and its bookmark, character, recurring-term, and dictionary files can travel between all four platforms. Each release page identifies the version and includes its checksums and corresponding source. [All releases](https://github.com/AlfredoLlaquet/crumbwriter/releases)
+
+### License and warranty
+
+Crumb Writer’s original code is dedicated to the public domain. Anyone may use, copy, modify, sell, or redistribute it. The software is provided “as is,” without warranty. To the fullest extent permitted by applicable law, the authors disclaim liability for claims or damages arising from its use. This dedication applies only to the editor. Writers retain their rights to their manuscripts. [Full text of the Unlicense](LICENSE)
+
+Bundled libraries and the spelling dictionary have their own terms. The Windows installation folder and the Mac app’s `Contents/Resources` folder contain `third-party/README.txt` and the individual notices. Corresponding library sources and build recipes are available alongside the installers on each release page. Inside the editor, **About Crumb Writer → View License** opens the full Crumb Writer license offline.
+
+### Install or update on Windows
+
+1. Download the Windows installer. For confirmation that the file came from this repository, [verify the download](#verify-a-download).
+2. Open the installer. It installs for the current account and provides a Start menu entry. Setup also offers a desktop shortcut, a **View License** button, and the option to list Crumb Writer under **Open with** for text files while preserving the current default editor. Open **Crumb Writer** from Start.
+3. To update, close the editor and run the newer installer. To uninstall, select **Crumb Writer** under **Settings → Apps → Installed apps** (called **Apps & features** on Windows 10). Manuscripts, their companion files, and personal settings are kept.
+
+The installer has no Windows publisher certificate. SmartScreen may display **Windows protected your PC** or an unknown publisher. After verifying the file, **More info → Run anyway** allows this installation where Windows policy offers that choice. [Microsoft’s guide to SmartScreen](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
+
+### Install or update on macOS
+
+1. Download the Mac disk image. The same file runs natively on Apple silicon and Intel Macs. [Verify the download](#verify-a-download).
+2. Open the disk image in Finder and drag **Crumb Writer** to **Applications**. With the keyboard, select the app in the disk image, press **Command+C**, open Applications with **Command+Shift+A**, and press **Command+V**. Eject the disk image and open the installed copy.
+3. The app carries an ad hoc signature and has no Apple notarization. On the first launch, Gatekeeper may ask for approval. After attempting to open the verified app, open **System Settings → Privacy & Security**, locate the notice for **Crumb Writer**, and choose **Open Anyway**. This grants an exception to this copy of the app. [Apple’s guide to opening downloaded apps](https://support.apple.com/en-us/102445)
+4. To update, quit Crumb Writer and replace the application with the newer copy. To uninstall, move the application to Trash. Manuscripts and their companion files stay wherever they were saved.
+
+### Verify a download
+
+GitHub Actions creates a signed build record, called an **artifact attestation**, for the exact installer and disk image. With GitHub CLI installed and signed in, run the command for the file just downloaded, in the folder containing it.
+
+~~~text
+gh attestation verify CrumbWriter-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
+gh attestation verify CrumbWriter-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
+~~~
+
+A successful check identifies the repository, build workflow, and source revision that produced the downloaded bytes. Windows SmartScreen and Apple Gatekeeper make their own decisions when opening the program. [GitHub CLI verification guide](https://cli.github.com/manual/gh_attestation_verify)
+
+For a quick integrity check, compare the file’s SHA-256 digest with its entry in `SHA256SUMS` on that release page. In Windows PowerShell, run `Get-FileHash .\CrumbWriter-Windows-x64-Setup.exe -Algorithm SHA256`. In Mac Terminal, run `shasum -a 256 CrumbWriter-macOS-Universal.dmg`.
 
 ## Build and run on FreeBSD
 
@@ -21,7 +68,7 @@ git clone https://github.com/AlfredoLlaquet/crumbwriter.git
 cd crumbwriter
 ~~~
 
-From that checkout, run the following command as root. It builds the application and installs the executable, desktop launcher, icons, and manual under `/usr/local`.
+From that checkout, run the following command as root. It builds the application and installs the executable, desktop launcher, icons, manual, and license under `/usr/local`.
 
 ~~~sh
 make install
@@ -33,7 +80,7 @@ For a personal installation, run `make install PREFIX="$HOME/.local"` as your de
 
 ### Update
 
-An installation that already builds version 2.1 or 2.2 has the dependencies for 2.3. For older checkouts, run the package command under First installation. Save the manuscript, close all Crumb Writer windows, and update the existing checkout as your desktop account.
+An installation that already builds version 2.1, 2.2, or 2.3 has the dependencies for 2.4. For older checkouts, run the package command under First installation. Save the manuscript, close all Crumb Writer windows, and update the existing checkout as your desktop account.
 
 ~~~sh
 cd crumbwriter
@@ -117,9 +164,13 @@ The official reference on FreeBSD and Linux is the following command. On line 1,
 sed -e '1s@//@ @' -e 's/—/ /g' -e 's@ / @ @g' Crumbs.txt | wc -w
 ~~~
 
+The Mac build follows the native UTF-8 locale’s word boundaries. The Windows build uses the whitespace rules of FreeBSD 15’s UTF-8 locale, so its count is independent of the Windows display language.
+
 Generic prose uses the same whitespace, em dash, and spaced slash rules. A URL keeps its slashes. Manuscript Statistics includes headings among the nonblank paragraphs and excludes blank separators from the paragraph count and average.
 
 ## Writing and navigation
+
+On a Mac, **Ctrl** means the physical **Control** key and **Alt** means **Option**. The usual **Command** shortcuts also work for New Window, Open, Save, Save As, Find, Select All, Cut, Copy, Paste, Undo, and Redo. **Command+,** opens Settings, **Command+W** closes the current window, and **Command+Q** quits the editor through its normal save confirmation. **Control+Shift+Space** starts movement selection when **Control+Space** switches input sources. **Control+Shift+B** opens Bookmarks, and **Control+Shift+W** toggles Wrap in Find, leaving Option available for typing special characters. On keyboards whose top row controls media, hold **Fn** for function keys such as **F1**.
 
 | Shortcut | Action |
 | --- | --- |
@@ -154,7 +205,7 @@ Generic prose uses the same whitespace, em dash, and spaced slash rules. A URL k
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo a run of typing, Backspaces, or forward Deletes |
 | Ctrl+Shift+N / Alt+W | Create an untitled window / close the current window from the manuscript |
 | Ctrl+, / F10 / F1 | Settings / document menu / searchable keyboard reference |
-| F10, then A | About Crumb Writer. Enter opens the focused repository link |
+| F10, then A | About Crumb Writer. Enter opens the repository link. Alt+L opens the license offline |
 
 A light blue background follows the current crumb or paragraph across its wrapped lines. The writing area turns gray when the manuscript window loses focus. The editor follows the desktop appearance by default. Settings also offers Light, Dark, and a choice of font family and size.
 

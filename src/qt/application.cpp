@@ -3,8 +3,10 @@
 #include "mainwindow.h"
 
 #include <QApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -12,6 +14,9 @@
 #include <QStandardPaths>
 #include <QThread>
 #include <QTimer>
+#ifdef Q_OS_MACOS
+#include <unistd.h>
+#endif
 
 namespace {
 QString resolvedPath(const QString &path)
@@ -19,6 +24,40 @@ QString resolvedPath(const QString &path)
     const QFileInfo file(path);
     const QString canonical = file.canonicalFilePath();
     return canonical.isEmpty() ? file.absoluteFilePath() : canonical;
+}
+
+struct ActivationPaths {
+    QString lockFile;
+    QString endpoint;
+};
+
+ActivationPaths activationPaths()
+{
+#ifdef Q_OS_WIN
+    const QString location = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    const QDir directory(location);
+    if (location.isEmpty() || !directory.mkpath(".")) return {};
+    // Windows named pipes take a name, not a filesystem path. Include the
+    // profile in that name so unrelated local users can run independent editors.
+    const auto profile = QCryptographicHash::hash(directory.absolutePath().toCaseFolded().toUtf8(),
+                                                   QCryptographicHash::Sha256).toHex();
+    return {directory.filePath("activation.lock"),
+            QStringLiteral("org.thecrumbs.CrumbWriter.") + QString::fromLatin1(profile)};
+#elif defined(Q_OS_MACOS)
+    // Darwin supplies a short, private per-user temp directory. A socket in
+    // ~/Library/Application Support can exceed sockaddr_un's path limit.
+    const size_t size = confstr(_CS_DARWIN_USER_TEMP_DIR, nullptr, 0);
+    if (!size) return {};
+    QByteArray path(qsizetype(size), '\0');
+    if (confstr(_CS_DARWIN_USER_TEMP_DIR, path.data(), size) != size) return {};
+    const QDir directory(QFile::decodeName(path.constData()));
+    const QString endpoint = directory.filePath("org.thecrumbs.CrumbWriter.socket");
+    return {endpoint + ".lock", endpoint};
+#else
+    const QDir directory(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation));
+    const QString endpoint = directory.filePath("org.thecrumbs.CrumbWriter.socket");
+    return {endpoint + ".lock", endpoint};
+#endif
 }
 }
 
@@ -32,9 +71,14 @@ WriterApplication::WriterApplication(QObject *parent) : QObject(parent)
 
 WriterApplication::Launch WriterApplication::start(const QStringList &files)
 {
-    const QDir runtime(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation));
-    const QString endpoint = runtime.filePath("org.thecrumbs.CrumbWriter.socket");
-    instanceLock_ = std::make_unique<QLockFile>(endpoint + ".lock");
+    const auto paths = activationPaths();
+    if (paths.lockFile.isEmpty()) {
+        qWarning("The desktop runtime directory could not be opened for activation.");
+        activate(files);
+        return Launch::Primary;
+    }
+    const QString &endpoint = paths.endpoint;
+    instanceLock_ = std::make_unique<QLockFile>(paths.lockFile);
     instanceLock_->setStaleLockTime(0);
     if (instanceLock_->tryLock()) {
         // This process owns the lifetime lock. An endpoint left by a crash is safe to remove.
@@ -97,7 +141,11 @@ void WriterApplication::acceptRequests()
 MainWindow *WriterApplication::findWindow(const QString &path) const
 {
     const auto resolved = resolvedPath(path);
-    for (const auto &window : windows_) if (window && window->path() == resolved) return window;
+    for (const auto &window : windows_) {
+        if (window && !window->path().isEmpty() &&
+            (window->path() == resolved || QFileInfo(window->path()) == QFileInfo(resolved)))
+            return window;
+    }
     return nullptr;
 }
 

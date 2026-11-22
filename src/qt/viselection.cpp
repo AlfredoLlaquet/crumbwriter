@@ -1,4 +1,5 @@
 #include "viselection.h"
+#include "textkeys.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -107,13 +108,12 @@ void ViSelection::key(const QKeyEvent &event)
         if (preedit_.isEmpty() && preview_) accept();
         return;
     }
-    if (event.matches(QKeySequence::Paste)) {
+    if (event.matches(QKeySequence::Paste) || (mods == Qt::ControlModifier && key == Qt::Key_V)) {
         auto pasted = QApplication::clipboard()->text();
         command_ += pasted.replace(QStringLiteral("\r\n"), QStringLiteral("\n")).replace(u'\r', u'\n');
     } else if (!event.text().isEmpty() && event.text().front().unicode() >= 0x20 &&
                (!(mods & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) ||
-                mods.testFlag(Qt::GroupSwitchModifier) ||
-                (mods.testFlag(Qt::ControlModifier) && mods.testFlag(Qt::AltModifier)))) {
+                isComposedTextKey(event))) {
         command_ += event.text();
     } else {
         return;

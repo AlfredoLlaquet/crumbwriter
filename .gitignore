@@ -15,3 +15,4 @@
 /tests/qt/test-*
 !/tests/qt/*.cpp
 __pycache__/
+/build/

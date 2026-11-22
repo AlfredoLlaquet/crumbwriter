@@ -4,11 +4,49 @@
 #include <QDesktopServices>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFile>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScreen>
 #include <QShortcut>
 #include <QUrl>
 #include <QVBoxLayout>
+
+namespace {
+void showLicense(QDialog *about)
+{
+    auto *dialog = about->findChild<QDialog *>("licenseDialog", Qt::FindDirectChildrenOnly);
+    if (!dialog) {
+        dialog = new QDialog(about);
+        dialog->setAttribute(Qt::WA_DeleteOnClose);
+        dialog->setObjectName("licenseDialog");
+        dialog->setWindowTitle(QObject::tr("Crumb Writer License — The Unlicense"));
+        auto *layout = new QVBoxLayout(dialog);
+        auto *text = new QPlainTextEdit(dialog);
+        text->setAccessibleName(QObject::tr("Full license text"));
+        text->setReadOnly(true);
+        text->setTabChangesFocus(true);
+        QFile license(":/license/LICENSE");
+        if (license.open(QIODevice::ReadOnly | QIODevice::Text))
+            text->setPlainText(QString::fromUtf8(license.readAll()));
+        else
+            text->setPlainText(QObject::tr("The license could not be read from this copy of Crumb Writer."));
+        layout->addWidget(text);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
+        QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::close);
+        QObject::connect(dialog, &QDialog::finished, about, [about] {
+            if (about->isVisible()) about->activateWindow();
+        });
+        layout->addWidget(buttons);
+        dialog->resize(QSize(660, 480).boundedTo(about->screen()->availableGeometry().size() * 0.85));
+        text->setFocus(Qt::TabFocusReason);
+    }
+    dialog->show();
+    dialog->raise();
+    dialog->activateWindow();
+}
+}
 
 void MainWindow::showAbout()
 {
@@ -28,7 +66,12 @@ void MainWindow::showAbout()
         title->setFont(font);
         layout->addWidget(title);
         layout->addWidget(new QLabel(tr("Programmed by ChatGPT for Alfredo Llaquet-Alsina."), dialog));
-        layout->addWidget(new QLabel(tr("Qt %1 · The Unlicense").arg(qVersion()), dialog));
+        layout->addWidget(new QLabel(tr("Qt %1").arg(qVersion()), dialog));
+        auto *notice = new QLabel(tr("The Unlicense dedicates Crumb Writer’s original code to the "
+                                     "public domain. The editor is provided “as is,” without "
+                                     "warranty. Writers retain their rights to their manuscripts."), dialog);
+        notice->setWordWrap(true);
+        layout->addWidget(notice);
 
         auto *link = new QLabel(QStringLiteral("<a href=\"%1\">%1</a>").arg(CrumbWriter::repository), dialog);
         link->setObjectName("repositoryLink");
@@ -46,6 +89,10 @@ void MainWindow::showAbout()
         connect(open, &QShortcut::activated, link, [link] { link->linkActivated(CrumbWriter::repository); });
         layout->addWidget(link);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
+        auto *license = buttons->addButton(tr("View &License"), QDialogButtonBox::ActionRole);
+        license->setObjectName("viewLicense");
+        license->setShortcut(QKeySequence(QStringLiteral("Alt+L")));
+        connect(license, &QPushButton::clicked, dialog, [dialog] { showLicense(dialog); });
         buttons->button(QDialogButtonBox::Close)->setAutoDefault(false);
         connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::close);
         layout->addWidget(buttons);

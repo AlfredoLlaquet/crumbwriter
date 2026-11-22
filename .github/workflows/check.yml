@@ -1,6 +1,11 @@
 name: Build and test
 
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches-ignore: ['release/v*']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -79,6 +84,8 @@ jobs:
         run: |
           install_root="$RUNNER_TEMP/crumbwriter"
           make install PREFIX="$install_root"
+          cmp LICENSE "$install_root/share/doc/crumbwriter/LICENSE"
+          cmp CrumbWriter.txt "$install_root/share/doc/crumbwriter/CrumbWriter.txt"
           app_id=org.thecrumbs.CrumbWriter
           grep -Fx "Icon=$app_id" "$install_root/share/applications/$app_id.desktop"
           for size in 16 24 32 48 64 128 256; do

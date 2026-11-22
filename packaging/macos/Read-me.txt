@@ -1,0 +1,12 @@
+Crumb Writer for macOS
+
+Copy Crumb Writer to Applications, then open it from there. In Finder the keyboard equivalent of dragging is Command+C on Crumb Writer, Shift+Command+A to open Applications, and Command+V to paste.
+
+This universal app runs on Apple silicon and Intel Macs with macOS 15 or later. The release includes a GitHub-signed build record. The app uses a local ad hoc signature. Apple has not notarized it. After trying to open it, macOS may offer an Open Anyway button in System Settings > Privacy & Security. Use that per-app option only after checking the download came from the official release.
+
+https://github.com/AlfredoLlaquet/crumbwriter/releases/latest
+https://support.apple.com/en-us/102445
+
+To update, quit Crumb Writer and replace its copy in Applications. To uninstall, quit the editor and move the app to the Trash. Manuscripts, companion files, and personal settings are stored separately.
+
+The LICENSE file on this disk contains the public-domain dedication and warranty disclaimer for Crumb Writer's original code. The app includes offline license information for its bundled components. Manuscripts belong to their writers.

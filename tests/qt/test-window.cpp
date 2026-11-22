@@ -19,6 +19,7 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QTemporaryDir>
 #include <QTextBlock>
@@ -333,6 +334,45 @@ void testGroupedLiveEdits(const QTemporaryDir &tmp)
     CHECK(window.close());
 }
 
+void testKeyboardLayouts(const QTemporaryDir &tmp)
+{
+    Preferences prefs(tmp.filePath("key-layouts.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    window.activateManuscript(false);
+    auto *editor = window.editor();
+    CHECK(until([&] { return editor->hasFocus(); }));
+    const auto panel = [&](int keycode, const char *field) {
+        key(keycode, Qt::ControlModifier | Qt::ShiftModifier);
+        auto *search = window.findChild<QLineEdit *>(field);
+        CHECK(search && search->hasFocus());
+        editor->setFocus();
+    };
+    // Qt reports either a digit or the character printed on that shifted
+    // key. English and Spanish disagree on the second and third keys.
+    panel(Qt::Key_At, "recurringSearch");
+    panel(Qt::Key_QuoteDbl, "recurringSearch");
+    panel(Qt::Key_NumberSign, "historySearch");
+    panel(Qt::Key_periodcentered, "historySearch");
+    key(Qt::Key_At, Qt::GroupSwitchModifier, "@");
+#ifdef Q_OS_MACOS
+    key(Qt::Key_3, Qt::AltModifier, "#");
+    key(Qt::Key_W, Qt::AltModifier, QStringLiteral("∑"));
+    CHECK(editor->manuscriptText() == QStringLiteral("@#∑") && window.isVisible());
+    key(Qt::Key_Space, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(editor->viSelectionActive());
+    key(Qt::Key_Escape);
+    key(Qt::Key_A, Qt::MetaModifier);
+    CHECK(editor->textCursor().hasSelection());
+    key(Qt::Key_C, Qt::MetaModifier);
+    CHECK(QApplication::clipboard()->text() == editor->manuscriptText());
+#else
+    key(Qt::Key_3, Qt::ControlModifier | Qt::AltModifier, "#");
+    CHECK(editor->manuscriptText() == "@#" && editor->hasFocus());
+#endif
+}
+
 void testGenericWindow(const QTemporaryDir &tmp)
 {
     const QString path = tmp.filePath("Moon.txt");
@@ -446,6 +486,17 @@ void testDialogs(const QTemporaryDir &tmp)
     QObject::connect(link, &QLabel::linkActivated, about, [&](const QString &url) { opened = url; });
     key(Qt::Key_Return);
     CHECK(opened == CrumbWriter::repository);
+    key(Qt::Key_L, Qt::AltModifier);
+    CHECK(until([&] { return about->findChild<QDialog *>("licenseDialog"); }));
+    auto *license = about->findChild<QDialog *>("licenseDialog");
+    CHECK(until([&] { return license->isActiveWindow(); }) && !license->isModal());
+    auto *terms = license->findChild<QPlainTextEdit *>();
+    QFile original(":/license/LICENSE");
+    CHECK(original.open(QIODevice::ReadOnly | QIODevice::Text));
+    CHECK(terms && terms->isReadOnly() && terms->toPlainText() == QString::fromUtf8(original.readAll()));
+    CHECK(terms->toPlainText().contains("WITHOUT WARRANTY"));
+    key(Qt::Key_Escape);
+    CHECK(until([&] { return about->isActiveWindow(); }));
     key(Qt::Key_Escape);
     CHECK(window.isVisible() && window.close());
 }
@@ -453,6 +504,9 @@ void testDialogs(const QTemporaryDir &tmp)
 
 int main(int argc, char **argv)
 {
+#ifdef Q_OS_MACOS
+    QApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
+#endif
     QApplication app(argc, argv);
     QApplication::setQuitOnLastWindowClosed(false);
     QTemporaryDir tmp;
@@ -461,6 +515,7 @@ int main(int argc, char **argv)
     testDuplicateHistory(tmp);
     testWritingTools(tmp);
     testGroupedLiveEdits(tmp);
+    testKeyboardLayouts(tmp);
     testGenericWindow(tmp);
     testDialogs(tmp);
     std::puts("Main window keyboard, reference jump, duplicate history and close choices passed.");

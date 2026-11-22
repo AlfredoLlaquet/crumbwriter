@@ -16,8 +16,8 @@ CXX_FLAGS = -std=c++17 -fPIC -pthread -Wall -Wextra -Wpedantic -DQT_NO_KEYWORDS 
             $(QT_CFLAGS) $(HUNSPELL_CFLAGS) $(CORE_CFLAGS) $(CPPFLAGS) $(CXXFLAGS)
 LIBS = $(QT_LIBS) $(HUNSPELL_LIBS) $(CORE_LIBS) -pthread $(LDLIBS)
 
-CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/draft.o
-CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/draft.h
+CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/storage-posix.o src/draft.o
+CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/storage-platform.h src/draft.h
 MODEL_OBJECTS = src/qt/crumbmodel.o src/qt/dailycount.o src/qt/manuscripttext.o
 EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o \
                  src/qt/editorviewport.o src/qt/committedpunctuation.o src/qt/vimotion.o src/qt/viselection.o
@@ -50,14 +50,14 @@ crumbwriter: src/qt/main.o $(APP_OBJECTS)
 $(CORE_OBJECTS): $(CORE_HEADERS)
 src/qt/main.o $(QT_OBJECTS): $(QT_HEADERS) $(CORE_HEADERS)
 
-data/qt-icons.cpp: data/crumbwriter.qrc $(ICON_FILES)
+data/qt-icons.cpp: data/crumbwriter.qrc $(ICON_FILES) LICENSE
 	$(RCC) --name crumbwriter -o $@ data/crumbwriter.qrc
 
 tests/test-crumb: tests/test-crumb.c src/crumb.o
 	$(CC) $(C_FLAGS) $(LDFLAGS) -o $@ tests/test-crumb.c src/crumb.o $(CORE_LIBS) $(LDLIBS)
 
-tests/test-storage: tests/test-storage.c src/storage.o src/spacing.o
-	$(CC) $(C_FLAGS) $(LDFLAGS) -o $@ tests/test-storage.c src/storage.o src/spacing.o $(CORE_LIBS) $(LDLIBS)
+tests/test-storage: tests/test-storage.c src/storage.o src/storage-posix.o src/spacing.o
+	$(CC) $(C_FLAGS) $(LDFLAGS) -o $@ tests/test-storage.c src/storage.o src/storage-posix.o src/spacing.o $(CORE_LIBS) $(LDLIBS)
 
 TEST_LINK = $(CXX) $(CXX_FLAGS) $(LDFLAGS) -o $@ $@.cpp
 tests/qt/test-model: tests/qt/test-model.cpp $(MODEL_OBJECTS) $(CORE_OBJECTS)
@@ -115,7 +115,7 @@ install: crumbwriter
 		install -m 644 "$$icon" "$$dir/"; \
 	done
 	touch "$(DESTDIR)$(PREFIX)/share/icons/hicolor"
-	install -m 644 CrumbWriter.txt "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
+	install -m 644 CrumbWriter.txt LICENSE "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 
 clean:
 	rm -f $(APP_OBJECTS) src/qt/main.o data/qt-icons.cpp crumbwriter tests/test-crumb tests/test-storage $(QT_TESTS)

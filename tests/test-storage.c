@@ -6,9 +6,15 @@
 #include <fcntl.h>
 #include <glib/gstdio.h>
 #include <string.h>
+#ifdef G_OS_WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <stdlib.h>
 #include <sys/file.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 typedef struct {
     gchar *directory;
@@ -22,6 +28,15 @@ setup(Fixture *f, gconstpointer data)
     GError *error = NULL;
     f->directory = g_dir_make_tmp("crumbwriter-test-XXXXXX", &error);
     g_assert_no_error(error);
+#ifndef G_OS_WIN32
+    /* macOS may advertise /var/... as the temporary directory while the
+     * canonical manuscript and backup names start with /private/var/... . */
+    char *physical = realpath(f->directory, NULL);
+    g_assert_nonnull(physical);
+    g_free(f->directory);
+    f->directory = g_strdup(physical);
+    free(physical);
+#endif
     f->path = g_build_filename(f->directory, "Crumbs.txt", NULL);
 }
 
@@ -70,7 +85,9 @@ backup_and_format(Fixture *f, gconstpointer data)
     const gchar edited[] = "Crumb 1: Té: Body\nCrumb 2: : 🐦\n";
     const gchar disk[] = "Crumb 1: Té: Body\r\nCrumb 2: : 🐦\r\n";
     put_bytes(f->path, raw, sizeof raw - 1);
+#ifndef G_OS_WIN32
     g_assert_cmpint(chmod(f->path, 0640), ==, 0);
+#endif
     g_autofree gchar *one = NULL;
     g_autofree gchar *two = NULL;
     GError *error = NULL;
@@ -93,9 +110,11 @@ backup_and_format(Fixture *f, gconstpointer data)
     g_assert_true(cw_file_save(first, edited, &error));
     g_assert_no_error(error);
     expect_bytes(f->path, disk, sizeof disk - 1);
+#ifndef G_OS_WIN32
     struct stat st;
     g_assert_cmpint(stat(f->path, &st), ==, 0);
     g_assert_cmpuint(st.st_mode & 0777, ==, 0640);
+#endif
     g_assert_false(cw_file_save(second, "other edit", &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG);
     g_clear_error(&error);
@@ -182,12 +201,18 @@ new_and_mixed(Fixture *f, gconstpointer data)
     g_assert_null(cw_file_backup_path(file));
     g_assert_cmpstr(text, ==, "alpha\nbeta\ngamma\ndelta");
 
-    struct stat before, after;
-    g_assert_cmpint(stat(f->path, &before), ==, 0);
+    CwTargetStamp before, after;
+    g_assert_true(cw_file_stamp_target(f->path, &before, &error));
+    g_assert_no_error(error);
     g_assert_true(cw_file_save(file, text, &error));
     g_assert_no_error(error);
-    g_assert_cmpint(stat(f->path, &after), ==, 0);
-    g_assert_cmpuint(before.st_ino, ==, after.st_ino);
+    g_assert_true(cw_file_stamp_target(f->path, &after, &error));
+    g_assert_no_error(error);
+#ifdef G_OS_WIN32
+    g_assert_cmpuint(before.identity.file_id, ==, after.identity.file_id);
+#else
+    g_assert_cmpuint(before.identity.st_ino, ==, after.identity.st_ino);
+#endif
     expect_bytes(f->path, mixed, sizeof mixed - 1);
 
     const gchar inserted[] = "alpha\r\nNEW\r\nbeta\rgamma\ndelta";
@@ -260,22 +285,43 @@ external_edits(Fixture *f, gconstpointer data)
     g_assert_no_error(error);
     g_assert_cmpstr(text, ==, "Earl Grey");
 
+#ifdef G_OS_WIN32
+    g_autofree gunichar2 *wide = g_utf8_to_utf16(f->path, -1, NULL, NULL, NULL);
+    HANDLE handle = CreateFileW((wchar_t *)wide, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
+                                NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    g_assert_true(handle != INVALID_HANDLE_VALUE);
+#else
     gint fd = open(f->path, O_RDWR);
     g_assert_cmpint(fd, >=, 0);
     g_assert_cmpint(flock(fd, LOCK_EX | LOCK_NB), ==, 0);
+#endif
     g_assert_false(cw_file_save(file, "Acorn", &error));
     g_assert_nonnull(error);
     g_clear_error(&error);
     expect_bytes(f->path, original, sizeof original - 1);
 
+#ifdef G_OS_WIN32
+    FILETIME written;
+    DWORD count;
+    g_assert_true(GetFileTime(handle, NULL, NULL, &written));
+    g_assert_true(WriteFile(handle, external, sizeof external - 1, &count, NULL));
+    g_assert_cmpuint(count, ==, sizeof external - 1);
+    g_assert_true(SetFileTime(handle, NULL, NULL, &written));
+    g_assert_true(CloseHandle(handle));
+#else
     struct stat st;
     g_assert_cmpint(fstat(fd, &st), ==, 0);
     g_assert_cmpint(write(fd, external, sizeof external - 1), ==, sizeof external - 1);
     /* Same length, timestamp, inode and normalized text. Only the raw disk
      * snapshot distinguishes this external edit from the original. */
+#ifdef __APPLE__
+    struct timespec times[] = { st.st_atimespec, st.st_mtimespec };
+#else
     struct timespec times[] = { st.st_atim, st.st_mtim };
+#endif
     g_assert_cmpint(futimens(fd, times), ==, 0);
     g_assert_cmpint(close(fd), ==, 0);
+#endif
     g_assert_false(cw_file_save(file, "Acorn", &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG);
     g_clear_error(&error);
@@ -288,6 +334,7 @@ external_edits(Fixture *f, gconstpointer data)
     cw_file_free(file);
 }
 
+#ifndef G_OS_WIN32
 static void
 symlinks(Fixture *f, gconstpointer data)
 {
@@ -323,6 +370,8 @@ symlinks(Fixture *f, gconstpointer data)
     cw_file_free(file);
 }
 
+#endif
+
 static void
 save_again_after_copy(Fixture *f, gconstpointer data)
 {
@@ -346,7 +395,13 @@ save_again_after_copy(Fixture *f, gconstpointer data)
 
     g_autofree gchar *replacement = g_build_filename(f->directory, "replacement", NULL);
     put_bytes(replacement, "second revision", -1);
+#ifdef G_OS_WIN32
+    g_autofree gunichar2 *from = g_utf8_to_utf16(replacement, -1, NULL, NULL, NULL);
+    g_autofree gunichar2 *to = g_utf8_to_utf16(copy_path, -1, NULL, NULL, NULL);
+    g_assert_true(MoveFileExW((wchar_t *)from, (wchar_t *)to, MOVEFILE_REPLACE_EXISTING));
+#else
     g_assert_cmpint(g_rename(replacement, copy_path), ==, 0);
+#endif
     g_assert_false(cw_file_save(copy, "third revision", &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_WRONG_ETAG);
     g_clear_error(&error);
@@ -374,10 +429,17 @@ invalid_input(Fixture *f, gconstpointer data)
     expect_bytes(f->path, "new text", 8);
     cw_file_free(replacement);
     g_assert_cmpint(g_remove(f->path), ==, 0);
+#ifdef G_OS_WIN32
+    g_assert_cmpint(g_mkdir(f->path, 0700), ==, 0);
+#else
     g_assert_cmpint(mkfifo(f->path, 0600), ==, 0);
+#endif
     g_assert_null(cw_file_open(f->path, FALSE, &text, &error));
     g_assert_error(error, G_IO_ERROR, G_IO_ERROR_NOT_REGULAR_FILE);
     g_clear_error(&error);
+#ifdef G_OS_WIN32
+    g_assert_cmpint(g_rmdir(f->path), ==, 0);
+#endif
 }
 
 int
@@ -390,7 +452,9 @@ main(int argc, char **argv)
     g_test_add("/storage/manuscript-spacing", Fixture, NULL, setup, manuscript_spacing, teardown);
     g_test_add("/storage/external-edits", Fixture, NULL, setup, external_edits, teardown);
     g_test_add("/storage/save-again-after-copy", Fixture, NULL, setup, save_again_after_copy, teardown);
+#ifndef G_OS_WIN32
     g_test_add("/storage/symlinks", Fixture, NULL, setup, symlinks, teardown);
+#endif
     g_test_add("/storage/invalid-input", Fixture, NULL, setup, invalid_input, teardown);
     return g_test_run();
 }

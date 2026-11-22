@@ -53,6 +53,9 @@ StatisticsDialog::StatisticsDialog(CrumbModel &model, QWidget *parent) : QDialog
     const auto copySummary = [this] { QApplication::clipboard()->setText(summary()); };
     connect(copy, &QPushButton::clicked, this, copySummary);
     auto *shortcut = new QShortcut(QKeySequence::Copy, this);
+#ifdef Q_OS_MACOS
+    shortcut->setKeys({QKeySequence(Qt::CTRL | Qt::Key_C), QKeySequence(Qt::META | Qt::Key_C)});
+#endif
     connect(shortcut, &QShortcut::activated, this, copySummary);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::close);
     layout->addWidget(buttons);

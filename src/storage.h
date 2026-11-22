@@ -2,7 +2,9 @@
 #define CW_STORAGE_H
 
 #include <gio/gio.h>
+#ifndef G_OS_WIN32
 #include <sys/stat.h>
+#endif
 
 G_BEGIN_DECLS
 
@@ -16,9 +18,17 @@ gboolean cw_file_save_guarded(CwFile *file, const gchar *text, CwWriteGate *gate
                               GError **error);
 /* Save As may queue behind an active write. Preserve the destination approved
  * in the file chooser until the worker can acquire its actual disk snapshot. */
+#ifdef G_OS_WIN32
+typedef struct {
+    guint32 volume;
+    guint64 file_id, size, written, changed;
+} CwFileIdentity;
+#else
+typedef struct stat CwFileIdentity;
+#endif
 typedef struct {
     gboolean exists;
-    struct stat identity;
+    CwFileIdentity identity;
 } CwTargetStamp;
 gboolean cw_file_stamp_target(const gchar *path, CwTargetStamp *stamp, GError **error);
 CwFile *cw_file_save_as_guarded(const CwFile *source, const gchar *path,

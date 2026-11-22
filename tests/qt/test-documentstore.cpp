@@ -124,7 +124,7 @@ void oldSnapshotCannotMarkNewEditSaved(const QString &path)
     WAIT_FOR(f.store, f.error, !f.store.isSaving());
     CHECK(contents(path) == "two");
     CHECK(f.store.isDirty() && f.store.needsCloseConfirmation());
-    CHECK(f.published.size() == 1 && f.published[0].first == path && f.published[0].second == "two");
+    CHECK(f.published.size() == 1 && f.published[0].first == QFileInfo(path).canonicalFilePath() && f.published[0].second == "two");
     f.store.beginCloseConfirmation();
     f.store.discardAndClose();
     WAIT_FOR(f.store, f.error, f.closures == 1);
@@ -226,12 +226,12 @@ void conflictRecoveryAndSaveAs(const QString &path)
     QCoreApplication::processEvents();
     CHECK(pathChanges == 1 && f.closures == 0 && f.store.isDirty());
     CHECK(contents(newName) == "the author's new text");
-    CHECK(f.published.size() == 2 && f.published[1].first == newName && f.published[1].second == contents(newName));
+    CHECK(f.published.size() == 2 && f.published[1].first == QFileInfo(newName).canonicalFilePath() && f.published[1].second == contents(newName));
     CHECK(contents(f.store.backupPath()) == "the previous destination");
     CHECK(!QFileInfo::exists(draft));
     f.store.saveAndClose();
     WAIT_FOR(f.store, f.error, f.closures == 1);
-    CHECK(f.published.size() == 3 && f.published[2].first == newName && f.published[2].second == f.text.toUtf8());
+    CHECK(f.published.size() == 3 && f.published[2].first == QFileInfo(newName).canonicalFilePath() && f.published[2].second == f.text.toUtf8());
 }
 
 void closeDuringAutomaticSave(const QString &path)
@@ -271,7 +271,7 @@ void queuedSaveAsRespectsChosenDestination(const QString &source, bool originall
     WAIT_FOR(f.store, f.error, !f.store.isSaving());
     CHECK(!f.error.isEmpty());
     CHECK(contents(target) == "someone else's newer text");
-    CHECK(contents(source) == "finished manuscript" && f.store.path() == source);
+    CHECK(contents(source) == "finished manuscript" && f.store.path() == QFileInfo(source).canonicalFilePath());
     CHECK(f.store.draftPath().isEmpty() && !f.store.isDirty());
 }
 
@@ -332,7 +332,7 @@ int main(int argc, char **argv)
     CHECK(work.isValid());
     qputenv("XDG_DATA_HOME", QFile::encodeName(work.filePath("private-data")));
     QCoreApplication application(argc, argv);
-    datedBackupAndLatestClose(work.filePath("mixed.txt"));
+    datedBackupAndLatestClose(work.filePath(QStringLiteral("Títol 日本 🐦.txt")));
     oldSnapshotCannotMarkNewEditSaved(work.filePath("revisions.txt"));
     closeWithNewerQueuedEdit(work.filePath("discard-queued.txt"));
     guardedDiscardBeforePublication(work.filePath("cancel.txt"));

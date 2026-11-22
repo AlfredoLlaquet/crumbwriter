@@ -8,4 +8,7 @@
     <file alias="128.png">icons/128x128/apps/org.thecrumbs.CrumbWriter.png</file>
     <file alias="crumbwriter.png">icons/256x256/apps/org.thecrumbs.CrumbWriter.png</file>
   </qresource>
+  <qresource prefix="/license">
+    <file alias="LICENSE">../LICENSE</file>
+  </qresource>
 </RCC>
