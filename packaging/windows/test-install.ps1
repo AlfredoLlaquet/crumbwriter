@@ -25,6 +25,7 @@ foreach ($name in 'QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QTDIR','DICPAT
     Remove-Item "Env:$name" -ErrorAction SilentlyContinue
 }
 $env:QT_QPA_PLATFORM = 'windows'
+$env:QT_FORCE_STDERR_LOGGING = '1'
 
 function Start-Program([string]$File, [string[]]$Arguments) {
     $info = [Diagnostics.ProcessStartInfo]::new()

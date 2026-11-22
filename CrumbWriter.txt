@@ -314,7 +314,9 @@ These counters persist per manuscript across sessions. Midnight begins a
 new local day even if the editor stays open. The per-manuscript data live
 under crumbwriter/daily in the account's Qt data directory. On FreeBSD
 and Linux this is $XDG_DATA_HOME/crumbwriter/daily, which normally resolves
-to ~/.local/share/crumbwriter/daily.
+to ~/.local/share/crumbwriter/daily. On reopening a manuscript the editor
+closes the saved count file before replacing it, so Windows can restore a
+checkpoint or start a new day without a file-sharing error.
 The daily state preserves the crumb identities and word-count baseline
 needed to recover the appropriate totals, including after discarded edits.
 A successful manuscript or recovery-draft save checkpoints the saved revision.

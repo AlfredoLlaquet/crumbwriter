@@ -347,7 +347,9 @@ QString DailyCount::open(const QString &manuscript, QDate date, const QVector<qu
                 takeBaseline(date);
                 return QStringLiteral("Could not read the daily writing counts in %1.").arg(stateFile_);
             }
-            if (readState(file.readAll(), date)) {
+            const QByteArray saved = file.readAll();
+            file.close(); // A restored checkpoint may atomically replace this file on Windows.
+            if (readState(saved, date)) {
                 const bool extended = matchOpened();
                 const auto restored = snapshot();
                 if (!extended && committed_ == restored) return {};
