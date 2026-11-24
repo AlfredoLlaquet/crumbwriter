@@ -216,6 +216,15 @@ void liveAnchors(const QString &directory)
 
 void externalEdits(const QString &directory)
 {
+    const QString marked = directory + "/underlines.txt";
+    QTextDocument novel;
+    novel.setPlainText("Q\n-\nBody.\nA longer title\n-\nLast.");
+    BookmarkFile marks(&novel);
+    check(marks.openManuscript(marked) && marks.add("Chapter", "Underline", 5), "bookmark a draft marker");
+    novel.setPlainText("Q\n-\nBody.\nA longer title\n--------------\nLast.\n");
+    check(marks.openManuscript(marked) && marks.entries().first().line == 5,
+          "canonicalizing the marker does not move the bookmark to a shorter heading");
+
     const QString path = directory + "/reopen.txt";
     const QString sidecar = path + ".bookmarks";
     const QString base = "heading\nwest\nrepeat\nsouth\neast\nrepeat\nnorth\nlast\n";

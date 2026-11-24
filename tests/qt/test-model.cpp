@@ -2,8 +2,11 @@
 #include "manuscripttext.h"
 
 #include <QtCore/QCryptographicHash>
+#include <QtCore/QDebug>
 #include <QtCore/QFile>
 #include <QtCore/QFileInfo>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryDir>
 #include <QtGui/QTextBlock>
@@ -585,6 +588,43 @@ static void dailyWordPersistence(const QString &directory)
     CHECK(counted.todayWords() == 1);
 }
 
+static void dailyHeaderEndings(const QString &directory)
+{
+    const QString path = directory + "/Terminal rows.txt";
+    const QString identical = QStringLiteral("Book//Crumb 1: Same: Text.");
+    const QString duplicate = QStringLiteral("Crumb 1: Same: Text.");
+    QTextDocument doc;
+    doc.setPlainText(identical);
+    CrumbModel model(&doc);
+    CHECK(model.openDailyCount(path).isEmpty());
+    replace(doc, identical.size(), 0, u'\n' + duplicate);
+    replace(doc, 0, identical.size() + 1, {}); // Only the new copy of header 1 survives.
+    replace(doc, duplicate.size(), 0, QStringLiteral("\n\n\n"));
+    CHECK(model.todayCount() == 1);
+    const QByteArray checkpoint = model.dailySnapshot();
+    CHECK(model.publishDailySnapshot(path, checkpoint).isEmpty());
+    const auto reopen = [&](const QString &text, int removedLines) {
+        QTextDocument opened;
+        opened.setPlainText(text);
+        CrumbModel restored(&opened);
+        restored.markOpened(removedLines);
+        CHECK(restored.openDailyCount(path).isEmpty());
+        CHECK(restored.todayCount() == 1);
+    };
+    reopen(duplicate + u'\n', 0);
+    reopen(duplicate, 0);
+
+    // 2.5 fingerprints every physical Qt block, including all terminal zero
+    // header slots. The loader trimmed two of the original three empty rows.
+    auto legacy = QJsonDocument::fromJson(checkpoint).object();
+    legacy.remove("shapeFormat");
+    QByteArray numbers(4 * sizeof(quint64), '\0');
+    numbers[7] = 1; // Header number one in big-endian order, followed by three zeros.
+    legacy.insert("shape", QString::fromLatin1(QCryptographicHash::hash(numbers, QCryptographicHash::Sha256).toHex()));
+    CHECK(model.publishDailySnapshot(path, QJsonDocument(legacy).toJson(QJsonDocument::Compact)).isEmpty());
+    reopen(duplicate + u'\n', 2);
+}
+
 static void adjustedCounts(const QString &directory)
 {
     QDate day(2026, 11, 20);
@@ -600,6 +640,9 @@ static void adjustedCounts(const QString &directory)
         file.setPlainText(contents);
         CrumbModel restored(&file, clock);
         CHECK(restored.openDailyCount(path).isEmpty());
+        if (restored.todayCount() != crumbs || restored.todayWords() != words)
+            qWarning() << "Reopening" << path << "on" << day << "expected crumbs/words" << crumbs << words
+                       << "and restored" << restored.todayCount() << restored.todayWords();
         CHECK(restored.todayCount() == crumbs && restored.todayWords() == words);
     };
     doc.setModified(false);
@@ -647,6 +690,18 @@ static void adjustedCounts(const QString &directory)
     model.refreshDay();
     CHECK(model.todayWords() == 0 && model.todayCount() == 0);
     reopen(manuscript, doc.toPlainText(), 0, 0);
+
+    QTextDocument unnamed;
+    unnamed.setPlainText(QStringLiteral("Another morning."));
+    CrumbModel draft(&unnamed, clock);
+    const QString recovery = directory + "/Untitled recovery draft";
+    CHECK(draft.publishDailySnapshot(recovery, draft.dailySnapshot()).isEmpty());
+    CHECK(draft.setTodayCount(42).isEmpty());
+    reopen(recovery, unnamed.toPlainText(), 0, 42);
+    day = day.addDays(1);
+    draft.refreshDay();
+    CHECK(draft.setTodayCount(-7).isEmpty());
+    reopen(recovery, unnamed.toPlainText(), 0, -7);
 }
 
 int main(int argc, char **argv)
@@ -664,6 +719,7 @@ int main(int argc, char **argv)
     manuscriptStatistics();
     dailyPersistence(temp.path());
     adjustedCounts(temp.path());
+    dailyHeaderEndings(temp.path());
     paragraphStructure();
     firstLineMode();
     dailyWordPersistence(temp.path());

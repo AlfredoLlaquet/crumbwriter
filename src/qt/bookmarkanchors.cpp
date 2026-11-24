@@ -1,4 +1,5 @@
 #include "bookmarkanchors.h"
+#include "genericparagraph.h"
 #include "manuscripttext.h"
 
 #include <QtCore/QCryptographicHash>
@@ -95,8 +96,11 @@ public:
 private:
     static QByteArray digest(const QTextBlock &block)
     {
-        return QCryptographicHash::hash(ManuscriptText::blockText(block).toUtf8(),
-                                        QCryptographicHash::Sha256);
+        const QString text = ManuscriptText::blockText(block);
+        // Publishing can resize a heading's underline. Its position among
+        // its neighbors identifies the marker regardless of its dash count.
+        const QByteArray bytes = GenericParagraph::onlyHyphens(text) ? QByteArray("-") : text.toUtf8();
+        return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
     }
     const QTextDocument *document;
     int count;

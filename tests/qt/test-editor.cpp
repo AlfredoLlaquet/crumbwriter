@@ -486,7 +486,7 @@ void shiftNavigation(ManuscriptEditor &ed)
     select(Qt::Key_PageUp, 0);
     select(Qt::Key_End, text.indexOf("\nNote 2"));
     select(Qt::Key_Home, text.indexOf("Note 1"));
-    expect(ed, text);
+    expect(ed, text.chopped(1)); // Drop the extra trailing blank on open.
 }
 
 void unicodeRoundTrip(ManuscriptEditor &ed)

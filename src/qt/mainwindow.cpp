@@ -297,6 +297,7 @@ void MainWindow::fitFooter()
                           mode_->sizeHint().width());
     const bool fits = website_->sizeHint().width() + 2 * side + 12 <= width()
                       && !editor_->viSelectionActive() && !webLookupPending_;
+    if (fits == !website_->isHidden()) return;
     website_->setVisible(fits);
     footer_->setColumnStretch(2, fits ? 1 : 0);
 }

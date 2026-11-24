@@ -199,16 +199,17 @@ struct CrumbModel::Data {
     int markerCount = 0;
     std::function<QDate()> localDate;
     DailyCount daily;
+    int trimmedOnOpen = 0; // Only needed to recognize checkpoints made before EOF normalization.
     QTimer dateTimer;
     QString fallbackLabel = QStringLiteral("Crumb");
     QVector<Observer> observers;
 
-    QString openDaily(const QString &manuscript)
+    QString openDaily(const QString &manuscript, int trimmedRows = 0)
     {
         QVector<quint64> headers;
         headers.reserve(rows.size());
         for (const auto &record : rows) headers.append(record.number);
-        return daily.open(manuscript, localDate(), headers, fileWords);
+        return daily.open(manuscript, localDate(), headers, fileWords, trimmedRows);
     }
 
     bool generic() const { return rows.empty() || !rows.front().hasWorkSeparator; }
@@ -633,8 +634,9 @@ QString CrumbModel::setTodayCount(qint64 value)
     return error;
 }
 
-void CrumbModel::markOpened()
+void CrumbModel::markOpened(int trimmedTrailingRows)
 {
+    d->trimmedOnOpen = trimmedTrailingRows;
     d->openDaily({});
     d->fallbackLabel = d->recognized.empty() ? QStringLiteral("Crumb")
                                              : d->rows[*d->recognized.rbegin()].label;
@@ -649,7 +651,8 @@ QString CrumbModel::openDailyCount(const QString &manuscript)
 {
     const qint64 previous = todayCount();
     const qint64 previousWords = todayWords();
-    const auto error = d->openDaily(manuscript);
+    const auto error = d->openDaily(manuscript, d->trimmedOnOpen);
+    if (error.isEmpty()) d->trimmedOnOpen = 0;
     if (previous != todayCount() || previousWords != todayWords()) notify({});
     return error;
 }

@@ -303,9 +303,9 @@ void ManuscriptEditor::loadText(const QString &text)
     synonymHighlights_.clear();
     setExtraSelections({});
     QString manuscript = normalizeInsertion(text);
-    ManuscriptSpacing::trimBlankEnd(manuscript, false);
+    const int trimmedRows = ManuscriptSpacing::trimBlankEnd(manuscript, false);
     ManuscriptText::load(document(), manuscript);
-    model_->markOpened();
+    model_->markOpened(trimmedRows);
     document()->setModified(false);
     openAtEnd();
     refreshBand();

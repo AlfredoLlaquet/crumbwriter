@@ -39,18 +39,21 @@ inline QString normalizeInsertion(QString text, bool keepFinalSpace)
 
 // Discard only complete blank paragraphs at EOF. Opening preserves a missing
 // final terminator. Publication gives each nonempty file one final terminator.
-inline void trimBlankEnd(QString &text, bool terminate)
+inline int trimBlankEnd(QString &text, bool terminate)
 {
     qsizetype end = text.size();
+    int removedBreaks = 0;
     const QStringView manuscript(text);
     while (end > 0) {
         const auto start = manuscript.left(end).lastIndexOf(u'\n') + 1;
         if (!manuscript.mid(start, end - start).trimmed().isEmpty()) break;
+        if (start) ++removedBreaks;
         end = qMax<qsizetype>(0, start - 1);
     }
     const bool finalBreak = end && (terminate || end < text.size());
     text.truncate(end);
     if (finalBreak) text += u'\n';
+    return qMax(0, removedBreaks - int(finalBreak));
 }
 }
 #endif

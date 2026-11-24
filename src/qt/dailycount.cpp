@@ -70,9 +70,19 @@ QString DailyCount::setCount(bool words, qint64 value)
     Adjustment &setting = words ? wordSetting_ : crumbSetting_;
     const Adjustment before = setting;
     setting = {words ? value : qMax<qint64>(0, value), words ? totalWords_ - baselineWords_ : currentCount_};
-    const QString error = writeState();
-    if (!error.isEmpty()) setting = before;
-    else lastDraftPath_.clear();
+    // A recovery draft can be the only named copy of an untitled manuscript.
+    // Its text and the installed manuscript may have different checkpoints.
+    QString error = writeState(lastDraftPath_, lastDraftCheckpoint_);
+    if (!error.isEmpty()) {
+        setting = before;
+        return error;
+    }
+    error = writeState();
+    if (!error.isEmpty()) {
+        setting = before;
+        const QString restoreError = writeState(lastDraftPath_, lastDraftCheckpoint_);
+        if (!restoreError.isEmpty()) error += u'\n' + restoreError;
+    }
     return error;
 }
 
@@ -109,13 +119,21 @@ void DailyCount::takeBaseline(QDate date)
     occupied_.fill(true);
 }
 
-// Body edits never change this fingerprint or the current set of new records.
-QByteArray DailyCount::shape() const
+qsizetype DailyCount::headerExtent() const
 {
-    QByteArray bytes(rows_.size() * qsizetype(sizeof(quint64)), Qt::Uninitialized);
+    qsizetype count = rows_.size();
+    while (count && !rows_[count - 1].number) --count;
+    return count;
+}
+
+// A new checkpoint stops at the last header. Extra blank writing space and
+// the final newline can differ between the buffer and the published file.
+QByteArray DailyCount::shape(qsizetype count) const
+{
+    QByteArray bytes(count * qsizetype(sizeof(quint64)), Qt::Uninitialized);
     char *out = bytes.data();
-    for (const auto &row : rows_) {
-        qToBigEndian(row.number, out);
+    for (qsizetype i = 0; i < count; ++i) {
+        qToBigEndian(i < rows_.size() ? rows_[i].number : quint64(0), out);
         out += sizeof(quint64);
     }
     return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex();
@@ -127,7 +145,8 @@ QByteArray DailyCount::snapshot()
         QJsonArray lines;
         for (int i = 0; i < rows_.size(); ++i)
             if (rows_[i].number && rows_[i].origin < 0) lines.append(i + 1);
-        cachedLayout_ = {{"date", date_.toString(Qt::ISODate)}, {"shape", QString::fromLatin1(shape())},
+        cachedLayout_ = {{"date", date_.toString(Qt::ISODate)}, {"shapeFormat", 2},
+                         {"shape", QString::fromLatin1(shape(headerExtent()))},
                          {"count", currentCount_}, {"new", lines}};
     }
     if (cached_.isEmpty()) {
@@ -151,8 +170,11 @@ QString DailyCount::publish(const QString &manuscript, const QByteArray &snapsho
     const QString file = statePath(manuscript);
     if (file.isEmpty() || snapshot.isEmpty()) return {};
     const bool active = file == stateFile_;
-    if ((active && snapshot == committed_) ||
-        (!active && file == lastDraftPath_ && snapshot == lastDraftCheckpoint_)) return {};
+    if (active && snapshot == committed_) {
+        lastDraftPath_.clear();
+        return {};
+    }
+    if (!active && file == lastDraftPath_ && snapshot == lastDraftCheckpoint_) return {};
     const auto data = QJsonDocument::fromJson(snapshot).object();
     const QDate captured = QDate::fromString(data.value("date").toString(), Qt::ISODate);
     if (!captured.isValid()) return {};
@@ -161,7 +183,10 @@ QString DailyCount::publish(const QString &manuscript, const QByteArray &snapsho
     const QByteArray checkpoint = captured == date_ ? snapshot : beforeNewDay(snapshot, date_);
     const QString error = writeState(file, checkpoint);
     if (error.isEmpty()) {
-        if (active) committed_ = checkpoint;
+        if (active) {
+            committed_ = checkpoint;
+            lastDraftPath_.clear(); // DocumentStore removes its recovery draft after a manuscript save.
+        }
         else { lastDraftPath_ = file; lastDraftCheckpoint_ = checkpoint; }
     }
     return error;
@@ -193,7 +218,7 @@ bool DailyCount::addAlias(int origin, quint64 number)
     return true;
 }
 
-bool DailyCount::matchOpened()
+bool DailyCount::matchOpened(int trimmedTrailingRows)
 {
     indexOrigins();
     // An exact saved layout distinguishes identical old and new headers. An
@@ -203,8 +228,13 @@ bool DailyCount::matchOpened()
     if (!committed_.isEmpty()) {
         const auto data = QJsonDocument::fromJson(committed_).object();
         const auto lines = data.value("new").toArray();
+        const auto expected = data.value("shape").toString().toLatin1();
+        const auto extent = headerExtent();
+        const auto oldExtent = rows_.size() + trimmedTrailingRows;
+        const bool sameShape = expected == shape(extent) ||
+            (data.value("shapeFormat").toInt() < 2 && oldExtent != extent && expected == shape(oldExtent));
         if (data.value("date").toString() == date_.toString(Qt::ISODate) &&
-            data.value("shape").toString().toLatin1() == shape() &&
+            sameShape &&
             data.value("new").isArray() && data.value("count").toInt(-1) == lines.size()) {
             for (const auto &entry : lines) {
                 const int line = entry.toInt();
@@ -378,7 +408,7 @@ bool DailyCount::readState(const QByteArray &bytes, QDate date)
 }
 
 QString DailyCount::open(const QString &manuscript, QDate date, const QVector<quint64> &numbers,
-                         qint64 words)
+                         qint64 words, int trimmedTrailingRows)
 {
     stateFile_ = statePath(manuscript);
     totalWords_ = words;
@@ -400,7 +430,7 @@ QString DailyCount::open(const QString &manuscript, QDate date, const QVector<qu
             const QByteArray saved = file.readAll();
             file.close(); // A restored checkpoint may atomically replace this file on Windows.
             if (readState(saved, date)) {
-                const bool extended = matchOpened();
+                const bool extended = matchOpened(trimmedTrailingRows);
                 const auto restored = snapshot();
                 if (!extended && committed_ == restored) return {};
                 committed_ = restored;
@@ -414,10 +444,17 @@ QString DailyCount::open(const QString &manuscript, QDate date, const QVector<qu
 QString DailyCount::startDay(QDate date)
 {
     const auto saved = committed_;
+    const auto draftPath = lastDraftPath_;
+    const auto draft = lastDraftCheckpoint_;
     takeBaseline(date);
     if (!stateFile_.isEmpty())
         committed_ = saved.isEmpty() ? snapshot() : beforeNewDay(saved, date);
-    return writeState();
+    const QString error = writeState();
+    if (draftPath.isEmpty()) return error;
+    lastDraftPath_ = draftPath;
+    lastDraftCheckpoint_ = beforeNewDay(draft, date);
+    const QString draftError = writeState(draftPath, lastDraftCheckpoint_);
+    return error.isEmpty() ? draftError : error;
 }
 
 QString DailyCount::saveAs(const QString &manuscript)

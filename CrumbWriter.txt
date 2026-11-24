@@ -817,11 +817,14 @@ Keep intact contractions and internal apostrophes such as I’m and O’Brien.
 The center of the footer opens https://www.thecrumbs.org/ in the default
 browser. Its text uses the ordinary foreground in both palettes. The left
 writing status and right mode take priority at narrow widths or during
-a movement or lookup command. F10 > Open TheCrumbs.org also activates it.
+a movement or lookup command. Change footer layout only when the link
+actually needs to appear or disappear. F10 > Open TheCrumbs.org also activates it.
 F10 > Set Today’s Count opens a modeless signed-integer editor. Reset to
 Zero fills the field; Enter applies the chosen value. Generic words can
 be negative. Crumb totals have zero as their lower bound. Keep adjustments
 separate by local date, manuscript and mode and apply later edit deltas.
+Persist explicit corrections to the current committed or recovery state
+even when text is untouched; an older autosave must not roll one back.
 
 American English spelling
 -------------------------
@@ -917,7 +920,13 @@ Manuscripts and drafts are written as UTF-8 without a BOM. Invalid UTF-8
 and embedded NUL bytes are reported at open. File loading accepts LF, CRLF
 or CR and exposes LF to the editor. A saved nonempty manuscript ends with one logical line terminator using the
 existing line-ending convention. Remove trailing blank/whitespace-only rows
-in both modes. An empty manuscript writes zero bytes. Canonicalization of
+in both modes. An empty manuscript writes zero bytes. On opening an existing file, discard
+surplus trailing empty rows before positioning the caret. The startup backup
+still contains the original bytes. A bookmarked marker retains its physical
+line when its hyphen count expands and its neighboring context agrees. The
+daily header identity checkpoint ignores terminal empty rows. Older shapes
+can be compared against the original opened layout so duplicate crumb header
+numbers retain their distinct identities. Canonicalization of
 the saved snapshot preserves an active editing position and open undo run. The storage layer preserves mixed endings
 when matching existing lines. It also keeps adjacent CR and LF separators
 distinct when an intervening whitespace-only line is cleaned. Ctrl+S can
@@ -1178,7 +1187,9 @@ Unicode-named manuscript with its backup and personal dictionary. The
 Windows and Mac checks require the dictionaries shipped inside that package.
 Ubuntu and FreeBSD package tests install on a clean target, upgrade an older
 package fixture, launch and smoke-test the installed editor, and remove it.
-They verify personal manuscripts and companion files survive the lifecycle.
+They verify personal manuscripts and companion files survive the lifecycle. Some minimal Ubuntu installations omit optional
+documentation when unpacking packages. Check the manual and notices in the
+download itself and the mandatory copyright file after the package is installed.
 Fresh runner jobs exercise installing, updating and removing the desktop app.
 The public release workflow also runs the FreeBSD and Linux suites.
 A release request must identify a commit already on the default branch,

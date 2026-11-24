@@ -21,6 +21,14 @@ case $(uname -s) in
         install_package() { apt-get install -y --no-install-recommends "$1"; }
         installed_version() { dpkg-query -W -f='${Version}' crumbwriter; }
         remove_package() { apt-get purge -y crumbwriter; }
+        verify_docs() {
+            # Ubuntu's minimal root image omits optional /usr/share/doc files.
+            # Check their presence in the download and the installed standard copyright file.
+            dpkg-deb --fsys-tarfile "$release" | tar -tf - > "$work/contents"
+            grep -Fx './usr/share/doc/crumbwriter/CrumbWriter.txt' "$work/contents"
+            grep -Fx './usr/share/doc/crumbwriter/COPYING-MyThes' "$work/contents"
+            test -s /usr/share/doc/crumbwriter/copyright
+        }
         export LC_ALL=C.UTF-8
         ;;
     FreeBSD)
@@ -31,6 +39,10 @@ case $(uname -s) in
         install_package() { pkg install -y "$1"; }
         installed_version() { pkg query '%v' crumbwriter; }
         remove_package() { pkg delete -y crumbwriter; }
+        verify_docs() {
+            test -s "$prefix/share/doc/crumbwriter/CrumbWriter.txt"
+            test -s "$prefix/share/doc/crumbwriter/COPYING-MyThes"
+        }
         export LC_ALL=en_US.UTF-8
         ;;
     *) exit 1 ;;
@@ -49,7 +61,7 @@ printf '%s\n' 'Lluna' > "$name.dictionary"
 
 install_package "$fixture"
 test "$(installed_version)" = 0.0.1
-test -f "$prefix/share/doc/crumbwriter/upgrade-fixture"
+test -f "$prefix/share/crumbwriter/upgrade-fixture"
 Xvfb -screen 0 1280x800x24 -nolisten tcp -displayfd 1 > "$work/display" &
 server_pid=$!
 attempt=0
@@ -85,12 +97,11 @@ cp "$settings" "$work/settings"
 install_package "$release"
 test "$(installed_version)" = "$expected"
 test "$(crumbwriter --version)" = "Crumb Writer $expected"
-test ! -e "$prefix/share/doc/crumbwriter/upgrade-fixture"
+test ! -e "$prefix/share/crumbwriter/upgrade-fixture"
 desktop="$prefix/share/applications/org.thecrumbs.CrumbWriter.desktop"
 grep -Fx 'Exec=crumbwriter %F' "$desktop"
 test -s "$prefix/share/icons/hicolor/256x256/apps/org.thecrumbs.CrumbWriter.png"
-test -s "$prefix/share/doc/crumbwriter/CrumbWriter.txt"
-test -s "$prefix/share/doc/crumbwriter/COPYING-MyThes"
+verify_docs
 crumbwriter --smoke-test
 for file in "$work/before/"*; do cmp "$file" "$(basename "$file")"; done
 cmp "$settings" "$work/settings"

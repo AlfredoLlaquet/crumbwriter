@@ -22,7 +22,7 @@ public:
     void setTotalWords(qint64 words);
 
     QString open(const QString &manuscript, QDate date, const QVector<quint64> &numbers,
-                 qint64 words);
+                 qint64 words, int trimmedTrailingRows);
     QString saveAs(const QString &manuscript);
     QByteArray snapshot();
     QString publish(const QString &manuscript, const QByteArray &snapshot);
@@ -45,10 +45,11 @@ private:
 
     void takeBaseline(QDate date);
     void indexOrigins();
-    bool matchOpened();
+    bool matchOpened(int trimmedTrailingRows);
     int availableOrigin(quint64 number) const;
     bool addAlias(int origin, quint64 number);
-    QByteArray shape() const;
+    qsizetype headerExtent() const;
+    QByteArray shape(qsizetype count) const;
     QString writeState() const;
     QString writeState(const QString &file, const QByteArray &checkpoint) const;
     bool readState(const QByteArray &bytes, QDate date);

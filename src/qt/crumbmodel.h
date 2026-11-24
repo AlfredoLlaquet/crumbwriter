@@ -96,7 +96,7 @@ public:
     qint64 todayCount() const;
     qint64 todayWords() const;
     QString setTodayCount(qint64 value);
-    void markOpened();
+    void markOpened(int trimmedTrailingRows = 0);
     QString openDailyCount(const QString &manuscript);
     QString saveDailyCountAs(const QString &manuscript);
     QByteArray dailySnapshot();

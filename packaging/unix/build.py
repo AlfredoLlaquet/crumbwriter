@@ -116,7 +116,9 @@ def main():
             (docs / "copyright").write_bytes(b"\n".join(path.read_bytes() for path in notices))
         build(stage, work, args.destination / filename, version)
         if args.upgrade_fixture:
-            (docs / "upgrade-fixture").write_text("Removed when the release replaces the CI fixture.\n")
+            marker = payload / "share/crumbwriter/upgrade-fixture"
+            marker.parent.mkdir(exist_ok=True)
+            marker.write_text("Removed when the release replaces the CI fixture.\n")
             build(stage, work, args.destination / ("UpgradeFixture" + Path(filename).suffix), FIXTURE_VERSION)
 
 
