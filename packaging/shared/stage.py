@@ -8,6 +8,7 @@ import zipfile
 from brew_sources import stage_brew, stage_qt
 from msys_sources import stage_msys
 from source_files import download, source_index
+from thesaurus import stage_thesaurus
 
 DICTIONARY = "hunspell-en_US-2026.02.25.zip"
 DICTIONARY_URL = "https://github.com/en-wl/wordlist/releases/download/rel-2026.02.25/" + DICTIONARY
@@ -47,6 +48,7 @@ def main():
         sources.mkdir(parents=True, exist_ok=True)
         stage_dictionary(args.destination, sources)
         entries = [f"SCOWL American English dictionary  2026.02.25\n  {DICTIONARY_URL}"]
+        entries.append(stage_thesaurus(args.destination, sources))
         if args.msys_root:
             entries += stage_msys(args.destination, args.msys_root, sources)
         if args.qt_prefix:
@@ -54,8 +56,8 @@ def main():
             entries += stage_brew(args.destination, args.homebrew_runtime_list, sources)
         lines = """Crumb Writer uses third-party software
 
-The Unlicense covers Crumb Writer's original code. The libraries and American
-English dictionary included in this package retain their respective licenses.
+The Unlicense covers Crumb Writer's original code. The libraries, American
+English spelling dictionary and thesaurus retain their respective licenses.
 Component directories here contain the copyright, license, and attribution
 notices provided by their authors. Qt libraries are dynamically linked under
 the GNU Lesser General Public License, version 3. The licenses permit replacing

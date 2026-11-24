@@ -12,7 +12,9 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QtEndian>
+#include <QtCore/qnumeric.h>
 #include <algorithm>
+#include <limits>
 
 namespace {
 QString statePath(const QString &manuscript)
@@ -39,8 +41,39 @@ QByteArray beforeNewDay(const QByteArray &checkpoint, QDate date)
 qint64 savedWordBaseline(const QJsonObject &data, qint64 fallback)
 {
     const auto value = data.value("baselineWords").toInteger(-1);
-    return value >= 0 ? value : fallback;
+    return value >= 0 && value <= std::numeric_limits<int>::max() ? value : fallback;
 }
+}
+
+qint64 DailyCount::Adjustment::apply(qint64 now) const
+{
+    // A manuscript's measured change fits Qt's document position range.
+    // The writer can enter the full signed integer range.
+    const qint64 delta = now - measured;
+    qint64 result;
+    if (!qAddOverflow(value, delta, &result)) return result;
+    return delta < 0 ? std::numeric_limits<qint64>::min() : std::numeric_limits<qint64>::max();
+}
+
+qint64 DailyCount::count() const
+{
+    return qMax<qint64>(0, crumbSetting_.apply(currentCount_));
+}
+
+qint64 DailyCount::wordChange() const
+{
+    return wordSetting_.apply(totalWords_ - baselineWords_);
+}
+
+QString DailyCount::setCount(bool words, qint64 value)
+{
+    Adjustment &setting = words ? wordSetting_ : crumbSetting_;
+    const Adjustment before = setting;
+    setting = {words ? value : qMax<qint64>(0, value), words ? totalWords_ - baselineWords_ : currentCount_};
+    const QString error = writeState();
+    if (!error.isEmpty()) setting = before;
+    else lastDraftPath_.clear();
+    return error;
 }
 
 void DailyCount::indexOrigins()
@@ -57,6 +90,8 @@ void DailyCount::indexOrigins()
 void DailyCount::takeBaseline(QDate date)
 {
     date_ = date;
+    crumbSetting_ = {};
+    wordSetting_ = {};
     baselineWords_ = totalWords_;
     cached_.clear();
     cachedLayout_ = {};
@@ -270,6 +305,12 @@ QString DailyCount::writeState(const QString &name, const QByteArray &checkpoint
     }
     QJsonObject state{{"version", 1}, {"date", date_.toString(Qt::ISODate)}, {"baselineWords", baselineWords_},
                       {"headers", headers}, {"renamed", renamed}};
+    auto writeSetting = [&](const QString &name, const Adjustment &setting) {
+        if (setting.value || setting.measured)
+            state.insert(name, QJsonObject{{"value", setting.value}, {"measured", setting.measured}});
+    };
+    writeSetting("crumbSetting", crumbSetting_);
+    writeSetting("wordSetting", wordSetting_);
     if (!checkpoint.isEmpty()) state.insert("checkpoint", QJsonDocument::fromJson(checkpoint).object());
     const auto bytes = QJsonDocument(state).toJson(QJsonDocument::Compact);
     QSaveFile file(name);
@@ -312,6 +353,15 @@ bool DailyCount::readState(const QByteArray &bytes, QDate date)
     baseline_ = std::move(baseline);
     aliases_ = std::move(aliases);
     preferred_ = std::move(preferred);
+    auto readSetting = [&](const QString &name) {
+        const auto setting = root.value(name).toObject();
+        const qint64 measured = setting.value("measured").toInteger();
+        if (measured > std::numeric_limits<int>::max() || measured < -std::numeric_limits<int>::max())
+            return Adjustment{};
+        return Adjustment{setting.value("value").toInteger(), measured};
+    };
+    crumbSetting_ = readSetting("crumbSetting");
+    wordSetting_ = readSetting("wordSetting");
     baselineWords_ = savedWordBaseline(root, totalWords_);
     const auto checkpoint = root.value("checkpoint");
     if (checkpoint.isObject()) {

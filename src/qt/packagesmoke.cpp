@@ -5,6 +5,7 @@
 #include "spellwords.h"
 #include "symbolcatalog.h"
 #include "textcompanion.h"
+#include "thesaurus.h"
 
 #include <QApplication>
 #include <QDebug>
@@ -62,7 +63,14 @@ int runPackageSmokeTest()
     if (!SpellWords::available() || !SpellWords().issues(QStringLiteral("She’s writing in color")).isEmpty() ||
         SpellWords().issues("zzqzwrrp").isEmpty())
         return fail("The American English spelling dictionary is unusable.");
+    const auto &thesaurus = EnglishThesaurus::instance();
+    bool foundPhysician = false;
+    for (const auto &sense : thesaurus.lookup("doctor"))
+        for (const auto &term : sense.terms)
+            if (term.word == QStringLiteral("physician")) foundPhysician = true;
+    if (!foundPhysician) return fail("The offline US English thesaurus could not look up doctor.");
 #if defined(Q_OS_MACOS) || defined(Q_OS_WIN)
+    if (!thesaurus.usingBundledDictionary()) return fail("The packaged US English thesaurus is missing.");
     if (!SpellWords::usingBundledDictionary()) return fail("The packaged en_US dictionary is missing.");
 #endif
 

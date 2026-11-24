@@ -5,6 +5,8 @@ from pathlib import Path
 import shutil
 
 INSTALLERS = {
+    "ubuntu-installer": "CrumbWriter-Ubuntu-24.04-amd64.deb",
+    "freebsd-installer": "CrumbWriter-FreeBSD-15-amd64.pkg",
     "windows-installer": "CrumbWriter-Windows-x64-Setup.exe",
     "macos-installer": "CrumbWriter-macOS-Universal.dmg",
 }

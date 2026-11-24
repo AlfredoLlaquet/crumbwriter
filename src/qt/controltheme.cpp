@@ -68,7 +68,7 @@ public:
         if (usesBreezeIcons_) selectBreezeIcons(theme);
 #endif
         // Menus, tooltips and editors from Qt can be separate top-level widgets.
-        QApplication::setPalette(explicitTheme ? EditorColors::explicitTheme(QPalette(), theme == "dark") : desktopPalette_);
+        QApplication::setPalette(explicitTheme ? EditorColors::explicitTheme(desktopPalette_, theme == "dark") : desktopPalette_);
         for (auto *widget : QApplication::allWidgets()) updateDialogDecoration(widget);
         return QApplication::palette();
     }

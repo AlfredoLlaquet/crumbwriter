@@ -1,7 +1,7 @@
 #pragma once
 
 #include "textcompanion.h"
-#include <QStringList>
+#include "synonymentry.h"
 
 class SynonymFile {
 public:
@@ -11,18 +11,21 @@ public:
     bool flush(QString *error = nullptr) { return companion_.flush(error); }
     bool hasPending() const { return companion_.hasPending(); }
     const QString &manuscriptPath() const { return companion_.manuscriptPath(); }
-    const QList<QStringList> &groups() const { return groups_; }
+    const QList<SynonymEntry> &groups() const { return groups_; }
 
-    bool add(const QString &line, QString *error = nullptr);
-    bool edit(int row, const QString &line, QString *error = nullptr);
+    bool add(const QString &line, bool excludeFromAutocomplete, QString *error = nullptr);
+    bool add(const QString &line, QString *error = nullptr) { return add(line, false, error); }
+    bool edit(int row, const QString &line, bool excludeFromAutocomplete, QString *error = nullptr);
+    bool edit(int row, const QString &line, QString *error = nullptr)
+    { return edit(row, line, groups_.value(row).excludeFromAutocomplete, error); }
     bool remove(int row, QString *error = nullptr);
     static bool parse(const QString &line, QStringList &group, QString *error = nullptr);
     static QString format(const QStringList &group);
 
 private:
     bool decode(QString *error);
-    bool store(QList<QStringList> groups, QString *error);
+    bool store(QList<SynonymEntry> groups, QString *error);
     TextCompanion companion_;
-    QList<QStringList> groups_;
+    QList<SynonymEntry> groups_;
     bool readable_ = true;
 };

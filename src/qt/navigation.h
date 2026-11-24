@@ -2,10 +2,13 @@
 #define CRUMBWRITER_NAVIGATION_H
 
 #include <QHash>
+#include <QPointer>
 #include <QTextCursor>
 #include <QWidget>
 #include <functional>
 
+class QAction;
+class QDialog;
 class QLabel;
 class QSettings;
 class QToolButton;
@@ -33,7 +36,9 @@ public:
     void focusHistory();
     void focusGenres();
     void toggleGenreOrder();
+    void showTodayCountDialog();
     std::function<void(int)> jumpTo;
+    std::function<bool(const QString &)> genreOccurrences;
 protected:
     void changeEvent(QEvent *event) override;
 private:
@@ -44,15 +49,18 @@ private:
     void updateVisit(QTreeWidgetItem *item);
     void updateGenres();
     bool openVisit();
-    bool openGenreOrTitle();
+    bool openGenreOrTitle(bool occurrences);
     ManuscriptEditor *editor_;
     QSettings *settings_;
     QLabel *number_;
     QLabel *title_;
     QLabel *words_;
+    QLabel *todayHeading_;
     QLabel *today_;
+    QPointer<QDialog> todayDialog_;
     QLabel *genreHeading_;
     QToolButton *genreOrder_;
+    QAction *genreMentions_;
     QTreeWidget *visits_;
     QTreeWidget *genres_ = nullptr;
     PanelSearch *historySearch_;

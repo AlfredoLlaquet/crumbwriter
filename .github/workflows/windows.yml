@@ -4,7 +4,7 @@ on:
   workflow_call:
   workflow_dispatch:
   push:
-    branches: [main, 'appearance/**']
+    branches: [main, 'appearance/**', 'feature/**']
   pull_request:
 
 permissions:
@@ -55,6 +55,7 @@ jobs:
           set -eu
           python packaging/shared/stage.py --destination build/test-data
           export QT_QPA_PLATFORM=windows QT_FORCE_STDERR_LOGGING=1 DICPATH="$(cygpath -m "$PWD/build/test-data/dictionaries")"
+          export CRUMBWRITER_THESAURUS_DIR="$(cygpath -m "$PWD/build/test-data/thesaurus")"
           ctest --test-dir build --output-on-failure --timeout 180
       - name: Check light and dark windows on the native Windows desktop
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}
@@ -63,6 +64,7 @@ jobs:
         run: |
           set -eu
           export QT_QPA_PLATFORM=windows QT_FORCE_STDERR_LOGGING=1 DICPATH="$(cygpath -m "$PWD/build/test-data/dictionaries")"
+          export CRUMBWRITER_THESAURUS_DIR="$(cygpath -m "$PWD/build/test-data/thesaurus")"
           ./build/test-gui-audit.exe --output build/gui-audit --platform-name windows
       - name: Preserve the Windows appearance evidence
         if: ${{ !cancelled() && steps.compile.outcome == 'success' }}

@@ -1,4 +1,5 @@
 #include "manuscripteditor.h"
+#include "editorcolors.h"
 #include "storage.h"
 extern "C" {
 #include "crumb.h"
@@ -225,16 +226,22 @@ void deletionClipboard(ManuscriptEditor &ed)
 {
     auto *clipboard = QApplication::clipboard();
     ed.loadText("A goose");
+    clipboard->setText("manuscript quotation");
     for (int i = 0; i < 5; ++i) press(ed, Qt::Key_Backspace);
-    require(clipboard->text() == "goose", "backward deletions accumulate in reading order");
+    require(clipboard->text() == "manuscript quotation", "repeated Backspace preserves the clipboard");
     ed.undo();
-    require(clipboard->text() == "goose", "undo preserves the last deliberate deletion");
+    require(clipboard->text() == "manuscript quotation", "undo preserves the clipboard");
     ed.jumpTo(2, false);
     press(ed, Qt::Key_Delete);
     press(ed, Qt::Key_Delete);
-    require(clipboard->text() == "go", "forward deletions build a fresh clipboard entry");
+    require(clipboard->text() == "manuscript quotation", "repeated Delete preserves the clipboard");
     press(ed, Qt::Key_Backspace);
-    require(clipboard->text() == " ", "reversing deletion direction starts a new entry");
+    require(clipboard->text() == "manuscript quotation", "changing deletion direction preserves the clipboard");
+
+    ed.loadText("A goose");
+    ed.selectRange(2, 7, false);
+    press(ed, Qt::Key_Backspace);
+    require(clipboard->text() == "goose", "deleting an explicit selection copies it when enabled");
 
     ed.loadText("First red fox.\nAnother fox.");
     ed.jumpTo(7, false);
@@ -608,8 +615,8 @@ void fieldsAndClipboard(ManuscriptEditor &ed)
 
 void genericParagraphs(ManuscriptEditor &ed)
 {
-    const QString novel = QStringLiteral("The Clock Merchant\n\nWinter\n\nPeople walked in.\n"
-                                         "Next came the mayor.\n\nSpring\n\nRain.\n");
+    const QString novel = QStringLiteral("The Clock Merchant\n\nWinter\n------\nPeople walked in.\n"
+                                         "Next came the mayor.\n\nSpring\n------\nRain.\n");
     ed.loadText(novel);
     ed.resize(720, 540);
     ed.show();
@@ -623,10 +630,11 @@ void genericParagraphs(ManuscriptEditor &ed)
     };
     const int body = rect(4).height();
     require(rect(0).height() > rect(2).height() && rect(2).height() > body &&
-            bold(0) && bold(2) && !bold(4), "document and chapter titles have distinct bold sizes");
-    require(rect(1).height() < body / 2 && rect(2).top() - rect(1).top() < body / 2 &&
-            ed.cursorForPosition(rect(1).center()).blockNumber() == 1,
-            "a blank paragraph has compact native layout, caret and hit testing");
+            bold(0) && bold(2) && !bold(4) && block(2).layout()->formats().front().format.fontUnderline() &&
+            !block(0).layout()->formats().front().format.fontUnderline(), "document and chapter titles have distinct bold sizes");
+    require(rect(2).top() - rect(1).top() < body / 2 && rect(6).height() >= body - 1 &&
+            ed.cursorForPosition(rect(1).topLeft() + QPoint(1, 1)).blockNumber() == 1,
+            "only the blank immediately after the document title is compact");
     require(!ed.document()->isModified() && !ed.document()->isUndoAvailable(),
             "visual paragraph styles do not modify manuscript or undo history");
     const auto font = ed.font();
@@ -635,7 +643,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     ed.setFont(enlarged);
     settle();
     require(rect(4).height() > body && rect(0).height() > rect(2).height() &&
-            rect(2).height() > rect(4).height() && rect(1).height() < rect(4).height() / 2,
+            rect(2).height() > rect(4).height() && rect(2).top() - rect(1).top() < rect(4).height() / 2,
             "relative heading and separator sizes follow the writing font");
     ed.setFont(font);
 
@@ -648,8 +656,12 @@ void genericParagraphs(ManuscriptEditor &ed)
     require(ed.textCursor().position() == block(7).position(), "reverse Tab reaches this heading's start");
     press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
     require(ed.textCursor().position() == block(2).position(), "reverse Tab visits the preceding heading");
+    require(rect(3).height() < body / 2 &&
+            block(3).layout()->formats().front().format.foreground().color().alpha() == 0,
+            "an inactive marker is compact and shows no hyphens");
     press(ed, Qt::Key_Down, Qt::ControlModifier);
-    require(ed.textCursor().position() == block(3).position(), "Ctrl+Down visits a blank paragraph");
+    require(ed.textCursor().position() == block(3).position() && rect(3).height() >= body - 1,
+            "Ctrl+Down reaches the full-size editable marker");
     QTextCharFormat underline;
     underline.setFontUnderline(true);
     QInputMethodEvent composing(QStringLiteral("café"), {{QInputMethodEvent::TextFormat, 1, 2, underline}});
@@ -663,8 +675,8 @@ void genericParagraphs(ManuscriptEditor &ed)
             "uncommitted input on compact rows keeps the writing font and candidate styling");
     QInputMethodEvent canceled;
     QApplication::sendEvent(&ed, &canceled);
-    require(rect(3).height() < body / 2 && !ed.document()->isUndoAvailable(),
-            "canceling composition restores the compact separator without an edit");
+    require(rect(3).height() >= body - 1 && !ed.document()->isUndoAvailable(),
+            "canceling composition leaves the active marker editable without an edit");
     expect(ed, novel);
     type(ed, "No separator.");
     settle();
@@ -703,6 +715,15 @@ void genericParagraphs(ManuscriptEditor &ed)
     ed.undo();
     ed.undo();
     expect(ed, novel);
+    ed.loadText("A mixed title.\n");
+    ed.jumpTo(ed.manuscriptText().size(), false);
+    type(ed, "---");
+    ed.finishTyping();
+    expect(ed, "A mixed title.\n---");
+    require(ed.model().paragraphRole(1) == ParagraphRole::TitleMarker, "smart punctuation preserves a marker");
+    press(ed, Qt::Key_Return);
+    type(ed, "new--s");
+    expect(ed, QStringLiteral("A mixed title.\n---\nnew—s"));
     ed.loadText("One paragraph.");
     press(ed, Qt::Key_N, Qt::ControlModifier);
     type(ed, "Second.");
@@ -729,7 +750,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     ed.loadText("Book//Leaf 1: Haiku #1: prose.\nLeaf 2: Haiku: more.\n");
     ed.replaceRangeLiteral(4, 6, {});
     settle();
-    require(ed.model().isGeneric() && rect(2).height() < rect(1).height() / 2 &&
+    require(ed.model().isGeneric() && rect(2).height() >= rect(1).height() - 1 &&
             block(1).layout()->formats().size() == 1 && !bold(1),
             "removing the first-line separator clears crumb styles down the manuscript");
     ed.undo();
@@ -846,6 +867,7 @@ void geometry(ManuscriptEditor &ed)
                 + QStringLiteral("End.\nCrumb 2: B: next"));
     auto paper = ed.palette();
     paper.setColor(QPalette::Base, Qt::white);
+    paper.setColor(EditorColors::accentRole, QColor("#279b50"));
     ed.setPaperPalette(paper);
     ed.jumpTo(0,false);
     settle();
@@ -855,8 +877,8 @@ void geometry(ManuscriptEditor &ed)
         return frame.pixelColor(frame.width()-3, pixelY);
     };
     const auto band = marginColor(white, ed.cursorRect().center().y());
-    require(band.blue()==255 && band.red()>=229 && band.red()<=234 && band.green()>=239 && band.green()<=244,
-            "current crumb tint extends to the writing margin");
+    require(band == EditorColors::currentPaper(paper) && band.green() > band.blue() && band.green() > band.red(),
+            "the desktop's green accent tints the current crumb through the writing margin");
     QTextCursor lastLine(ed.document()->firstBlock());
     lastLine.movePosition(QTextCursor::EndOfBlock);
     const QRect lastRow = ed.cursorRect(lastLine);
@@ -885,6 +907,8 @@ int main(int argc, char **argv)
     punctuation(editor);
     spacing(editor);
     rewritingLastWord(editor);
+    require(!editor.copiesDeletedText(), "automatic deletion copying starts off");
+    editor.setCopyDeletedText(true);
     wholeWordDeletion(editor);
     deletionClipboard(editor);
     appendUndoPosition(editor);

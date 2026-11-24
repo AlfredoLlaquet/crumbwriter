@@ -7,6 +7,7 @@
 
 #include <QAbstractListModel>
 #include <QAction>
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QKeyEvent>
 #include <QLabel>
@@ -26,7 +27,7 @@ class GroupModel final : public QAbstractListModel {
 public:
     using QAbstractListModel::QAbstractListModel;
 
-    void setGroups(const QList<QStringList> &groups)
+    void setGroups(const QList<SynonymEntry> &groups)
     {
         beginResetModel();
         groups_ = groups;
@@ -40,15 +41,18 @@ public:
     QVariant data(const QModelIndex &i, int role) const override
     {
         if (!i.isValid() || i.row() >= groups_.size()) return {};
-        const auto &group = groups_[i.row()];
+        const auto &entry = groups_[i.row()];
+        const auto &group = entry.aliases;
         if (role == Qt::UserRole) return group.join(u'\n'); // Search the unescaped aliases.
+        if (role == Qt::ToolTipRole && entry.excludeFromAutocomplete)
+            return SynonymFile::format(group) + tr("\nExcluded from autocomplete");
         if (role == Qt::DisplayRole || role == Qt::ToolTipRole)
             return SynonymFile::format(group);
         return {};
     }
 
 private:
-    QList<QStringList> groups_;
+    QList<SynonymEntry> groups_;
 };
 
 void showWindow(QWidget *w)
@@ -148,10 +152,10 @@ public:
     {
         search_->focusSearch();
     }
-    void updateList(const QStringList &select = {})
+    void updateList(const SynonymEntry &select = {})
     {
         model_->setGroups(file.groups());
-        if (!select.isEmpty()) list_->setCurrentIndex(model_->index(file.groups().indexOf(select), 0));
+        if (!select.aliases.isEmpty()) list_->setCurrentIndex(model_->index(file.groups().indexOf(select), 0));
         search_->refresh();
     }
     void clearView()
@@ -199,13 +203,14 @@ private:
     {
         const int row = currentRow();
         if (row < 0 || row >= file.groups().size()) return false;
-        const QStringList group = file.groups().at(row);
+        const auto &group = file.groups().at(row).aliases;
         if (inserting) {
             if (!owner_.insertSynonym) return false;
             owner_.insertSynonym(group.first());
         } else {
             if (!owner_.document_) return false;
-            owner_.showOccurrences(this == owner_.recurring_, row);
+            const int offset = this == owner_.recurring_ ? int(owner_.characters_->file.groups().size()) : 0;
+            owner_.showOccurrences(offset + row);
         }
         return true;
     }
@@ -214,7 +219,7 @@ private:
         if (form_) { showWindow(form_); return; }
         const int row = currentRow();
         if (!adding && (row < 0 || row >= file.groups().size())) return;
-        const QStringList original = adding ? QStringList{} : file.groups().at(row);
+        const auto original = adding ? SynonymEntry{} : file.groups().at(row);
         auto *form = new QDialog(this);
         form_ = form;
         form->setAttribute(Qt::WA_DeleteOnClose);
@@ -228,7 +233,7 @@ private:
         field->setAccessibleName(QStringLiteral("Synonyms"));
         label->setBuddy(field);
         if (!adding) {
-            field->setText(SynonymFile::format(original));
+            field->setText(SynonymFile::format(original.aliases));
         } else if (owner_.manuscriptSelection) {
             QString name = owner_.manuscriptSelection().trimmed();
             name.replace(u'\n', u' ');
@@ -236,6 +241,10 @@ private:
         }
         auto *hint = new QLabel(QStringLiteral("Separate names with commas. Enclose a name containing a comma in double quotes."), form);
         hint->setWordWrap(true);
+        auto *excluded = new QCheckBox(tr("&Exclude from autocomplete"), form);
+        excluded->setObjectName(QStringLiteral("excludeFromAutocomplete"));
+        excluded->setToolTip(tr("Keep these names available for marking, navigation, spelling, and manual insertion."));
+        excluded->setChecked(original.excludeFromAutocomplete);
         auto *error = new QLabel(form);
         error->setTextFormat(Qt::PlainText);
         error->setWordWrap(true);
@@ -243,21 +252,23 @@ private:
         layout->addWidget(label);
         layout->addWidget(field);
         layout->addWidget(hint);
+        layout->addWidget(excluded);
         layout->addWidget(error);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, form);
         buttons->button(QDialogButtonBox::Save)->setDefault(true);
         layout->addWidget(buttons);
         connect(buttons, &QDialogButtonBox::rejected, form, &QDialog::reject);
         connect(buttons, &QDialogButtonBox::accepted, form,
-                [this, adding, row, original, form, field, error] {
+                [this, adding, row, original, form, field, excluded, error] {
             QString reason;
             QStringList parsed;
             const bool fresh = adding || file.groups().value(row) == original;
             if (!fresh) reason = QStringLiteral("The selected group changed. Reopen its editor.");
             if (fresh && SynonymFile::parse(field->text(), parsed, &reason) &&
-                (adding ? file.add(field->text(), &reason) : file.edit(row, field->text(), &reason))) {
+                (adding ? file.add(field->text(), excluded->isChecked(), &reason) :
+                          file.edit(row, field->text(), excluded->isChecked(), &reason))) {
                 search_->clear();
-                updateList(parsed);
+                updateList({parsed, excluded->isChecked()});
                 showError({});
                 form->accept();
                 owner_.changed();
@@ -296,10 +307,10 @@ private:
     {
         const int row = currentRow();
         if (row < 0 || row >= file.groups().size()) return;
-        const QStringList original = file.groups().at(row);
-        confirm(QStringLiteral("Delete the synonym group %1?").arg(SynonymFile::format(original)), QStringLiteral("&Delete"),
+        const auto original = file.groups().at(row);
+        confirm(QStringLiteral("Delete the synonym group %1?").arg(SynonymFile::format(original.aliases)), QStringLiteral("&Delete"),
                 [this, row, original] {
-            if (file.groups().value(row) != original) {
+            if (!(file.groups().value(row) == original)) {
                 showError(QStringLiteral("The selected group changed. Select it again."));
                 return;
             }
@@ -367,7 +378,7 @@ SynonymPanel::SynonymPanel(QTextDocument *document, QWidget *parent)
 void SynonymPanel::focusCharacters() { characters_->show(); characters_->focusSearch(); }
 void SynonymPanel::focusRecurring() { recurring_->show(); recurring_->focusSearch(); }
 
-void SynonymPanel::showOccurrences(bool recurring, int row)
+void SynonymPanel::showOccurrences(int group)
 {
     if (!document_) return;
     if (!results_) {
@@ -376,13 +387,34 @@ void SynonymPanel::showOccurrences(bool recurring, int row)
             if (jumpToMatch) jumpToMatch(start, end);
         };
     }
-    results_->showGroup((recurring ? int(characters_->file.groups().size()) : 0) + row);
+    results_->showGroup(group);
+}
+
+void SynonymPanel::rebuildMatcher()
+{
+    matcher_->setGroups(characters_->file.groups(), recurring_->file.groups(), genres_);
+}
+
+void SynonymPanel::setGenres(const QStringList &genres)
+{
+    if (genres_ == genres) return;
+    genres_ = genres;
+    rebuildMatcher();
+    if (results_) results_->refreshGroup();
+}
+
+bool SynonymPanel::showGenreOccurrences(const QString &genre)
+{
+    const int row = genres_.indexOf(genre);
+    if (row < 0) return false;
+    showOccurrences(int(characters_->file.groups().size() + recurring_->file.groups().size()) + row);
+    return true;
 }
 
 void SynonymPanel::changed()
 {
     if (results_) results_->reset();
-    matcher_->setGroups(characters_->file.groups(), recurring_->file.groups());
+    rebuildMatcher();
     if (onChanged) onChanged();
 }
 
@@ -433,6 +465,6 @@ QStringList SynonymPanel::allAliases() const
     QStringList aliases;
     for (auto *section : {characters_, recurring_})
         for (const auto &group : section->file.groups())
-            aliases.append(group);
+            aliases.append(group.aliases);
     return aliases;
 }

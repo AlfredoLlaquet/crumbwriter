@@ -3,6 +3,7 @@
 #include "synonympanel.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QDialog>
 #include <QFile>
 #include <QHBoxLayout>
@@ -85,7 +86,7 @@ void persistence(const QString &directory)
     SynonymFile chars(suffix);
     check(chars.openManuscript(first) && !QFile::exists(first + suffix) && !chars.hasPending(), "open has no side effects");
     check(chars.add("Zebra, Zed") && chars.add("Ada, \"Ada, DDS\""), "adding names");
-    check(chars.groups().first().first() == "Ada" && read(first + suffix) == "Ada, \"Ada, DDS\"\nZebra, Zed\n",
+    check(chars.groups().first().aliases.first() == "Ada" && read(first + suffix) == "Ada, \"Ada, DDS\"\nZebra, Zed\n",
           "UTF-8 ordered lines");
     SynonymFile restored(suffix);
     check(restored.openManuscript(first) && restored.groups() == chars.groups(), "companion reopened");
@@ -108,7 +109,7 @@ void persistence(const QString &directory)
           "pending Save As recovers under a different name");
     const QString emptySource = directory + "/empty.txt";
     check(untitled.openManuscript(emptySource) && untitled.saveAs(occupied) &&
-          untitled.groups().first().first() == "someone else's companion", "empty source adopts existing destination");
+          untitled.groups().first().aliases.first() == "someone else's companion", "empty source adopts existing destination");
 
     const QString broken = directory + "/broken.txt", copy = directory + "/copy.txt";
     write(broken + suffix, "\"unclosed\n");
@@ -118,8 +119,16 @@ void persistence(const QString &directory)
     write(broken + suffix, QByteArray("x\xff", 2));
     check(!untitled.openManuscript(broken), "invalid UTF-8 detected");
     write(broken + suffix, QByteArray("\xEF\xBB\xBF") + "Zebra,Zed\r\n\r\nAda, \"Dr. Ada, DDS\"\r\n");
-    check(untitled.openManuscript(broken) && untitled.groups().first().first() == "Ada", "manual UTF-8 CSV edits reload");
+    check(untitled.openManuscript(broken) && untitled.groups().first().aliases.first() == "Ada", "manual UTF-8 CSV edits reload");
     check(untitled.remove(1) && read(broken + suffix) == "Ada, \"Dr. Ada, DDS\"\n", "successful edit emits UTF-8 LF");
+    check(untitled.add("Z, \",no-complete, quoted alias\"", true) &&
+          untitled.edit(0, "Ada, Dr. Ada", true) && untitled.openManuscript(broken) &&
+          untitled.groups().first().excludeFromAutocomplete && untitled.groups().last().excludeFromAutocomplete &&
+          untitled.groups().last().aliases.last() == ",no-complete, quoted alias",
+          "exclusion is portable and cannot collide with a quoted legacy alias");
+    check(untitled.edit(0, "Ada, Addie") && untitled.groups().first().excludeFromAutocomplete &&
+          untitled.edit(0, "Ada, Addie", false) && !untitled.groups().first().excludeFromAutocomplete &&
+          read(broken + suffix).startsWith("Ada, Addie\n"), "renaming preserves exclusion; unchecking restores plain CSV");
 }
 
 void pane(const QString &dir)
@@ -199,6 +208,8 @@ void pane(const QString &dir)
     auto *form = panel.findChild<QDialog *>("recurringEditDialog");
     check(form && form->isVisible(), "keyboard add opens nonmodal editor");
     auto *field = form->findChild<QLineEdit *>("synonymText");
+    auto *excluded = form->findChild<QCheckBox *>("excludeFromAutocomplete");
+    check(excluded && !excluded->isChecked(), "new groups default to offering completions");
     field->setText("Beetle, \"The Beetle, Esquire\"");
     key(field, Qt::Key_Return);
     check(panel.allAliases().contains("The Beetle, Esquire") && read(path + ".recurring").startsWith("Beetle,"),
@@ -206,9 +217,13 @@ void pane(const QString &dir)
     key(things, Qt::Key_F2);
     form = panel.findChild<QDialog *>("recurringEditDialog");
     field = form->findChild<QLineEdit *>("synonymText");
+    excluded = form->findChild<QCheckBox *>("excludeFromAutocomplete");
+    key(excluded, Qt::Key_Space);
     field->setText("Bug, Beetle");
     key(field, Qt::Key_Return);
-    check(panel.allAliases().contains("Bug") && !panel.allAliases().contains("The Beetle, Esquire"), "keyboard rename updates vocabulary");
+    check(panel.allAliases().contains("Bug") && !panel.allAliases().contains("The Beetle, Esquire") &&
+          read(path + ".recurring").startsWith(",no-complete, Bug, Beetle\n"),
+          "keyboard exclusion and rename keep both names in the spelling vocabulary");
     key(things, Qt::Key_Delete);
     auto *question = panel.findChild<QMessageBox *>();
     check(question && question->isVisible(), "deleting asks before removing a group");
@@ -251,6 +266,11 @@ void overlaps(const QString &dir)
     check(waitFor([&] { return view->model()->rowCount() == 3; }), "nested hits are suppressed across lists");
     check(view->model()->index(0, 1).data() == "A A" && view->model()->index(1, 1).data() == "A A" &&
           view->model()->index(2, 1).data() == "goose", "crossing spans and a separate short mention are retained");
+    const auto passageA = view->model()->index(0, 2);
+    const auto passageB = view->model()->index(1, 2);
+    check(passageA.data() == passageB.data() && passageA.data(Qt::UserRole + 2).toPoint() == QPoint(0, 3) &&
+          passageB.data(Qt::UserRole + 2).toPoint() == QPoint(2, 3) && view->itemDelegateForColumn(2),
+          "two identical passages identify different exact spans for bold type");
     // A split above an existing result updates its line and UTF-16 positions.
     auto c = editor.textCursor();
     c.setPosition(0);
@@ -269,8 +289,8 @@ void matcher()
 {
     QPlainTextEdit editor;
     SynonymMatcher matches(editor.document());
-    matches.setGroups({{"Inspector Goose", "Goose", "O'Neil"}, {"Shared", "Alias"}},
-                      {{"Understudy", "Alias"}, {"His Feathered Excellency", "O’Neil"}});
+    matches.setGroups({{{"Inspector Goose", "Goose", "O'Neil"}}, {{"Shared", "Alias"}}},
+                      {{{"Understudy", "Alias"}}, {{"His Feathered Excellency", "O’Neil"}}});
     editor.setPlainText("🪶 Inspector Goose saw a goose.\nO’NEIL met an alias, and Aliasing left.");
     const auto first = matches.mentions(editor.document()->begin());
     const auto second = matches.mentions(editor.document()->lastBlock());
@@ -294,7 +314,7 @@ void matcher()
     editor.undo();
     check(matches.mentions(editor.document()->begin()).size() == 2, "cached matches refresh on undo");
 
-    matches.setGroups({{"X", "the lunar auditor", "O'Neil"}}, {{"O’Neil", "lunar audience"}});
+    matches.setGroups({{{"X", "the lunar auditor", "O'Neil"}}}, {{{"O’Neil", "lunar audience"}}});
     editor.setPlainText("the lunar aud");
     auto candidates = matches.completions(13, true, true, 3);
     check(candidates.size() == 1 && candidates.first().alias == "the lunar auditor" &&
@@ -307,11 +327,25 @@ void matcher()
     check(candidates.size() == 1 && candidates.first().suffix == "eil", "equivalent spellings complete once");
     check(matches.completions(3, true, true, 4).isEmpty() && matches.completions(2, true, true, 1).isEmpty(),
           "minimum prefix and inside-word safeguards");
-    matches.setGroups({{"Greenfinch", "Greengage", "Green goose"}, {"Green room"}}, {});
+    matches.setGroups({{{"Greenfinch", "Greengage", "Green goose"}}, {{"Green room"}}}, {});
     editor.setPlainText("gre");
     check(matches.completions(3, true, false, 3, 2).size() == 2 &&
           matches.completions(3, true, false, 3).size() == 4,
           "the quiet hint detects ambiguity early while the chooser lists every candidate");
+    matches.setGroups({{{"Rocket", "Comet"}, true}}, {{{"Rocket", "Copernicus"}}}, {"Comet", "Rockslide"});
+    editor.setPlainText("Comet flew by a Rockslide. Another comet.\nCo");
+    const auto mentions = matches.mentions(editor.document()->begin());
+    check(mentions.size() == 3 && mentions.first().groups == QList<int>({0, 2}) &&
+          matches.neighbor(mentions.first(), 2, false)->start == editor.toPlainText().lastIndexOf("comet") &&
+          matches.groups().at(mentions.at(1).groups.first()).source == NameSource::Genre,
+          "genre and excluded names keep distinct identities for marking and navigation");
+    candidates = matches.completions(editor.toPlainText().size(), true, true);
+    check(candidates.size() == 1 && candidates.first().alias == "Copernicus",
+          "neither excluded groups nor manuscript genres supply completions");
+    editor.setPlainText("Roc");
+    candidates = matches.completions(3, true, true);
+    check(candidates.size() == 1 && candidates.first().alias == "Rocket" &&
+          matches.completions(3, true, false).isEmpty(), "an eligible duplicate alias can still complete");
 }
 }
 

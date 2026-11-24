@@ -66,6 +66,43 @@ url_end(const gchar *p)
     return p;
 }
 
+gboolean
+cw_next_web_link(const gchar *line, gint length, gint from, gint *start, gint *end)
+{
+    static gsize pattern;
+    if (g_once_init_enter(&pattern)) {
+        GRegex *regex = g_regex_new("(?<![\\w.@/-])(?:https?://|www\\.)",
+                                   G_REGEX_CASELESS | G_REGEX_OPTIMIZE, 0, NULL);
+        g_once_init_leave(&pattern, (gsize)regex);
+    }
+    while (from < length) {
+        GMatchInfo *match;
+        if (!g_regex_match_full((GRegex *)pattern, line, length, from, 0, &match, NULL)) {
+            g_match_info_free(match);
+            return FALSE;
+        }
+        gint prefix_end;
+        g_match_info_fetch_pos(match, 0, start, &prefix_end);
+        g_match_info_free(match);
+        const gchar *limit = url_end(line + prefix_end);
+        /* A closing sentence mark is prose. The same character in a path,
+         * query or fragment stays intact when another URL character follows. */
+        while (limit > line + prefix_end) {
+            const gchar *last = g_utf8_prev_char(limit);
+            gunichar c = g_utf8_get_char(last);
+            if (c != '.' && c != ',' && c != ';' && c != ':' &&
+                c != '?' && c != '!' && c != 0x2026)
+                break;
+            limit = last;
+        }
+        *end = (gint)(limit - line);
+        if (*end > prefix_end)
+            return TRUE;
+        from = prefix_end;
+    }
+    return FALSE;
+}
+
 static const gchar *
 record_start(const gchar *line, gboolean first_line)
 {

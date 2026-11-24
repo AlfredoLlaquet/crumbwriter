@@ -26,10 +26,11 @@ jobs:
           release: '15.1'
           copyback: false
           prepare: |
-            pkg install -y qt6-base glib pkgconf hunspell en-hunspell xorg-vfbserver dejavu
+            pkg install -y qt6-base qt6-wayland glib pkgconf hunspell en-hunspell en-mythes python3 xorg-vfbserver dejavu
           run: |
             set -eu
             make -j2 crumbwriter tests/qt/test-gui-audit
+            python3 packaging/unix/build.py --upgrade-fixture /tmp/crumbwriter-packages
             # Xvfb reports the chosen display only after it can accept clients.
             display_file=$(mktemp)
             Xvfb -screen 0 1280x800x24 -nolisten tcp -displayfd 1 > "$display_file" &
@@ -75,6 +76,49 @@ jobs:
           path: ${{ runner.temp }}/gui-audit
           if-no-files-found: warn
           retention-days: 14
+      - name: Retrieve the native FreeBSD packages
+        run: |
+          mkdir -p "$RUNNER_TEMP/packages"
+          scp freebsd:/tmp/crumbwriter-packages/CrumbWriter-FreeBSD-15-amd64.pkg "$RUNNER_TEMP/packages/"
+          scp freebsd:/tmp/crumbwriter-packages/UpgradeFixture.pkg "$RUNNER_TEMP/packages/"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: freebsd-installer
+          path: ${{ runner.temp }}/packages/CrumbWriter-FreeBSD-15-amd64.pkg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: freebsd-upgrade-fixture
+          path: ${{ runner.temp }}/packages/UpgradeFixture.pkg
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 2
+
+  freebsd-install:
+    name: Install, upgrade and remove on clean FreeBSD 15
+    needs: freebsd
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: freebsd-installer
+          path: packages
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: freebsd-upgrade-fixture
+          path: packages
+      - uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
+        with:
+          release: '15.1'
+          copyback: false
+          prepare: pkg install -y xorg-vfbserver dejavu
+          run: sh packaging/unix/test-install.sh packages
 
   linux:
     name: Linux
@@ -87,11 +131,28 @@ jobs:
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us \
+          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us mythes-en-us dpkg-dev \
             libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon openbox x11-utils
       - name: Build
         id: build
         run: make -j2 crumbwriter tests/qt/test-gui-audit
+      - name: Build the Ubuntu package and earlier upgrade fixture
+        run: python3 packaging/unix/build.py --upgrade-fixture "$RUNNER_TEMP/packages"
+      - name: Install, upgrade and remove in clean Ubuntu 24.04
+        run: |
+          docker run --rm -v "$RUNNER_TEMP/packages:/packages:ro" \
+            -v "$PWD/packaging/unix/test-install.sh:/test-install.sh:ro" ubuntu:24.04 sh -ec '
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends xvfb fonts-dejavu-core
+              sh /test-install.sh /packages'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ubuntu-installer
+          path: ${{ runner.temp }}/packages/CrumbWriter-Ubuntu-24.04-amd64.deb
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
       - name: Test on X11
         env:
           QT_QPA_PLATFORM: xcb
@@ -139,7 +200,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates build-essential pkgconf npm qt6-base-dev qt6-qpa-plugins libglib2.0-dev \
-            libhunspell-dev hunspell-en-us libxcb-cursor0 \
+            libhunspell-dev hunspell-en-us mythes-en-us libxcb-cursor0 \
             kwin-x11 plasma-workspace dbus-x11 xvfb xauth x11-utils xterm xdotool xclip \
             shared-mime-info xfonts-base fonts-dejavu-core python3 libx11-dev
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

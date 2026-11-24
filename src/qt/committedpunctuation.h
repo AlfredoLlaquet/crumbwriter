@@ -9,12 +9,12 @@ class QTextDocument;
 // offsets cover the short unfinished sequence directly before the next input.
 class CommittedPunctuation {
 public:
-    void feed(QTextDocument *doc, int start, const QString &inserted);
-    void finish(QTextDocument *doc);
+    void feed(QTextDocument *doc, int start, const QString &inserted, bool generic);
+    void finish(QTextDocument *doc, bool generic);
     void reset();
     bool pending() const { return length_ != 0 || elisionAt_ >= 0; }
 private:
-    int resolve(QTextDocument *doc);
+    int resolve(QTextDocument *doc, bool generic);
     void resolveElision(QTextDocument *doc, bool boundary);
     int start_ = 0;
     QChar character_;

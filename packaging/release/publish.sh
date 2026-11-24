@@ -3,7 +3,9 @@
 set -euo pipefail
 cd dist
 cp -- "$BUNDLE" CrumbWriter-build.sigstore.json
-for asset in CrumbWriter-Windows-x64-Setup.exe CrumbWriter-macOS-Universal.dmg SHA256SUMS; do
+installers=(CrumbWriter-Ubuntu-24.04-amd64.deb CrumbWriter-FreeBSD-15-amd64.pkg
+    CrumbWriter-Windows-x64-Setup.exe CrumbWriter-macOS-Universal.dmg)
+for asset in "${installers[@]}" SHA256SUMS; do
     gh attestation verify "$asset" --repo "$GH_REPO" --bundle CrumbWriter-build.sigstore.json
 done
 sha256sum --check SHA256SUMS
@@ -47,6 +49,5 @@ if [[ $verified != true ]]; then
     echo "::error::The release was published but GitHub could not verify its immutable release record."
     exit 1
 fi
-gh release verify-asset "$TAG" CrumbWriter-Windows-x64-Setup.exe
-gh release verify-asset "$TAG" CrumbWriter-macOS-Universal.dmg
+for asset in "${installers[@]}"; do gh release verify-asset "$TAG" "$asset"; done
 gh release view "$TAG" --json url,isDraft,isImmutable

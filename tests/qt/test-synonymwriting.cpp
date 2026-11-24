@@ -39,8 +39,8 @@ int main(int argc, char **argv)
     ManuscriptEditor editor;
     SynonymMatcher matcher(editor.document());
     SynonymWriting writing(&editor, &matcher);
-    matcher.setGroups({{"Inspector Goose", "the lunar auditor", "His Feathered Excellency"},
-                       {"the lunar archive"}}, {{"Goose", "geese"}, {"Moonrise"}});
+    matcher.setGroups({{{"Inspector Goose", "the lunar auditor", "His Feathered Excellency"}},
+                       {{"the lunar archive"}}}, {{{"Goose", "geese"}}, {{"Moonrise"}}});
     writing.listsChanged();
     QString status, notice;
     writing.onHint = [&](const QString &text) { status = text; };
@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     check(!writing.follow(inspector + 15, true, true) && !writing.follow(inspector + 18, true, true),
           "ordinary text and the space after a name are not pointer targets");
 
-    matcher.setGroups({{"Inspector Goose", "Pip"}}, {{"Moonrise", "Pip"}});
+    matcher.setGroups({{{"Inspector Goose", "Pip"}}}, {{{"Moonrise", "Pip"}}});
     writing.listsChanged();
     editor.loadText("Pip watched Moonrise. Inspector Goose waved to Pip.");
     const int lastPip = editor.manuscriptText().lastIndexOf("Pip");

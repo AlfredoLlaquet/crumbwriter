@@ -1,4 +1,9 @@
 #include "mainwindow.h"
+#include "wordtools.h"
+#include <QDesktopServices>
+#include <QGridLayout>
+#include <QResizeEvent>
+#include <QUrl>
 #include "commandicons.h"
 #include "bookmarks.h"
 #include "documentstore.h"
@@ -79,19 +84,35 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     status_->setObjectName("documentStatus");
     status_->setMargin(5);
     status_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    auto *bottom = new QHBoxLayout;
-    bottom->addWidget(status_, 1);
+    footer_ = new QGridLayout;
+    footer_->setContentsMargins(0, 0, 0, 0);
+    footer_->setHorizontalSpacing(0);
+    footer_->setColumnStretch(0, 1);
+    footer_->setColumnStretch(2, 1);
+    footer_->addWidget(status_, 0, 0);
+    website_ = new QToolButton(this);
+    website_->setObjectName("crumbsWebsite");
+    website_->setText(QStringLiteral("Read Alfredo Llaquet-Alsina’s Crumbs at TheCrumbs.org"));
+    website_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    website_->setAutoRaise(true);
+    website_->setFocusPolicy(Qt::StrongFocus);
+    website_->setCursor(Qt::PointingHandCursor);
+    website_->setToolTip(QStringLiteral("Open TheCrumbs.org in your browser"));
+    website_->setStyleSheet("QToolButton { color: palette(window-text); background: transparent; border: none; padding: 3px; }"
+                            "QToolButton:hover, QToolButton:focus { text-decoration: underline; }");
+    connect(website_, &QToolButton::clicked, this, &MainWindow::openCrumbsWebsite);
+    footer_->addWidget(website_, 0, 1, Qt::AlignCenter);
     mode_ = new QLabel(this);
     mode_->setTextFormat(Qt::PlainText);
     mode_->setObjectName("documentMode");
     mode_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     mode_->setMargin(5);
-    bottom->addWidget(mode_);
-    layout->addLayout(bottom);
+    footer_->addWidget(mode_, 0, 2);
+    layout->addLayout(footer_);
 
     store_ = new DocumentStore(this);
     editor_->onViPrompt = [this](const QString &prompt) {
-        status_->setText(prompt.isEmpty() ? store_->status() : prompt);
+        setStatusMessage(prompt.isEmpty() ? store_->status() : prompt);
     };
     store_->setSnapshotProvider([this] { return editor_->manuscriptText(); });
     store_->captureMetadata = [this] {
@@ -120,6 +141,8 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
         });
     spelling_ = new SpellCheck(editor_, this);
     synonymWriting_ = new SynonymWriting(editor_, synonyms_->matcher());
+    words_ = new WordTools(editor_);
+    words_->onNotice = [this](const QString &message) { showNavigationStatus(message); };
     connectWritingTools();
     editor_->model().onDailyCountError = [this](const QString &error) { showNotice(error); };
     store_->onChanged = [this] { documentStateChanged(); };
@@ -198,6 +221,8 @@ bool MainWindow::loadDocument(const QString &name, bool recovery)
         showNotice({});
         trail_.clear();
         search_->reset();
+        words_->closeThesaurus();
+        webLookupPending_ = false;
         editor_->loadText(text);
         const QString dailyError = editor_->model().openDailyCount(recovery ? name : store_->path());
         if (!dailyError.isEmpty()) showNotice(dailyError);
@@ -252,14 +277,44 @@ void MainWindow::changeEvent(QEvent *e)
     }
 }
 
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    if (mode_) fitFooter();
+}
+
+void MainWindow::setStatusMessage(const QString &message)
+{
+    status_->setText(message);
+    fitFooter();
+}
+
+void MainWindow::fitFooter()
+{
+    // Equal side columns center the full link on the window. At smaller widths
+    // give the status and mode the space they need, including movement prompts.
+    const int side = qMax(status_->fontMetrics().horizontalAdvance(status_->text()) + 12,
+                          mode_->sizeHint().width());
+    const bool fits = website_->sizeHint().width() + 2 * side + 12 <= width()
+                      && !editor_->viSelectionActive() && !webLookupPending_;
+    website_->setVisible(fits);
+    footer_->setColumnStretch(2, fits ? 1 : 0);
+}
+
+void MainWindow::openCrumbsWebsite()
+{
+    if (!QDesktopServices::openUrl(QUrl(QStringLiteral("https://www.thecrumbs.org/"))))
+        showNotice(QStringLiteral("Could not open TheCrumbs.org in your browser."));
+}
+
 void MainWindow::documentStateChanged()
 {
     const QString name = store_->path().isEmpty() ? QString("Untitled") : QFileInfo(store_->path()).fileName();
     const bool pending = store_->isDirty() || companionsPending();
     const QString title = (pending ? QString("• ") : QString()) + name + " — Crumb Writer";
     if (title != windowTitle()) setWindowTitle(title);
-    if (!editor_->viSelectionActive())
-        status_->setText(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
+    if (!editor_->viSelectionActive() && !webLookupPending_)
+        setStatusMessage(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
     status_->setToolTip(store_->backupPath().isEmpty() ? store_->path()
                        : store_->path() + "\nStartup backup: " + store_->backupPath());
 }
@@ -272,10 +327,10 @@ void MainWindow::showNotice(const QString &message)
 
 void MainWindow::showNavigationStatus(const QString &message)
 {
-    status_->setText(message);
+    setStatusMessage(message);
     QTimer::singleShot(2500, this, [this, message] {
-        if (status_->text() == message && !editor_->viSelectionActive())
-            status_->setText(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
+        if (status_->text() == message && !editor_->viSelectionActive() && !webLookupPending_)
+            setStatusMessage(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
     });
 }
 

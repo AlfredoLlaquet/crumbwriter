@@ -49,6 +49,7 @@ def check(app, run):
         subprocess.run(["xdotool", *args], check=True, timeout=8)
 
     def save_and_check(expected):
+        expected += "\n"
         keyboard("key", "--clearmodifiers", "ctrl+s")
         wait_for(f"saved UTF-8 bytes {expected!r}", lambda: manuscript.read_bytes() == expected.encode("utf-8"))
         def save_reported():
@@ -93,7 +94,7 @@ def check(app, run):
         keyboard("type", "--clearmodifiers", "--delay", "14", "  I'd say  \"Pepe,\" new--s ... next.  ")
         typed = " I’d say “Pepe,” new—s … next."
         wait_for("live save without trailing spaces",
-                 lambda: manuscript.read_bytes() == (first + second + typed).encode())
+                 lambda: manuscript.read_bytes() == (first + second + typed + "\n").encode())
         keyboard("type", "--clearmodifiers", "Another word.")
         typed += " Another word."
         save_and_check(first + second + typed)
@@ -103,7 +104,7 @@ def check(app, run):
         save_and_check(first + second + typed + " fox")
         keyboard("key", "--clearmodifiers", "--repeat", "3", "--delay", "60", "BackSpace")
         wait_for("live save after erasing the last word",
-                 lambda: manuscript.read_bytes() == (first + second + typed).encode())
+                 lambda: manuscript.read_bytes() == (first + second + typed + "\n").encode())
         keyboard("type", "--clearmodifiers", "panda")
         save_and_check(first + second + typed + " panda")
         keyboard("key", "--clearmodifiers", "--delay", "60", "Left", "Left", "ctrl+w")
@@ -134,12 +135,12 @@ def check(app, run):
         print("Wayland virtual typing materialized two newlines and one undo restored the original bytes.", flush=True)
 
         keyboard("key", "--clearmodifiers", "ctrl+a")
-        for row, text in enumerate(("Tide Tables", "", "The Moon", "", "A goose counted.", "The moon waited.")):
+        for row, text in enumerate(("Tide Tables", "", "The Moon", "-", "A goose counted.", "The moon waited.")):
             if row:
                 keyboard("key", "--clearmodifiers", "Return")
             if text:
                 keyboard("type", "--clearmodifiers", text)
-        prose = "Tide Tables\n\nThe Moon\n\nA goose counted.\nThe moon waited."
+        prose = "Tide Tables\n\nThe Moon\n--------\nA goose counted.\nThe moon waited."
         save_and_check(prose)
         keyboard("key", "--clearmodifiers", "ctrl+shift+4")
         keyboard("type", "--clearmodifiers", "moon")
@@ -147,7 +148,7 @@ def check(app, run):
         keyboard("type", "--clearmodifiers", "j2")
         keyboard("key", "--clearmodifiers", "Return")
         keyboard("type", "--clearmodifiers", "Lunar ")
-        save_and_check(prose.replace("The Moon\n\n", "Lunar "))
+        save_and_check(prose.replace("The Moon\n--------\n", "Lunar "))
         print("Generic mode navigated to a chapter by keyboard and accepted a two-paragraph movement.", flush=True)
         keyboard("key", "--clearmodifiers", "alt+w")
         if editor.wait(timeout=8) != 0:

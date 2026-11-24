@@ -193,6 +193,8 @@ def verify(app, cpus):
     contents = app / "Contents"
     for entry in ("Resources/LICENSE", "Resources/CrumbWriter.txt", "Resources/CrumbWriter.icns",
                   "Resources/dictionaries/en_US.aff", "Resources/dictionaries/en_US.dic",
+                  "Resources/thesaurus/th_en_US_new.dat", "Resources/thesaurus/th_en_US_new.idx",
+                  "Resources/third-party/MyThes/WordNet_license.txt",
                   "Resources/third-party", "PlugIns/platforms/libqcocoa.dylib"):
         if not (contents / entry).exists():
             raise ValueError(f"Missing packaged resource: {entry}")

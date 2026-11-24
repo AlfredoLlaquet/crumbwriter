@@ -82,6 +82,9 @@ void regexEngine()
     auto casePlan = regex(QStringLiteral("a")).plan(stems, QStringLiteral("a"), clean, active);
     check(casePlan.affectedLines == 2 && casePlan.changes == 3 && casePlan.examples.size() == 2 &&
           apply(stems, casePlan) == QStringLiteral("a a a\na a\n"), "preview actual changed lines and matches");
+    check(casePlan.examples.first().beforeMatches == QVector<cwsearch::Span>({{0, 1}, {4, 5}}) &&
+          casePlan.examples.last().beforeMatches == QVector<cwsearch::Span>({{0, 1}}),
+          "preview marks each exact source match, leaving identical unchanged text in normal type");
     auto unchanged = regex(QStringLiteral("a")).plan(QStringLiteral("a"), QStringLiteral("a"), clean, active);
     check(unchanged.edits.isEmpty() && !unchanged.changes, "no-op preview");
     auto look = regex(QStringLiteral("(?<=😀)(?=x)")).plan(QStringLiteral("😀x"), QStringLiteral("X"), clean, active);
@@ -127,6 +130,7 @@ public:
 
     Fixture()
     {
+        editor->setCopyDeletedText(true);
         auto *layout = new QVBoxLayout(&window);
         layout->addWidget(search);
         layout->addWidget(editor);
@@ -301,6 +305,12 @@ void controlsAndReplace()
     check(!preview->isHidden() && preview->toPlainText().contains(QStringLiteral("2 crumbs")) &&
           preview->toPlainText().contains(QStringLiteral("entry 12")) && f.editor->manuscriptText() == text,
           "preview has affected count and normalized examples without modifying manuscript");
+    const auto previewText = preview->toPlainText();
+    QTextCursor beforeMatch(preview->document());
+    beforeMatch.setPosition(previewText.indexOf(QStringLiteral("word 12")) + 1);
+    check(beforeMatch.charFormat().fontWeight() == QFont::Bold, "the source match is bold in the rendered preview");
+    beforeMatch.setPosition(previewText.indexOf(QStringLiteral("entry 12")) + 1);
+    check(beforeMatch.charFormat().fontWeight() != QFont::Bold, "generated replacement text keeps normal weight");
     f.replacement->setText(QStringLiteral("other \\1"));
     check(preview->isHidden(), "editing replacement invalidates stale confirmation");
     check(QApplication::clipboard()->text() == "previous clipboard", "preview does not count as a deletion");

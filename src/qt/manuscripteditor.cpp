@@ -1,7 +1,9 @@
 #include "manuscripteditor.h"
 #include "committedpunctuation.h"
 #include "editorcolors.h"
+#include "manuscriptlinks.h"
 #include "manuscripttext.h"
+#include "manuscriptspacing.h"
 #include "viselection.h"
 
 #include <QtCore/QScopedValueRollback>
@@ -18,10 +20,20 @@ class CrumbLayout final : public QPlainTextDocumentLayout {
 public:
     using QPlainTextDocumentLayout::QPlainTextDocumentLayout;
     bool compactSeparators = false;
+    bool hasTitleSpacer = false;
+    int activeLine = -1;
 
     QRectF blockBoundingRect(const QTextBlock &block) const override
     {
         auto bounds = QPlainTextDocumentLayout::blockBoundingRect(block);
+        // An empty block has no characters for the highlighter to style.
+        // Only the spacer immediately after the document title needs a
+        // shorter advance. Restore the native writing row while editing it.
+        if (hasTitleSpacer && block.blockNumber() == 1 && activeLine != 1 &&
+            block.layout()->preeditAreaText().isEmpty()) {
+            bounds.setHeight(qMax<qreal>(1, bounds.height() / 3));
+            return bounds;
+        }
         const auto next = block.next();
         if (!bounds.isEmpty() && next.isValid() &&
             (!compactSeparators || (block.length() > 1 && next.length() > 1))) {
@@ -78,10 +90,16 @@ public:
                 timer_.start(0);
         });
         model_.observe(this, [this](const CrumbChange &change) {
+            auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
+            const bool spacer = model_.paragraphRole(1) == ParagraphRole::TitleSpacer;
+            if (layout->hasTitleSpacer != spacer) {
+                layout->hasTitleSpacer = spacer;
+                pending_.insert(1);
+            }
             if (change.modeChanged)
                 updateTypography();
             else if (model_.isGeneric() && change.titlesChanged) {
-                // A neighboring blank can change an untouched paragraph into
+                // A neighboring marker can change an untouched paragraph into
                 // a heading. Qt already highlights the edited blocks.
                 pending_.insert(change.firstLine);
                 pending_.insert(change.lastLine);
@@ -101,17 +119,34 @@ public:
         chapterTitle_.setFont(scaledFont(font, 1.3));
         documentTitle_.setFontWeight(QFont::Bold);
         chapterTitle_.setFontWeight(QFont::Bold);
+        chapterTitle_.setFontUnderline(true);
+        marker_.setFont(scaledFont(font, 0.33));
+        marker_.setForeground(Qt::transparent);
+        marker_.setFontLetterSpacingType(QFont::PercentageSpacing);
+        marker_.setFontLetterSpacing(1);
 
         const bool generic = model_.isGeneric();
         auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
         layout->compactSeparators = generic;
-        // An empty Qt block has no characters for a highlighter to format.
-        // Give the layout a small default font and the actual prose its full
-        // writing font. Carets, selections and hit testing then share the
-        // same compact blank row without adding characters or undo entries.
-        const auto defaultFont = generic ? scaledFont(font, 0.33) : font;
-        if (document()->defaultFont() != defaultFont)
-            document()->setDefaultFont(defaultFont);
+        layout->hasTitleSpacer = model_.paragraphRole(1) == ParagraphRole::TitleSpacer;
+        if (document()->defaultFont() != font)
+            document()->setDefaultFont(font);
+    }
+
+    void setActiveLine(int line)
+    {
+        auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
+        const int previous = layout->activeLine;
+        if (previous == line) return;
+        layout->activeLine = line;
+        if (!model_.isGeneric()) return;
+        for (int changed : {previous, line}) {
+            const auto role = model_.paragraphRole(changed);
+            const auto block = document()->findBlockByNumber(changed);
+            if (!block.isValid()) continue;
+            if (role == ParagraphRole::TitleMarker) rehighlightBlock(block);
+            if (role == ParagraphRole::TitleSpacer) document()->markContentsDirty(block.position(), block.length());
+        }
     }
 
     void updateWarningInk()
@@ -141,8 +176,10 @@ protected:
         setCurrentBlockState(model_.isGeneric() ? 1 : 0);
         if (model_.isGeneric()) {
             const auto role = model_.paragraphRole(currentBlock().blockNumber());
-            if (role != ParagraphRole::Blank)
-                setFormat(0, text.size(), writingFormat(role));
+            const auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
+            const bool hidden = role == ParagraphRole::TitleMarker && currentBlock().blockNumber() != layout->activeLine;
+            setFormat(0, text.size(), hidden ? marker_ : writingFormat(role));
+            underlineWebLinks(text);
             return;
         }
         const auto &r = model_.record(currentBlock().blockNumber());
@@ -156,12 +193,28 @@ protected:
             warning.setForeground(warningInk_);
             setFormat(w.start, w.end - w.start, warning);
         }
+        underlineWebLinks(text);
     }
 
 private:
+    void underlineWebLinks(const QString &text)
+    {
+        for (const auto &link : ManuscriptLinks::findAll(text)) {
+            // Preserve the ink and typeface of every field the address spans.
+            for (int start = link.start; start < link.end;) {
+                auto ink = format(start);
+                int end = start + 1;
+                while (end < link.end && format(end) == ink) ++end;
+                ink.setFontUnderline(true);
+                setFormat(start, end - start, ink);
+                start = end;
+            }
+        }
+    }
+
     ManuscriptEditor *editor_;
     CrumbModel &model_;
-    QTextCharFormat header_, title_, body_, documentTitle_, chapterTitle_;
+    QTextCharFormat header_, title_, body_, documentTitle_, chapterTitle_, marker_;
     QColor warningInk_;
     QSet<int> pending_;
     QTimer timer_;
@@ -239,7 +292,6 @@ void ManuscriptEditor::loadText(const QString &text)
 {
     QScopedValueRollback<bool> guard(editing_, true);
     editRun_ = EditRun::None;
-    deletionRun_.clear();
     replayedAppend_ = nullptr;
     vi_->reset();
     pendingSpace_ = {};
@@ -250,7 +302,9 @@ void ManuscriptEditor::loadText(const QString &text)
     spellingHighlights_.clear();
     synonymHighlights_.clear();
     setExtraSelections({});
-    ManuscriptText::load(document(), normalizeInsertion(text));
+    QString manuscript = normalizeInsertion(text);
+    ManuscriptSpacing::trimBlankEnd(manuscript, false);
+    ManuscriptText::load(document(), manuscript);
     model_->markOpened();
     document()->setModified(false);
     openAtEnd();
@@ -281,13 +335,12 @@ void ManuscriptEditor::finishTyping()
     if (editing_) return;
     const auto previous = editRun_;
     editRun_ = EditRun::None;
-    deletionRun_.clear();
     if (!punctuation_->pending()) return;
     QScopedValueRollback<bool> guard(editing_, true);
     auto c = textCursor();
     if (previous == EditRun::Typing) c.joinPreviousEditBlock();
     else c.beginEditBlock();
-    punctuation_->finish(document());
+    punctuation_->finish(document(), model_->isGeneric());
     c.endEditBlock();
 }
 
@@ -308,6 +361,17 @@ void ManuscriptEditor::onCursorMoved()
         clearVirtual();
     }
     refreshBand();
+}
+
+void ManuscriptEditor::refreshBand()
+{
+    const int n = textCursor().blockNumber();
+    const int line = !rows_ && (model_->isGeneric() || model_->record(n).valid) ? n : -1;
+    if (highlighter_) highlighter_->setActiveLine(line);
+    if (activeLine_ != line) {
+        activeLine_ = line;
+        viewport()->update();
+    }
 }
 
 void ManuscriptEditor::clearEditorSelection()
@@ -581,6 +645,10 @@ bool ManuscriptEditor::moveByControlKey(int key, bool extend)
         moveTo(0, extend);
         return true;
     case Qt::Key_PageDown: {
+        if (model_->isGeneric()) {
+            moveTo(model_->documentEndPosition(), extend);
+            return true;
+        }
         const int last = model_->neighbor(blockCount(), true);
         auto end = last >= 0 ? QTextCursor(document()->findBlockByNumber(last)) : writingEnd();
         end.movePosition(QTextCursor::EndOfBlock);

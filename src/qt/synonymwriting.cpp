@@ -201,7 +201,7 @@ void SynonymWriting::refreshHighlights()
         const auto mentions = matcher_->mentions(block);
         for (const auto &hit : mentions) {
             const bool show = std::any_of(hit.groups.cbegin(), hit.groups.cend(), [&](int group) {
-                const auto mode = matcher_->groups().at(group).recurring ?
+                const auto mode = matcher_->groups().at(group).source != NameSource::Characters ?
                         settings_.recurringUnderlining : settings_.charactersUnderlining;
                 return mode == SynonymUnderlining::All ||
                        (mode == SynonymUnderlining::CurrentGroup && current.contains(group));
@@ -344,7 +344,7 @@ void SynonymWriting::showChoices(const QString &title, const QStringList &labels
 void SynonymWriting::navigate(bool backward)
 {
     if ((editor_->virtualRows() || !follow(editor_->textCursor().position(), backward)) && onNotice)
-        onNotice(tr("Place the caret on a name in Characters or Recurring."));
+        onNotice(tr("Place the caret on a character, recurring name, or genre."));
 }
 
 bool SynonymWriting::follow(int position, bool backward, bool insideOnly)
@@ -365,7 +365,12 @@ bool SynonymWriting::follow(int position, bool backward, bool insideOnly)
         QStringList labels;
         for (const int id : source->groups) {
             const auto &group = matcher_->groups().at(id);
-            const auto list = group.recurring ? tr("Recurring") : tr("Characters");
+            QString list;
+            switch (group.source) {
+            case NameSource::Characters: list = tr("Characters"); break;
+            case NameSource::Recurring: list = tr("Recurring"); break;
+            case NameSource::Genre: list = tr("Genre"); break;
+            }
             labels.append(tr("%1 · %2").arg(list, group.aliases.join(QStringLiteral(", "))));
         }
         showChoices(tr("Choose a synonym group"), labels, position, [this, source, backward](int row) {

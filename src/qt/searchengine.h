@@ -41,6 +41,7 @@ struct Example {
     int line;
     QString before;
     QString after;
+    QVector<Span> beforeMatches; // Offsets in the displayed excerpt, including its leading ellipsis.
 };
 
 struct ReplacementPlan {

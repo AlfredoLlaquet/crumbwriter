@@ -21,9 +21,9 @@ python3 packaging/macos/bundle.py sign "$app"
 python3 packaging/macos/bundle.py verify "$app" "$cpu"
 
 check_status=0
-LC_ALL=en_US.UTF-8 DICPATH="$resources/dictionaries" QT_QPA_PLATFORM=offscreen \
+LC_ALL=en_US.UTF-8 DICPATH="$resources/dictionaries" CRUMBWRITER_THESAURUS_DIR="$resources/thesaurus" QT_QPA_PLATFORM=offscreen \
     ctest --test-dir "$build" --output-on-failure --timeout 240 || check_status=$?
-env -u DICPATH -u QT_PLUGIN_PATH -u DYLD_LIBRARY_PATH -u DYLD_FRAMEWORK_PATH \
+env -u DICPATH -u CRUMBWRITER_THESAURUS_DIR -u QT_PLUGIN_PATH -u DYLD_LIBRARY_PATH -u DYLD_FRAMEWORK_PATH \
     "$app/Contents/MacOS/Crumb Writer" --smoke-test || check_status=$?
 if ((source_status != 0 || check_status != 0)); then exit 1; fi
 mkdir -p "$assets"

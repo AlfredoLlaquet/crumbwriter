@@ -1,4 +1,5 @@
 #include "committedpunctuation.h"
+#include "genericparagraph.h"
 #include "manuscripttext.h"
 
 #include <QtCore/QStringList>
@@ -76,7 +77,7 @@ void CommittedPunctuation::reset()
     elisionAt_ = -1;
 }
 
-int CommittedPunctuation::resolve(QTextDocument *doc)
+int CommittedPunctuation::resolve(QTextDocument *doc, bool generic)
 {
     const int length = length_;
     length_ = 0;
@@ -96,6 +97,8 @@ int CommittedPunctuation::resolve(QTextDocument *doc)
             elisionEnd_ = start_ + 1;
         }
     } else if (character_ == u'-' && length == 2) {
+        if (generic && GenericParagraph::onlyHyphens(doc->findBlock(start_).text()))
+            return 0;
         result = u'—';
     } else if (character_ == u'.' && length == 3) {
         result = u'…';
@@ -136,7 +139,7 @@ void CommittedPunctuation::resolveElision(QTextDocument *doc, bool boundary)
     elisionAt_ = -1;
 }
 
-void CommittedPunctuation::feed(QTextDocument *doc, int start, const QString &text)
+void CommittedPunctuation::feed(QTextDocument *doc, int start, const QString &text, bool generic)
 {
     int at = start;
     for (qsizetype i = 0; i < text.size();) {
@@ -152,7 +155,7 @@ void CommittedPunctuation::feed(QTextDocument *doc, int start, const QString &te
             ((ch == u'-' && length_ < 2) || (ch == u'.' && length_ < 3))) {
             ++length_;
         } else {
-            at += resolve(doc);
+            at += resolve(doc, generic);
             if (elisionAt_ >= 0) {
                 elisionEnd_ = at + units;
                 resolveElision(doc, !isWord(scalar));
@@ -168,9 +171,9 @@ void CommittedPunctuation::feed(QTextDocument *doc, int start, const QString &te
     }
 }
 
-void CommittedPunctuation::finish(QTextDocument *doc)
+void CommittedPunctuation::finish(QTextDocument *doc, bool generic)
 {
-    resolve(doc);
+    resolve(doc, generic);
     resolveElision(doc, true);
     reset();
 }

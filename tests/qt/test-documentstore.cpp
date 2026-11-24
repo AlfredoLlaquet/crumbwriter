@@ -111,7 +111,7 @@ void datedBackupAndLatestClose(const QString &path)
     WAIT_FOR(f.store, f.error, f.closures == 1);
     CHECK(!f.store.isSaving() && !f.store.isDirty());
     CHECK(f.snapshots == 2);
-    CHECK(contents(path) == QByteArray("Crumb 1: t: café\r\nCrumb 2: t: B"));
+    CHECK(contents(path) == QByteArray("Crumb 1: t: café\r\nCrumb 2: t: B\r"));
     CHECK(contents(f.store.backupPath()) == original);
 }
 
@@ -122,13 +122,13 @@ void oldSnapshotCannotMarkNewEditSaved(const QString &path)
     f.store.save();
     f.edit("three");
     WAIT_FOR(f.store, f.error, !f.store.isSaving());
-    CHECK(contents(path) == "two");
+    CHECK(contents(path) == "two\n");
     CHECK(f.store.isDirty() && f.store.needsCloseConfirmation());
     CHECK(f.published.size() == 1 && f.published[0].first == QFileInfo(path).canonicalFilePath() && f.published[0].second == "two");
     f.store.beginCloseConfirmation();
     f.store.discardAndClose();
     WAIT_FOR(f.store, f.error, f.closures == 1);
-    CHECK(contents(path) == "two");
+    CHECK(contents(path) == "two\n");
     CHECK(f.published.size() == 1);
 }
 
@@ -143,10 +143,10 @@ void closeWithNewerQueuedEdit(const QString &path)
     f.store.discardAndClose();
     WAIT_FOR(f.store, f.error, f.closures == 1);
     const QByteArray installed = contents(path);
-    CHECK(installed == "old" || installed == "first write");
+    CHECK(installed == "old" || installed == "first write\n");
     CHECK(f.snapshots == 1);
     CHECK(f.published.size() == (installed == "old" ? 0 : 1));
-    if (!f.published.isEmpty()) CHECK(f.published[0].second == installed);
+    if (!f.published.isEmpty()) CHECK(f.published[0].second + '\n' == installed);
 }
 
 void guardedDiscardBeforePublication(const QString &path)
@@ -193,7 +193,7 @@ void closedDialogSuspendsDeadline(const QString &path)
     f.store.beginCloseConfirmation();
     f.store.saveAndClose();
     WAIT_FOR(f.store, f.error, f.closures == 1);
-    CHECK(contents(path) == f.text.toUtf8());
+    CHECK(contents(path) == f.text.toUtf8() + '\n');
 }
 
 void conflictRecoveryAndSaveAs(const QString &path)
@@ -208,8 +208,8 @@ void conflictRecoveryAndSaveAs(const QString &path)
     CHECK(contents(path) == "external changes");
     const QString draft = f.store.draftPath();
     CHECK(DocumentStore::recoveryDrafts().contains(draft));
-    CHECK(contents(draft) == "the author's new text");
-    CHECK(f.published.size() == 1 && f.published[0].first == draft && f.published[0].second == contents(draft));
+    CHECK(contents(draft) == "the author's new text\n");
+    CHECK(f.published.size() == 1 && f.published[0].first == draft && f.published[0].second + '\n' == contents(draft));
     const QString newName = path + ".copy";
     writeFile(newName, "the previous destination");
     int pathChanges = 0;
@@ -225,8 +225,8 @@ void conflictRecoveryAndSaveAs(const QString &path)
     WAIT_FOR(f.store, f.error, !f.store.isSaving());
     QCoreApplication::processEvents();
     CHECK(pathChanges == 1 && f.closures == 0 && f.store.isDirty());
-    CHECK(contents(newName) == "the author's new text");
-    CHECK(f.published.size() == 2 && f.published[1].first == QFileInfo(newName).canonicalFilePath() && f.published[1].second == contents(newName));
+    CHECK(contents(newName) == "the author's new text\n");
+    CHECK(f.published.size() == 2 && f.published[1].first == QFileInfo(newName).canonicalFilePath() && f.published[1].second + '\n' == contents(newName));
     CHECK(contents(f.store.backupPath()) == "the previous destination");
     CHECK(!QFileInfo::exists(draft));
     f.store.saveAndClose();
@@ -252,8 +252,8 @@ void closeDuringAutomaticSave(const QString &path)
     f.edit("automatic snapshot");
     WAIT_FOR(f.store, f.error, f.closures == 1);
     CHECK(requested && f.snapshots == 2 && !f.store.isDirty());
-    CHECK(contents(path) == f.text.toUtf8());
-    CHECK(!f.published.isEmpty() && f.published.last().second == contents(path));
+    CHECK(contents(path) == f.text.toUtf8() + '\n');
+    CHECK(!f.published.isEmpty() && f.published.last().second + '\n' == contents(path));
 }
 
 void queuedSaveAsRespectsChosenDestination(const QString &source, bool originallyPresent)
@@ -271,7 +271,7 @@ void queuedSaveAsRespectsChosenDestination(const QString &source, bool originall
     WAIT_FOR(f.store, f.error, !f.store.isSaving());
     CHECK(!f.error.isEmpty());
     CHECK(contents(target) == "someone else's newer text");
-    CHECK(contents(source) == "finished manuscript" && f.store.path() == QFileInfo(source).canonicalFilePath());
+    CHECK(contents(source) == "finished manuscript\n" && f.store.path() == QFileInfo(source).canonicalFilePath());
     CHECK(f.store.draftPath().isEmpty() && !f.store.isDirty());
 }
 
@@ -286,7 +286,7 @@ void untitledAndRecovered(const QString &target)
         untitled.markEdited();
         WAIT_FOR(untitled, error, !untitled.draftPath().isEmpty() && !untitled.isSaving());
         draft = untitled.draftPath();
-        CHECK(untitled.isDirty() && contents(draft) == QByteArray("Recovered 🙂 word"));
+        CHECK(untitled.isDirty() && contents(draft) == QByteArray("Recovered 🙂 word\n"));
         // An unplanned exit retains the draft.
     }
     CHECK(DocumentStore::recoveryDrafts().contains(draft));
@@ -294,7 +294,7 @@ void untitledAndRecovered(const QString &target)
     QString text, error;
     CHECK(recovered.openDraft(draft, &text, &error));
     CHECK(recovered.path().isEmpty() && recovered.needsCloseConfirmation());
-    CHECK(text == QString::fromUtf8("Recovered 🙂 word"));
+    CHECK(text == QString::fromUtf8("Recovered 🙂 word\n"));
     recovered.onError = [&](const QString &failure) { error = failure; };
     recovered.setSnapshotProvider([&] { return text; });
     int choose = 0, closed = 0;
@@ -311,6 +311,25 @@ void untitledAndRecovered(const QString &target)
     WAIT_FOR(recovered, error, closed == 1);
     CHECK(contents(target) == text.toUtf8());
     CHECK(!QFileInfo::exists(draft));
+}
+
+void manuscriptOutput(const QString &path)
+{
+    Fixture f(path, "baseline");
+    auto save = [&](const QString &live, const QByteArray &expected) {
+        f.edit(live);
+        f.store.save();
+        WAIT_FOR(f.store, f.error, !f.store.isSaving());
+        CHECK(f.error.isEmpty() && contents(path) == expected && f.text == live);
+    };
+    const QString title = QStringLiteral("e\u0301 👩‍🚀!");
+    save(title + "\n-\nProse.\n\nSecond heading\n------------------\n\n",
+         title.toUtf8() + "\n----\nProse.\n\nSecond heading\n--------------\n");
+    save("Book//Leaf 1: A: Body.\n-\n\n", "Book//Leaf 1: A: Body.\n-\n");
+    save("Read https://example.org\n-\nText.\n\n", "Read https://example.org\n------------------------\nText.\n");
+    save("Heading\n  -\nBody.\n\t\n", "Heading\n -\nBody.\n");
+    save("\n-\n-\nLast", "\n-\n-\nLast\n");
+    save(" \t \n\n", {});
 }
 
 void rejectUnrepresentableSnapshot(const QString &path)
@@ -342,6 +361,7 @@ int main(int argc, char **argv)
     queuedSaveAsRespectsChosenDestination(work.filePath("new-destination.txt"), false);
     queuedSaveAsRespectsChosenDestination(work.filePath("existing-destination.txt"), true);
     untitledAndRecovered(work.filePath("recovered.txt"));
+    manuscriptOutput(work.filePath("canonical.txt"));
     rejectUnrepresentableSnapshot(work.filePath("invalid.txt"));
     std::puts("Document storage, live-save and close tests passed.");
 }

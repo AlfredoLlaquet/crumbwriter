@@ -1,0 +1,4 @@
+# Preserve upstream source and license formatting verbatim.
+mythes.cxx -whitespace
+mythes.hxx -whitespace
+COPYING -whitespace

@@ -1,5 +1,6 @@
 #include "crumbmodel.h"
 #include "dailycount.h"
+#include "genericparagraph.h"
 #include "manuscripttext.h"
 
 #include <QtCore/QDateTime>
@@ -123,6 +124,7 @@ CrumbRecord parseRecord(const QString &text, bool firstLine, const CrumbRecord *
     CrumbRecord record;
     record.text = text;
     record.blank = QStringView(text).trimmed().isEmpty();
+    record.onlyHyphens = GenericParagraph::onlyHyphens(text);
     QByteArray bytes = text.toUtf8();
     CwCrumb parsed{};
     cw_crumb_parse(bytes.constData(), firstLine, &parsed);
@@ -194,6 +196,7 @@ struct CrumbModel::Data {
     std::map<int, QString> titles;
     qint64 fileWords = 0;
     int nonblankParagraphs = 0;
+    int markerCount = 0;
     std::function<QDate()> localDate;
     DailyCount daily;
     QTimer dateTimer;
@@ -220,22 +223,45 @@ struct CrumbModel::Data {
     ParagraphRole classify(int line) const
     {
         const auto &row = rows[line];
-        if (row.blank) return ParagraphRole::Blank;
+        if (row.blank) {
+            if (line == 1 && line < physicalLines() && !rows[0].blank && !rows[0].onlyHyphens)
+                return ParagraphRole::TitleSpacer;
+            return ParagraphRole::Blank;
+        }
+        if (row.onlyHyphens) {
+            if (line > 0 && !rows[line - 1].blank && !rows[line - 1].onlyHyphens)
+                return ParagraphRole::TitleMarker;
+            return ParagraphRole::Body;
+        }
         const bool followedByBlank = line + 1 < physicalLines() && rows[line + 1].blank;
+        const bool hasMarker = line + 1 < int(rows.size()) && rows[line + 1].onlyHyphens;
         if (line == 0) {
-            if (followedByBlank || !row.text.contains(u'.') ||
+            if (hasMarker || followedByBlank || !row.text.contains(u'.') ||
                 (row.text.isUpper() && !row.text.isLower()))
                 return ParagraphRole::DocumentTitle;
-        } else if (followedByBlank && rows[line - 1].blank) {
+        } else if (hasMarker) {
             return ParagraphRole::ChapterTitle;
         }
         return ParagraphRole::Body;
+    }
+
+    void setRole(CrumbRecord &row, ParagraphRole role)
+    {
+        // A run of hyphens is a single literal word until it attaches to a
+        // heading. Removing that heading restores the literal word again.
+        const int delta = int(row.role == ParagraphRole::TitleMarker) - int(role == ParagraphRole::TitleMarker);
+        markerCount -= delta;
+        fileWords += delta;
+        row.fileWords += delta;
+        row.words += delta;
+        row.role = role;
     }
 
     void refreshTitles(CrumbChange &change, int oldEnd, int delta)
     {
         if (change.modeChanged) {
             titles.clear();
+            for (auto &row : rows) setRole(row, ParagraphRole::Body);
             change.firstLine = 0;
             change.lastLine = int(rows.size()) - 1;
             change.titlesChanged = true;
@@ -260,7 +286,8 @@ struct CrumbModel::Data {
             auto &row = rows[i];
             const auto role = classify(i);
             if (row.role != role) {
-                row.role = role;
+                setRole(row, role);
+                if (i < change.firstLine || i > change.lastLine) change.otherLines.append(i);
                 change.firstLine = std::min(change.firstLine, i);
                 change.lastLine = std::max(change.lastLine, i);
             }
@@ -503,13 +530,14 @@ void CrumbModel::update(int position, int removed, int added)
     if (!dailyError.isEmpty() && onDailyCountError) onDailyCountError(dailyError);
     for (int line = first; line < oldEnd; ++line) {
         d->fileWords -= d->rows[line].fileWords;
+        if (d->rows[line].role == ParagraphRole::TitleMarker) --d->markerCount;
         if (!d->rows[line].blank) --d->nonblankParagraphs;
     }
     for (const auto &record : parsed) {
         d->fileWords += record.fileWords;
+        if (record.role == ParagraphRole::TitleMarker) ++d->markerCount;
         if (!record.blank) ++d->nonblankParagraphs;
     }
-    d->daily.setTotalWords(d->fileWords);
 
     CrumbChange change;
     change.firstLine = first;
@@ -533,6 +561,7 @@ void CrumbModel::update(int position, int removed, int added)
         d->fallbackLabel = d->rows[*d->recognized.rbegin()].label;
     change.modeChanged = wasGeneric != d->generic();
     d->refreshTitles(change, oldEnd, delta);
+    d->daily.setTotalWords(d->fileWords);
     notify(change);
 }
 
@@ -556,7 +585,7 @@ QVector<CrumbGenre> CrumbModel::genres() const
 
 int CrumbModel::crumbCount() const { return int(d->recognized.size()); }
 bool CrumbModel::isGeneric() const { return d->generic(); }
-int CrumbModel::paragraphCount() const { return d->nonblankParagraphs; }
+int CrumbModel::paragraphCount() const { return d->nonblankParagraphs - d->markerCount; }
 ParagraphRole CrumbModel::paragraphRole(int line) const
 {
     return isGeneric() ? record(line).role : ParagraphRole::Body;
@@ -570,6 +599,18 @@ QVector<int> CrumbModel::titleLines() const
     return lines;
 }
 
+int CrumbModel::documentEndPosition() const
+{
+    for (int line = d->physicalLines() - 1; line >= 0; --line) {
+        const auto &row = d->rows[line];
+        if (!row.blank && row.role != ParagraphRole::TitleMarker) {
+            const auto block = d->document->findBlockByNumber(line);
+            return block.position() + block.length() - 1;
+        }
+    }
+    return 0;
+}
+
 int CrumbModel::neighborTitle(int line, bool backward) const
 {
     if (backward) {
@@ -581,8 +622,16 @@ int CrumbModel::neighborTitle(int line, bool backward) const
 }
 
 qint64 CrumbModel::totalWords() const { return d->fileWords; }
-int CrumbModel::todayCount() const { return d->daily.count(); }
+qint64 CrumbModel::todayCount() const { return d->daily.count(); }
 qint64 CrumbModel::todayWords() const { return d->daily.wordChange(); }
+
+QString CrumbModel::setTodayCount(qint64 value)
+{
+    refreshDay();
+    const auto error = d->daily.setCount(isGeneric(), value);
+    if (error.isEmpty()) notify({});
+    return error;
+}
 
 void CrumbModel::markOpened()
 {
@@ -598,7 +647,7 @@ void CrumbModel::markOpened()
 
 QString CrumbModel::openDailyCount(const QString &manuscript)
 {
-    const int previous = todayCount();
+    const qint64 previous = todayCount();
     const qint64 previousWords = todayWords();
     const auto error = d->openDaily(manuscript);
     if (previous != todayCount() || previousWords != todayWords()) notify({});

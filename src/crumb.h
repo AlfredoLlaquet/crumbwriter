@@ -36,4 +36,9 @@ void cw_crumb_clear(CwCrumb *crumb);
 /* Counts header, title and body using the process locale's wc conventions. */
 guint cw_crumb_words(const gchar *line, gboolean first_line);
 
+/* Locate the next HTTP(S) or www. candidate in a NUL-terminated UTF-8 line.
+ * Length, from and the returned half-open bounds are byte offsets. A browser
+ * URL parser must still validate the candidate before it can be opened. */
+gboolean cw_next_web_link(const gchar *line, gint length, gint from, gint *start, gint *end);
+
 #endif

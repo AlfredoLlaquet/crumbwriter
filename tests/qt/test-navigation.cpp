@@ -2,12 +2,15 @@
 #include "navigation.h"
 
 #include <QApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QLocale>
 #include <QPersistentModelIndex>
+#include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTextBlock>
@@ -93,7 +96,14 @@ int main(int argc, char **argv)
           list->currentItem()->text(0) == "Portrait", "genre number search keeps all genres visible");
     key(genreSearch, Qt::Key_Up);
     check(list->currentItem()->text(0) == "Scene", "previous genre match wraps");
+    QString genreRequested;
+    panel.genreOccurrences = [&](const QString &genre) { genreRequested = genre; return true; };
+    const int beforeSearch = editor.model().crumbCount();
     key(genreSearch, Qt::Key_Return, Qt::ControlModifier);
+    check(genreRequested == "Scene" && genreSearch->text().isEmpty() && editor.model().crumbCount() == beforeSearch,
+          "Ctrl+Enter finds the selected genre without appending a crumb");
+    genreSearch->setText("Scene");
+    key(genreSearch, Qt::Key_Return);
     check(genreSearch->text().isEmpty() && editor.model().record(4).title == "Scene #3",
           "activation from genre search creates the next crumb and clears the field");
     editor.loadText("A Book//Crumb 1: Owl: first\nCrumb 2: : second\nCrumb 3: Owl: third");
@@ -114,16 +124,18 @@ int main(int argc, char **argv)
           "second identically titled visit navigates to its own position");
 
     const QString longParagraph = QString(95, u'x') + QStringLiteral("🦋 the hidden word.");
-    const QString novel = "Night Inventory\nA crow passed.\n\nWind\n\n" + longParagraph +
-                          "\nThe seat was empty.\n\nDawn\n\nA visitor knocked.\nNo one answered.\n\nWind\n\nThe bell rang.";
+    const QString novel = "Night Inventory\nA crow passed.\n\nWind\n----\n" + longParagraph +
+                          "\nThe seat was empty.\n\nDawn\n----\nA visitor knocked.\nNo one answered.\n\nWind\n----\nThe bell rang.";
     editor.loadText(novel);
     panel.reset();
     const auto block = [&](int line) { return editor.document()->findBlockByNumber(line); };
+    auto *todayHeading = panel.findChild<QLabel *>("todayHeading");
     check(panel.findChild<QLabel *>("genreHeading")->text() == "Titles" &&
           panel.findChild<QLabel *>("currentCrumb")->isHidden() && panel.findChild<QLabel *>("wordCount")->isHidden() &&
           panel.findChild<QLabel *>("crumbTitle")->isHidden() &&
-          today->text() == "New words written today: 0", "generic metrics occupy only the daily words row");
-    const QStringList documentOrder{"Night Inventory", "Wind", "Dawn", "Wind"};
+          todayHeading->isVisible() && todayHeading->text() == "New words written today" &&
+          today->text() == "0" && today->font().bold(), "generic daily words have their own figure and heading");
+    const QStringList documentOrder{"Night Inventory", "Wind", "Dawn", "Wind", "End of document"};
     check(order->isChecked() && displayedNames(list) == documentOrder && list->isColumnHidden(1),
           "title list starts in document order with repeated titles retained");
     panel.focusGenres();
@@ -135,7 +147,7 @@ int main(int argc, char **argv)
     check(editor.textCursor().blockNumber() == 13 && genreSearch->text().isEmpty() && editor.manuscriptText() == novel,
           "activating the later Wind moves to the heading");
     panel.toggleGenreOrder();
-    check(displayedNames(list) == QStringList{"Dawn", "Night Inventory", "Wind", "Wind"} &&
+    check(displayedNames(list) == QStringList{"Dawn", "Night Inventory", "Wind", "Wind", "End of document"} &&
           list->currentItem() == list->topLevelItem(3), "alphabetical sorting keeps the selected duplicate heading");
     const QPersistentModelIndex heading(list->currentIndex());
     QTextCursor body(block(11));
@@ -154,6 +166,12 @@ int main(int argc, char **argv)
           "moving keyboard focus into the list does not turn a missing search into an unrelated jump");
     key(genreSearch, Qt::Key_Escape);
     check(editor.hasFocus() && genreSearch->text().isEmpty(), "Escape clears panel search and returns to writing");
+
+    panel.focusGenres();
+    genreSearch->setText("end of document");
+    key(genreSearch, Qt::Key_Return);
+    check(editor.textCursor().position() == editor.document()->characterCount() - 1 && editor.hasFocus(),
+          "the pinned title jumps to the last paragraph's end from the keyboard");
 
     editor.jumpTo(block(5).position() + 3, false);
     editor.jumpTo(block(6).position(), false);
@@ -211,8 +229,38 @@ int main(int argc, char **argv)
     QTextCursor remove(block(1));
     remove.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
     remove.removeSelectedText();
-    check(today->text() == QStringLiteral("New words written today: -1.234") &&
-          today->wordWrap() && today->toolTip() == today->text() && !today->accessibleDescription().isEmpty(),
+    check(today->text() == QStringLiteral("-1.234") &&
+          today->toolTip().contains(today->text()) && !today->accessibleDescription().isEmpty(),
           "signed daily word totals include the desktop thousands separator even at four digits");
+    panel.showTodayCountDialog();
+    auto *dialog = panel.findChild<QDialog *>("todayCountDialog");
+    auto *value = dialog->findChild<QLineEdit *>("todayCountValue");
+    auto *resetCount = dialog->findChild<QPushButton *>("resetTodayCount");
+    check(!dialog->isModal() && value->selectedText() == today->text(), "daily count is preselected in a modeless form");
+    const auto *buttons = dialog->findChild<QDialogButtonBox *>();
+    for (auto *button : buttons->buttons())
+        if (buttons->buttonRole(button) == QDialogButtonBox::AcceptRole)
+            check(button->isEnabled(), "the field accepts the localized, grouped count it displays");
+    resetCount->click();
+    check(value->text() == "0" && today->text() == "-1.234", "zero can be reviewed before accepting");
+    value->setText("-42");
+    key(value, Qt::Key_Return);
+    check(today->text() == "-42" && !dialog->isVisible(), "Enter applies a signed generic count");
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    editor.loadText("Novel\nEnd title\n---------\n\n");
+    panel.focusGenres();
+    genreSearch->setText("end of document");
+    key(genreSearch, Qt::Key_Return);
+    check(editor.textCursor().blockNumber() == 1 && editor.textCursor().positionInBlock() == 9,
+          "end destination excludes trailing blanks and the closing title marker");
+    editor.loadText("Manuscript//Crumb 1: Title: Words.");
+    panel.showTodayCountDialog();
+    dialog = panel.findChild<QDialog *>("todayCountDialog");
+    value = dialog->findChild<QLineEdit *>("todayCountValue");
+    value->setText("-1");
+    key(value, Qt::Key_Return);
+    check(dialog->isVisible() && editor.model().todayCount() == 0, "a negative crumb count cannot be accepted");
+    key(value, Qt::Key_Escape);
+    check(!dialog->isVisible(), "Escape cancels a count adjustment");
     return 0;
 }

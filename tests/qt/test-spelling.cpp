@@ -1,4 +1,5 @@
 #include "manuscripteditor.h"
+#include "manuscriptlinks.h"
 #include "manuscripttext.h"
 #include "spellcheck.h"
 #include "spellwords.h"
@@ -91,6 +92,35 @@ void dictionaryAndPhrases()
             "complete overlapping names with literal commas, standalone unknown names, mixed case and apostrophes");
     require(errors(words, "Megaqzorb Blepik and Qzorb Blepikon").contains("Blepik"),
             "no partial word at the start/end of an alias");
+
+    words.setExceptions({"Qzorb Blepik"}, {"HeDbErG", "O’Zob", "Frozzpne-Vryzow"});
+    require(errors(words, QStringLiteral("Hedberg’s HEDBERG'S o'Zob’s Qzorb Blepik’s Frozzpne-Vryzow’s I’m.")).isEmpty(),
+            "personal words and complete names accept singular possessives, including mixed-case and curly forms");
+    require(errors(words, QStringLiteral("‘Qzorfikk’s’")).value(0) == "Qzorfikk",
+            "spelling corrections leave the possessive and the quotation marks intact");
+}
+
+void linksInProse()
+{
+    const QString prose = QStringLiteral("😀 See (https://example.org/A_(B)?k=x,y#z), ‘WWW.xzqy.test/a’. "
+                                        "http://[::1]:8100/abc! file://www.example.org "
+                                        "x@www.example.org https:///missing.");
+    const auto links = ManuscriptLinks::findAll(prose);
+    require(links.size() == 3, "only explicit web addresses or separate www. addresses qualify");
+    require(prose.sliced(links[0].start, links[0].end - links[0].start) == "https://example.org/A_(B)?k=x,y#z"
+            && links[1].target == QUrl("https://www.xzqy.test/a")
+            && links[2].target == QUrl("http://[::1]:8100/abc"),
+            "UTF-16 bounds, query, fragment, balanced brackets, punctuation, and default HTTPS");
+    require(ManuscriptLinks::at(prose, links[0].end, true) == links[0].target
+            && ManuscriptLinks::at(prose, links[0].end, false).isEmpty(),
+            "a keyboard caret may be on the right edge, a click must hit the address itself");
+    SpellWords words;
+    const QString text = QStringLiteral("😀 Qzarfnik https://unknownzz.test/Qzarfnik?Qzarfnik=x#Qzarfnik, Qzarfnik");
+    require(errors(words, text) == QStringList{"Qzarfnik", "Qzarfnik"},
+            "skip complete URLs but check identical words in adjacent prose");
+    const auto issues = words.issues(text, text.indexOf("unknownzz") + 2);
+    require(issues.size() == 1 && issues.first().start == text.lastIndexOf("Qzarfnik"),
+            "spelling begun inside an address still ignores its entire tail");
 }
 
 void reviewAndPersistence(const QTemporaryDir &tmp)
@@ -98,6 +128,7 @@ void reviewAndPersistence(const QTemporaryDir &tmp)
     QWidget window;
     QVBoxLayout layout(&window);
     ManuscriptEditor ed;
+    ed.setCopyDeletedText(true);
     layout.addWidget(&ed);
     window.resize(850, 540);
     SpellCheck spelling(&ed, &window);
@@ -107,7 +138,7 @@ void reviewAndPersistence(const QTemporaryDir &tmp)
     writeFile(name + ".dictionary", QByteArray::fromStdString("ZoRnnix\r\n"));
     const QString original = QStringLiteral(
         "Book//Zzqhdr 1: Story: I’m using ZORNNIX and Qzorb Blepik. Here is Qzorb.\n"
-        "Zzqhdr 2: More: recieve this and recieve that. Qzorb twice.\n");
+        "Zzqhdr 2: More: recieve this and recieve that. Qzorb twice. See https://qzorb.example/recieve.\n");
     ed.loadText(original);
     QString error;
     require(spelling.openManuscript(name, &error), "open case-insensitive manuscript dictionary");
@@ -158,6 +189,8 @@ void reviewAndPersistence(const QTemporaryDir &tmp)
     button("spellingReplaceAll")->click();
     until([&] { return ed.manuscriptText().count("receive")==2 && issue->text().contains("Qzorb"); },
           "replace all occurrences with a single review action");
+    require(ed.manuscriptText().contains("https://qzorb.example/recieve."),
+            "Replace All in Spelling Review leaves the same spelling in a URL alone");
     require(QApplication::clipboard()->text() == "recieve\nrecieve",
             "bulk spelling correction copies complete displaced spellings as one clipboard entry");
     ed.undo();
@@ -173,7 +206,7 @@ void reviewAndPersistence(const QTemporaryDir &tmp)
 
     field->setText("receive");
     enter(field);
-    until([&] { return ed.manuscriptText().count("recieve")==1 && issue->text().contains("recieve"); },
+    until([&] { return ed.manuscriptText().count("recieve")==2 && issue->text().contains("recieve"); },
           "Enter applies one keyboard correction");
     button("spellingAdd")->click();
     until([&] { return readFile(name+".dictionary").contains("recieve\n"); }, "Add to Dictionary writes immediately");
@@ -244,6 +277,7 @@ int main(int argc, char **argv)
     QTemporaryDir tmp;
     require(tmp.isValid(), "temporary manuscripts");
     dictionaryAndPhrases();
+    linksInProse();
     reviewAndPersistence(tmp);
     sidecarFailures(tmp);
     std::puts("American English spelling, keyboard review, alias exceptions, underlines and manuscript dictionaries passed.");

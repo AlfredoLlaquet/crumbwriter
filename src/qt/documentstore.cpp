@@ -1,6 +1,12 @@
 #include "storage.h"
 #include "draft.h"
 #include "documentstore.h"
+#include "genericparagraph.h"
+#include "manuscriptspacing.h"
+
+extern "C" {
+#include "crumb.h"
+}
 
 #include <QDir>
 #include <QFile>
@@ -14,6 +20,49 @@
 #include <utility>
 
 namespace {
+
+// Work on the worker's snapshot. A new blank writing row, its caret, undo
+// history and live paragraph marks must survive even frequent autosaves.
+QByteArray manuscriptBytes(const QString &snapshot)
+{
+    QString manuscript = ManuscriptSpacing::normalizeInsertion(snapshot, false);
+    qsizetype signatures = 0;
+    while (signatures < manuscript.size() && manuscript.at(signatures) == QChar::ByteOrderMark)
+        ++signatures;
+    if (signatures) manuscript.remove(0, signatures);
+    ManuscriptSpacing::trimBlankEnd(manuscript, true);
+    if (!manuscript.contains(QStringLiteral("\n-"))) return manuscript.toUtf8();
+
+    const auto firstLine = QStringView(manuscript).left(manuscript.indexOf(u'\n')).toUtf8();
+    CwCrumb first{};
+    cw_crumb_parse(firstLine.constData(), true, &first);
+    const bool generic = first.record_start == 0;
+    cw_crumb_clear(&first);
+    if (!generic) return manuscript.toUtf8();
+
+    const QStringView text(manuscript);
+    QString output;
+    qsizetype copied = 0;
+    QStringView previous;
+    for (qsizetype start = 0; start < text.size();) {
+        const auto end = text.indexOf(u'\n', start);
+        const auto line = text.mid(start, end - start);
+        if (GenericParagraph::onlyHyphens(line) && !previous.trimmed().isEmpty() &&
+            !GenericParagraph::onlyHyphens(previous)) {
+            const auto length = GenericParagraph::markerLength(previous);
+            if (length != line.size()) {
+                output += text.mid(copied, start - copied);
+                output += QString(length, u'-');
+                copied = end;
+            }
+        }
+        previous = line;
+        start = end + 1;
+    }
+    if (!copied) return manuscript.toUtf8();
+    output += text.mid(copied);
+    return output.toUtf8();
+}
 
 enum class Operation { Save, SaveAs, Draft, Discard };
 enum class Closing { No, Confirming, Saving, Discarding, Done };
@@ -92,7 +141,7 @@ public:
         } else if (snapshot.contains(QChar::Null) || !snapshot.isValidUtf16()) {
             result.error = QStringLiteral("The manuscript contains a NUL or an invalid Unicode character.");
         } else {
-            const QByteArray utf8 = snapshot.toUtf8();
+            const QByteArray utf8 = manuscriptBytes(snapshot);
             switch (request.operation) {
             case Operation::Save:
                 result.ok = cw_file_save_guarded(file, utf8.constData(), gate, &error);

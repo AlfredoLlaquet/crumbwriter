@@ -8,6 +8,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLineEdit>
+#include <QLabel>
 #include <QPushButton>
 #include <QSpinBox>
 #include <QVBoxLayout>
@@ -67,6 +68,9 @@ QWidget *Preferences::synonymPage(QWidget *parent)
     };
     addList("Characters", "characters");
     addList("Recurring", "recurring");
+    auto *genreNote = new QLabel(QObject::tr("In Crumb mode, genre names use the Recurring underlining setting."), page);
+    genreNote->setWordWrap(true);
+    layout->addWidget(genreNote);
     auto *form = new QFormLayout;
     layout->addLayout(form);
     auto *prefix = new QSpinBox(page);

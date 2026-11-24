@@ -1,16 +1,20 @@
 ## Downloads
 
+- [FreeBSD 15 package for amd64](https://github.com/@REPOSITORY@/releases/download/@TAG@/CrumbWriter-FreeBSD-15-amd64.pkg)
+- [Ubuntu 24.04 LTS package for amd64](https://github.com/@REPOSITORY@/releases/download/@TAG@/CrumbWriter-Ubuntu-24.04-amd64.deb)
 - [Windows x64 installer](https://github.com/@REPOSITORY@/releases/download/@TAG@/CrumbWriter-Windows-x64-Setup.exe)
 - [macOS disk image for Apple silicon and Intel](https://github.com/@REPOSITORY@/releases/download/@TAG@/CrumbWriter-macOS-Universal.dmg)
 - [Installation, platform requirements, and first-launch instructions](https://github.com/@REPOSITORY@/blob/@TAG@/README.md)
 
-The installers include American English spelling and work offline. Companion source archives contain the third-party libraries used to build each package. Source archives ending in numbered parts can be joined in numeric order before extraction.
+American English spelling and thesaurus lookups work offline. On Ubuntu and FreeBSD, the package manager installs the required dictionaries. The Windows and macOS downloads include them. Companion source archives contain the third-party libraries and dictionaries distributed with the Windows and macOS installers. Source archives ending in numbered parts can be joined in numeric order before extraction.
 
 ## Verify a download
 
 GitHub signs a build record for the exact installer. With the GitHub CLI, run the command for the downloaded file.
 
 ```sh
+gh attestation verify CrumbWriter-FreeBSD-15-amd64.pkg --repo @REPOSITORY@
+gh attestation verify CrumbWriter-Ubuntu-24.04-amd64.deb --repo @REPOSITORY@
 gh attestation verify CrumbWriter-Windows-x64-Setup.exe --repo @REPOSITORY@
 gh attestation verify CrumbWriter-macOS-Universal.dmg --repo @REPOSITORY@
 ```

@@ -43,16 +43,6 @@ void ManuscriptEditor::applyPaper()
     viewport()->update();
 }
 
-void ManuscriptEditor::refreshBand()
-{
-    const int n = textCursor().blockNumber();
-    const int line = !rows_ && (model_->isGeneric() || model_->record(n).valid) ? n : -1;
-    if (activeLine_ != line) {
-        activeLine_ = line;
-        viewport()->update();
-    }
-}
-
 void ManuscriptEditor::paintCrumbBackground(QPainter &p)
 {
     if (activeLine_ < 0 || !activePaper_)
@@ -69,7 +59,7 @@ void ManuscriptEditor::paintCrumbBackground(QPainter &p)
                 const auto first = layout->lineAt(0).rect();
                 const auto last = layout->lineAt(layout->lineCount()-1).rect();
                 p.fillRect(QRectF(0, y + first.top(), viewport()->width(), last.bottom() - first.top()),
-                           EditorColors::currentPaper(palette().base().color()));
+                           EditorColors::currentPaper(palette()));
             }
             return;
         }

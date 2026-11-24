@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QPalette>
+#include <cmath>
 
 namespace EditorColors {
 
@@ -19,9 +20,27 @@ inline QColor blend(const QColor &base, const QColor &overlay, int opacity)
                   channel(base.blue(), overlay.blue()));
 }
 
-inline QColor currentPaper(const QColor &base)
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+inline constexpr QPalette::ColorRole accentRole = QPalette::Accent;
+#else
+inline constexpr QPalette::ColorRole accentRole = QPalette::Highlight;
+#endif
+
+inline QColor currentPaper(const QPalette &palette)
 {
-    return darkPaper(base) ? blend(base, Qt::white, 18) : blend(base, QColor(64, 140, 255), 31);
+    const QColor base = palette.base().color();
+    QColor accent = palette.color(accentRole);
+    const int paperTone = qGray(base.rgb()), accentTone = qGray(accent.rgb());
+    // On a nearly matching desktop accent keep a visible step in brightness.
+    // Strongly colored accents retain their hue without becoming solid bands.
+    if (darkPaper(base)) {
+        if (accentTone < paperTone + 88)
+            accent = blend(accent, Qt::white, (paperTone + 88 - accentTone) * 255 / (255 - accentTone));
+        return blend(base, accent, 39);
+    }
+    if (accentTone > paperTone - 72)
+        accent = blend(accent, Qt::black, (accentTone - paperTone + 72) * 255 / accentTone);
+    return blend(base, accent, 30);
 }
 
 inline QColor inactivePaper(const QColor &base)
@@ -41,7 +60,8 @@ inline QColor synonymUnderline(const QPalette &palette)
 
 inline QColor completionHint(const QPalette &palette)
 {
-    return blend(palette.base().color(), palette.text().color(), 180);
+    const auto paper = currentPaper(palette);
+    return blend(paper, palette.text().color(), darkPaper(paper) ? 107 : 138);
 }
 
 inline QColor searchPaper(const QPalette &palette)
@@ -56,7 +76,18 @@ inline QPalette explicitTheme(QPalette palette, bool dark)
     const QColor window(dark ? "#2b2d30" : "#f5f5f5");
     const QColor paper(dark ? "#202124" : "#ffffff");
     const QColor text(dark ? "#f2f2f2" : "#242424");
+    const QColor accent = palette.color(QPalette::Active, accentRole);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
     const QColor selection(dark ? "#406895" : "#3b70ac");
+    const QColor selectedText(Qt::white);
+#else
+    // Older Qt uses Highlight for the desktop accent and the selection.
+    const QColor selection = accent;
+    const auto linear = [](double s) { return s <= 0.04045 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4); };
+    const double luminance = 0.2126 * linear(accent.redF()) + 0.7152 * linear(accent.greenF()) +
+                             0.0722 * linear(accent.blueF());
+    const QColor selectedText(luminance > 0.179 ? Qt::black : Qt::white);
+#endif
     palette.setColor(QPalette::Window, window);
     palette.setColor(QPalette::WindowText, text);
     palette.setColor(QPalette::Base, paper);
@@ -66,7 +97,7 @@ inline QPalette explicitTheme(QPalette palette, bool dark)
     palette.setColor(QPalette::ButtonText, text);
     palette.setColor(QPalette::BrightText, Qt::white);
     palette.setColor(QPalette::Highlight, selection);
-    palette.setColor(QPalette::HighlightedText, Qt::white);
+    palette.setColor(QPalette::HighlightedText, selectedText);
     palette.setColor(QPalette::PlaceholderText, QColor(dark ? "#b1b2b5" : "#60666b"));
     palette.setColor(QPalette::ToolTipBase, QColor(dark ? "#35383c" : "#fff7df"));
     palette.setColor(QPalette::ToolTipText, text);
@@ -78,7 +109,7 @@ inline QPalette explicitTheme(QPalette palette, bool dark)
     palette.setColor(QPalette::Dark, QColor(dark ? "#1a1b1e" : "#858585"));
     palette.setColor(QPalette::Shadow, QColor(dark ? "#101113" : "#565656"));
 #if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
-    palette.setColor(QPalette::Accent, selection);
+    palette.setColor(QPalette::Accent, accent);
 #endif
     for (const auto role : {QPalette::Text, QPalette::WindowText, QPalette::ButtonText})
         palette.setColor(QPalette::Disabled, role, QColor(dark ? "#95979a" : "#737678"));

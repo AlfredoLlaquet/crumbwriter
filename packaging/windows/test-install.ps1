@@ -21,7 +21,7 @@ $exe = Join-Path $installDir 'crumbwriter.exe'
 $silent = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
 $utf8 = [Text.UTF8Encoding]::new($false)
 $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
-foreach ($name in 'QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QTDIR','DICPATH') {
+foreach ($name in 'QT_PLUGIN_PATH','QT_QPA_PLATFORM_PLUGIN_PATH','QTDIR','DICPATH','CRUMBWRITER_THESAURUS_DIR') {
     Remove-Item "Env:$name" -ErrorAction SilentlyContinue
 }
 $env:QT_QPA_PLATFORM = 'windows'
@@ -90,7 +90,7 @@ if ((Get-ItemProperty $uninstallKey).DisplayVersion -ne (Get-Item $exe).VersionI
 if (!(Test-Path $desktopLink) -or !(Test-Path $startLink)) { throw 'Upgrade did not install selected shortcuts' }
 if (!(Get-Item $openWithKey).GetValueNames().Contains('CrumbWriter.Text')) { throw 'Missing Open with registration' }
 if ((Registered $choiceKey 'ProgId') -ne $txtChoice -or (Registered 'HKCU:\Software\Classes\.txt' '') -ne $txtDefault) { throw 'Default text editor was changed' }
-foreach ($item in 'LICENSE','CrumbWriter.txt','dictionaries/en_US.aff','dictionaries/en_US.dic','third-party/InnoSetup/LICENSE.txt','plugins/platforms/qwindows.dll','qt.conf') {
+foreach ($item in 'LICENSE','CrumbWriter.txt','dictionaries/en_US.aff','dictionaries/en_US.dic','thesaurus/th_en_US_new.dat','thesaurus/th_en_US_new.idx','third-party/MyThes/WordNet_license.txt','third-party/InnoSetup/LICENSE.txt','plugins/platforms/qwindows.dll','qt.conf') {
     if (!(Test-Path -LiteralPath (Join-Path $installDir $item))) { throw "Missing installed component: $item" }
 }
 Assert-Preserved $preserved

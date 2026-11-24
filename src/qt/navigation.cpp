@@ -5,8 +5,11 @@
 #include "manuscripteditor.h"
 #include "manuscriptnumbers.h"
 #include "panelsearch.h"
+#include "todaycountdialog.h"
 
+#include <QAction>
 #include <QCollator>
+#include <QDialog>
 #include <QHeaderView>
 #include <QLabel>
 #include <QPointer>
@@ -21,6 +24,9 @@
 #include <algorithm>
 
 namespace {
+constexpr int EndOfDocumentRole = Qt::UserRole + 1;
+constexpr int CanAppendGenreRole = Qt::UserRole + 2;
+
 // The default information panel fits its text. A saved manual height takes
 // precedence, including when a manuscript switches between writing modes.
 class InformationPanel final : public QWidget {
@@ -162,6 +168,7 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
     auto *info = new InformationPanel(split);
     info->setObjectName("currentInfo");
     info->setAccessibleName(tr("Manuscript information"));
+    info->setMinimumSize(1, 1);
     auto *infoLayout = new QVBoxLayout(info);
     infoLayout->setContentsMargins(0, 0, 0, 0);
     number_ = label(info, true);
@@ -175,9 +182,13 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
     title_->setMaximumHeight(title_->fontMetrics().lineSpacing() * 4);
     words_ = label(info);
     words_->setObjectName("wordCount");
+    todayHeading_ = label(info);
+    todayHeading_->setObjectName("todayHeading");
+    todayHeading_->setText(tr("New words written today"));
+    todayHeading_->setWordWrap(true);
     today_ = label(info);
     today_->setObjectName("todayCount");
-    for (auto *widget : {number_, title_, words_, today_}) infoLayout->addWidget(widget);
+    for (auto *widget : {number_, title_, words_, todayHeading_, today_}) infoLayout->addWidget(widget);
     split->addWidget(info);
     auto addList = [this, split](const QString &caption, const QString &name, bool genres) {
         auto *section = new QWidget(split);
@@ -215,7 +226,11 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
         heading->setBuddy(search);
         if (genres) {
             genresSearch_ = search;
-            search->activateRow = [this](bool) { return openGenreOrTitle(); };
+            search->activateRow = [this](bool alternate) { return openGenreOrTitle(alternate); };
+            genreMentions_ = new QAction(tr("Find all genre occurrences\tCtrl+Enter"), tree);
+            tree->addAction(genreMentions_);
+            tree->setContextMenuPolicy(Qt::ActionsContextMenu);
+            connect(genreMentions_, &QAction::triggered, search, [search] { search->activateCurrent(true); });
             setTabOrder(genreOrder_, search);
         } else {
             historySearch_ = search;
@@ -253,6 +268,7 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
 
 void NavigationPanel::reset()
 {
+    if (todayDialog_) todayDialog_->reject();
     historySearch_->clear();
     genresSearch_->clear();
     visitedLines_.clear();
@@ -267,11 +283,14 @@ void NavigationPanel::updateMode()
 {
     const bool generic = editor_->model().isGeneric();
     for (auto *widget : {number_, title_, words_}) widget->setVisible(!generic);
-    today_->setWordWrap(generic);
+    todayHeading_->setVisible(generic);
+    today_->setFont(generic ? number_->font() : words_->font());
+    today_->parentWidget()->layout()->setContentsMargins(0, generic ? 4 : 0, 0, generic ? 6 : 0);
     today_->setAccessibleDescription(generic ? tr("Net change in manuscript words today, including deletions.") :
                                               tr("New crumbs written today."));
     const QString caption = generic ? tr("Titles") : tr("Genres");
     genreHeading_->setText(caption);
+    genreMentions_->setVisible(!generic);
     genres_->setAccessibleName(caption);
     genres_->headerItem()->setText(0, generic ? tr("Title") : tr("Genre"));
     LayoutColumns::setOptionalColumn(genres_, 1, !generic);
@@ -280,7 +299,7 @@ void NavigationPanel::updateMode()
     genresSearch_->setAccessibleName(genresSearch_->placeholderText());
     genresSearch_->setToolTip(generic ?
         tr("Search titles (Ctrl+Shift+4). Up and Down move between matches. Enter goes to the title.") :
-        tr("Search genres (Ctrl+Shift+4). Up and Down move between matches. Enter adds the next crumb in the genre."));
+        tr("Search genres (Ctrl+Shift+4). Up and Down move between matches. Enter adds the next crumb. Ctrl+Enter finds all genre occurrences."));
     genreOrder_->setProperty("layoutDefaultOrder", generic);
     const QSignalBlocker blocked(genreOrder_);
     genreOrder_->setChecked(settings_->value(orderPreference(generic), generic).toBool());
@@ -289,19 +308,32 @@ void NavigationPanel::updateMode()
 void NavigationPanel::updateToday()
 {
     const auto &model = editor_->model();
-    const QString count = model.isGeneric() ? tr("New words written today: %1").arg(ManuscriptNumbers::format(model.todayWords()))
-                                            : tr("New today   %1").arg(model.todayCount());
+    const QString count = model.isGeneric() ? ManuscriptNumbers::format(model.todayWords())
+                                            : tr("New today   %1").arg(ManuscriptNumbers::format(model.todayCount()));
     if (today_->text() != count) {
         today_->setText(count);
-        today_->setToolTip(count);
+        const QString spoken = model.isGeneric() ? tr("New words written today: %1").arg(count) : count;
+        today_->setAccessibleName(spoken);
+        today_->setToolTip(spoken);
     }
+}
+
+void NavigationPanel::showTodayCountDialog()
+{
+    editor_->model().refreshDay();
+    if (!todayDialog_ || !todayDialog_->isVisible())
+        todayDialog_ = new TodayCountDialog(editor_->model(), this);
+    todayDialog_->show();
+    todayDialog_->raise();
+    todayDialog_->activateWindow();
 }
 
 bool NavigationPanel::isVisitLine(int row) const
 {
     const auto &model = editor_->model();
     return row >= 0 && row < editor_->document()->blockCount() &&
-           (model.isGeneric() ? model.paragraphRole(row) != ParagraphRole::Blank : model.record(row).valid);
+           (model.isGeneric() ? !model.record(row).blank && model.paragraphRole(row) != ParagraphRole::TitleMarker
+                              : model.record(row).valid);
 }
 
 void NavigationPanel::updateVisit(QTreeWidgetItem *item)
@@ -372,6 +404,7 @@ void NavigationPanel::changeEvent(QEvent *event)
 void NavigationPanel::updateModel(const CrumbChange &change)
 {
     if (change.modeChanged) {
+        if (todayDialog_) todayDialog_->reject();
         genresSearch_->clear();
         updateMode();
     }
@@ -390,15 +423,18 @@ void NavigationPanel::updateModel(const CrumbChange &change)
             }
         }
     } else {
-        for (int i = change.firstLine; i <= change.lastLine; ++i) {
+        const auto refreshVisit = [this](int i) {
             auto *visit = visitedLines_.value(i);
-            if (!visit) continue;
+            if (!visit) return;
             if (isVisitLine(i)) updateVisit(visit);
             else {
                 visitedLines_.remove(i);
                 delete visits_->takeTopLevelItem(visits_->indexOfTopLevelItem(visit));
             }
-        }
+        };
+        for (int i = change.firstLine; i <= change.lastLine; ++i) refreshVisit(i);
+        if (editor_->model().isGeneric())
+            for (int i : change.otherLines) refreshVisit(i); // A neighboring row may have become a marker.
     }
     if (change.modeChanged || (editor_->model().isGeneric() ? change.titlesChanged : change.genresChanged))
         updateGenres();
@@ -417,7 +453,9 @@ void NavigationPanel::updateGenres()
     else order = byNumber ? tr("Genres ordered by number, then name") : tr("Genres ordered alphabetically");
     genreOrder_->setAccessibleName(order);
     genreOrder_->setToolTip(order + tr(". Switch order (Shift+F7)"));
-    const QVariant selected = genres_->currentItem() ? genres_->currentItem()->data(0, Qt::UserRole) : QVariant();
+    const auto *current = genres_->currentItem();
+    const QVariant selected = current ? current->data(0, Qt::UserRole) : QVariant();
+    const bool atEnd = current && current->data(0, EndOfDocumentRole).toBool();
     genres_->clear();
     QList<QTreeWidgetItem *> entries;
     QTreeWidgetItem *retain = nullptr;
@@ -441,6 +479,11 @@ void NavigationPanel::updateGenres()
             entries.append(item);
             if (block == previous) retain = item;
         }
+        auto *end = new QTreeWidgetItem(QStringList{tr("End of document")});
+        end->setToolTip(0, tr("Go to the end of the last paragraph."));
+        end->setData(0, EndOfDocumentRole, true);
+        entries.append(end);
+        if (atEnd) retain = end;
     } else {
         auto rows = model.genres(); // Alphabetical order also breaks number ties.
         if (byNumber) {
@@ -453,7 +496,7 @@ void NavigationPanel::updateGenres()
             item->setData(0, Qt::UserRole, genre.key);
             item->setToolTip(0, genre.name);
             markNumber(item, 1, genre.warning, palette());
-            if (!genre.canAppend) item->setFlags(item->flags() & ~Qt::ItemIsEnabled);
+            item->setData(0, CanAppendGenreRole, genre.canAppend);
             entries.append(item);
             if (genre.key == selected.toString()) retain = item;
         }
@@ -476,15 +519,23 @@ bool NavigationPanel::openVisit()
     return true;
 }
 
-bool NavigationPanel::openGenreOrTitle()
+bool NavigationPanel::openGenreOrTitle(bool occurrences)
 {
     const auto *item = genres_->currentItem();
     if (!item || !(item->flags() & Qt::ItemIsEnabled)) return false;
     if (editor_->model().isGeneric()) {
-        const auto block = item->data(0, Qt::UserRole).value<QTextBlock>();
-        if (!block.isValid() || !jumpTo) return false;
-        jumpTo(block.position());
+        const auto target = item->data(0, Qt::UserRole);
+        if (!jumpTo) return false;
+        if (item->data(0, EndOfDocumentRole).toBool()) jumpTo(editor_->model().documentEndPosition());
+        else {
+            const auto block = target.value<QTextBlock>();
+            if (!block.isValid()) return false;
+            jumpTo(block.position());
+        }
+    } else if (occurrences) {
+        return genreOccurrences && genreOccurrences(item->text(0));
     } else {
+        if (!item->data(0, CanAppendGenreRole).toBool()) return false;
         editor_->appendCrumb(item->text(0));
     }
     editor_->setFocus();

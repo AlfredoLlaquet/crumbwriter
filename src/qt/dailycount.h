@@ -15,9 +15,10 @@ struct CrumbRecord;
 // Zero is a physical row that does not currently have a recognized header.
 class DailyCount {
 public:
-    int count() const { return currentCount_; }
+    qint64 count() const;
     QDate date() const { return date_; }
-    qint64 wordChange() const { return totalWords_ - baselineWords_; }
+    qint64 wordChange() const;
+    QString setCount(bool words, qint64 value);
     void setTotalWords(qint64 words);
 
     QString open(const QString &manuscript, QDate date, const QVector<quint64> &numbers,
@@ -33,6 +34,13 @@ private:
     struct Row {
         quint64 number = 0;
         int origin = -1; // Index of an older crumb, or -1 for a new/empty row.
+    };
+    // An adjustment belongs to the calendar day, independently of the
+    // manuscript revisions that a background save may still be publishing.
+    struct Adjustment {
+        qint64 value = 0;
+        qint64 measured = 0;
+        qint64 apply(qint64 now) const;
     };
 
     void takeBaseline(QDate date);
@@ -58,4 +66,5 @@ private:
     QDate date_;
     int currentCount_ = 0;
     qint64 totalWords_ = 0, baselineWords_ = 0;
+    Adjustment crumbSetting_, wordSetting_;
 };

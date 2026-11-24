@@ -4,6 +4,7 @@
 #include "manuscripteditor.h"
 #include "manuscripttext.h"
 #include "preferences.h"
+#include "navigation.h"
 #include "spellcheck.h"
 #include "statisticsdialog.h"
 #include "symbolpicker.h"
@@ -18,6 +19,15 @@ void MainWindow::connectWritingTools()
     bookmarks_->onChanged = [this] { documentStateChanged(); };
     spelling_->onChanged = [this] { documentStateChanged(); };
     spelling_->onNotice = [this](const QString &message) { showNotice(message); };
+    side_->genreOccurrences = [this](const QString &genre) { return synonyms_->showGenreOccurrences(genre); };
+    editor_->model().observe(synonyms_, [this](const CrumbChange &change) {
+        if (!change.genresChanged && !change.modeChanged) return;
+        QStringList genres;
+        if (!editor_->model().isGeneric()) {
+            for (const auto &genre : editor_->model().genres()) genres.append(genre.name);
+        }
+        synonyms_->setGenres(genres);
+    });
     synonyms_->manuscriptSelection = [this] {
         return ManuscriptText::selectedText(editor_->textCursor());
     };
@@ -30,8 +40,8 @@ void MainWindow::connectWritingTools()
     synonymWriting_->onNotice = [this](const QString &message) { showNavigationStatus(message); };
     synonymWriting_->onHint = [this](const QString &message) {
         synonymHint_ = message;
-        if (!editor_->viSelectionActive())
-            status_->setText(message.isEmpty() ? store_->status() : message);
+        if (!editor_->viSelectionActive() && !webLookupPending_)
+            setStatusMessage(message.isEmpty() ? store_->status() : message);
     };
     synonyms_->insertSynonym = [this](const QString &text) {
         editor_->setFocus();

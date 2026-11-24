@@ -1,5 +1,6 @@
 #pragma once
 
+#include "synonymentry.h"
 #include <QObject>
 #include <QStringList>
 #include <memory>
@@ -8,9 +9,11 @@
 class QTextBlock;
 class QTextDocument;
 
+enum class NameSource { Characters, Recurring, Genre };
+
 struct SynonymGroup {
     QStringList aliases;
-    bool recurring;
+    NameSource source = NameSource::Characters;
 };
 
 // Absolute UTF-16 manuscript offsets; end is exclusive. Several groups
@@ -30,7 +33,8 @@ class SynonymMatcher final : public QObject {
 public:
     explicit SynonymMatcher(QTextDocument *document, QObject *parent = nullptr);
     ~SynonymMatcher() override;
-    void setGroups(const QList<QStringList> &characters, const QList<QStringList> &recurring);
+    void setGroups(const QList<SynonymEntry> &characters, const QList<SynonymEntry> &recurring,
+                   const QStringList &genres = {});
     const QList<SynonymGroup> &groups() const;
     QList<SynonymMention> mentions(const QTextBlock &block) const;
     std::optional<SynonymMention> mentionAt(int position) const;

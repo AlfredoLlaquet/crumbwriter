@@ -10,12 +10,15 @@ bool fail(QString *error, const QString &message)
     return false;
 }
 
-void alphabetize(QList<QStringList> &groups)
+// A legacy CSV group cannot start with an empty field.
+const QString excludedPrefix = QStringLiteral(",no-complete,");
+
+void alphabetize(QList<SynonymEntry> &groups)
 {
     QCollator collator;
     collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::stable_sort(groups.begin(), groups.end(), [&](const QStringList &a, const QStringList &b) {
-        return collator.compare(a.first(), b.first()) < 0;
+    std::stable_sort(groups.begin(), groups.end(), [&](const SynonymEntry &a, const SynonymEntry &b) {
+        return collator.compare(a.aliases.first(), b.aliases.first()) < 0;
     });
 }
 }
@@ -89,16 +92,18 @@ bool SynonymFile::decode(QString *error)
         return fail(error, QStringLiteral("%1 contains invalid UTF-8.").arg(companion_.sidecarPath()));
     decoded.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     decoded.replace(u'\r', u'\n');
-    QList<QStringList> next;
+    QList<SynonymEntry> next;
     int number = 0;
     for (const auto line : QStringView(decoded).split(u'\n')) {
         ++number;
         if (line.trimmed().isEmpty()) continue;
         QStringList group;
         QString reason;
-        if (!parse(line.toString(), group, &reason))
+        const bool excluded = line.startsWith(excludedPrefix);
+        const auto aliases = excluded ? line.mid(excludedPrefix.size()) : line;
+        if (!parse(aliases.toString(), group, &reason))
             return fail(error, QStringLiteral("%1, line %2. %3").arg(companion_.sidecarPath()).arg(number).arg(reason));
-        next.append(std::move(group));
+        next.append({std::move(group), excluded});
     }
     alphabetize(next);
     groups_ = std::move(next);
@@ -124,14 +129,15 @@ bool SynonymFile::saveAs(const QString &path, QString *error)
     return wrote;
 }
 
-bool SynonymFile::store(QList<QStringList> next, QString *error)
+bool SynonymFile::store(QList<SynonymEntry> next, QString *error)
 {
     if (!readable_)
         return fail(error, QStringLiteral("Correct the list file and reload it before editing."));
     alphabetize(next);
     QByteArray bytes;
     for (const auto &group : next) {
-        bytes += format(group).toUtf8();
+        if (group.excludeFromAutocomplete) bytes += excludedPrefix.toUtf8() + ' ';
+        bytes += format(group.aliases).toUtf8();
         bytes += '\n';
     }
     if (!companion_.write(bytes, error)) return false;
@@ -139,23 +145,23 @@ bool SynonymFile::store(QList<QStringList> next, QString *error)
     return true;
 }
 
-bool SynonymFile::add(const QString &line, QString *error)
+bool SynonymFile::add(const QString &line, bool excluded, QString *error)
 {
     QStringList group;
     if (!parse(line, group, error)) return false;
     auto next = groups_;
-    next.append(std::move(group));
+    next.append({std::move(group), excluded});
     return store(std::move(next), error);
 }
 
-bool SynonymFile::edit(int row, const QString &line, QString *error)
+bool SynonymFile::edit(int row, const QString &line, bool excluded, QString *error)
 {
     if (row < 0 || row >= groups_.size())
         return fail(error, QStringLiteral("Select an existing synonym group."));
     QStringList group;
     if (!parse(line, group, error)) return false;
     auto next = groups_;
-    next[row] = std::move(group);
+    next[row] = {std::move(group), excluded};
     return store(std::move(next), error);
 }
 

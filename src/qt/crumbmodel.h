@@ -11,7 +11,7 @@
 
 class QTextDocument;
 
-enum class ParagraphRole { Body, Blank, DocumentTitle, ChapterTitle };
+enum class ParagraphRole { Body, Blank, DocumentTitle, ChapterTitle, TitleMarker, TitleSpacer };
 
 // Line numbers are zero-based. All columns are relative UTF-16 offsets, just
 // like QTextBlock and QTextCursor. Each end is exclusive.
@@ -43,6 +43,7 @@ struct CrumbRecord {
     int words = 0;
     int fileWords = 0; // Whole-file convention, including any first-line work title.
     bool blank = true;
+    bool onlyHyphens = false;
     bool hasWorkSeparator = false; // Meaningful on physical line 1 only.
     ParagraphRole role = ParagraphRole::Body;
     int recordStart = 0;
@@ -87,12 +88,14 @@ public:
     ParagraphRole paragraphRole(int line) const;
     QVector<int> titleLines() const; // Zero-based, in document order.
     int neighborTitle(int line, bool backward) const;
-    int paragraphCount() const; // Nonblank physical paragraphs, including headings.
+    int documentEndPosition() const; // End of the final prose paragraph or its title.
+    int paragraphCount() const; // Nonblank paragraphs, including headings but excluding markers.
     QVector<CrumbGenre> genres() const;
     int crumbCount() const;
     qint64 totalWords() const;
-    int todayCount() const;
+    qint64 todayCount() const;
     qint64 todayWords() const;
+    QString setTodayCount(qint64 value);
     void markOpened();
     QString openDailyCount(const QString &manuscript);
     QString saveDailyCountAs(const QString &manuscript);

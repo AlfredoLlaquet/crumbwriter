@@ -54,6 +54,7 @@ public:
     void insertLiteral(const QString &text);
 
     int virtualRows() const { return rows_; }
+    int characterUnderPointer(const QPoint &point) const;
     void clearVirtual();
     std::function<void()> onVirtualChanged;
 
@@ -86,7 +87,6 @@ private:
     enum class EditRun { None, Typing, Backspace, Delete };
     class AppendUndoItem;
     QString removedSelection(const QTextCursor &cursor) const;
-    void copyDeletionRun(QString removed, EditRun run);
     int clampPosition(int value) const;
     QTextCursor at(int position) const;
     QTextCursor writingEnd() const;
@@ -126,12 +126,11 @@ private:
     CrumbHighlighter *highlighter_ = nullptr;
     QList<QTextEdit::ExtraSelection> searchHighlights_, spellingHighlights_;
     QList<QTextEdit::ExtraSelection> synonymHighlights_;
-    QString deletionRun_;
     AppendUndoItem *replayedAppend_ = nullptr;
     QPalette paper_;
     bool activePaper_ = true;
     bool smart_ = true;
-    bool copyDeleted_ = true;
+    bool copyDeleted_ = false;
     bool editing_ = false;
     bool aligning_ = false;
     bool replaying_ = false;

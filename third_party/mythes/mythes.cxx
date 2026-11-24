@@ -1,0 +1,464 @@
+#include "COPYING"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <limits>
+#include <vector>
+
+#include "mythes.hxx"
+
+#ifdef _WIN32
+#include <windows.h>
+#include <wchar.h>
+#endif
+
+MyThes::MyThes(const char* idxpath, const char * datpath)
+{
+    nw = 0;
+    encoding = NULL;
+    list = NULL;
+    offst = NULL;
+    pdfile = NULL;
+
+    if (thInitialize(idxpath, datpath) != 1) {
+        fprintf(stderr,"Error - can't open %s or %s\n",idxpath, datpath);
+        fflush(stderr);
+        thCleanup();
+        // did not initialize properly - throw exception?
+    }
+}
+
+
+MyThes::~MyThes()
+{
+    thCleanup();
+}
+
+
+int MyThes::thInitialize(const char* idxpath, const char* datpath)
+{
+
+    // open the index file
+    FILE * pifile = myfopen(idxpath,"rb");
+    if (!pifile) {
+        return 0;
+    } 
+
+    // an index entry is at least a '|' and a line end, so the file size bounds the count
+    long maxentries = std::numeric_limits<long>::max();
+    if (fseek(pifile, 0, SEEK_END) == 0) {
+        long size = ftell(pifile);
+        if (size >= 0) {
+            maxentries = size / 2;
+        }
+        if (fseek(pifile, 0, SEEK_SET) != 0) {
+            fclose(pifile);
+            return 0;
+        }
+    }
+
+    // parse in encoding and index size
+    std::vector<char> buffer(MAX_WD_LEN);
+    char * wrd = &buffer[0];
+    readLine(pifile,wrd,MAX_WD_LEN);
+    encoding = mystrdup(wrd);
+    if (readLine(pifile,wrd,MAX_WD_LEN) < 0)
+        wrd[0] = '\0';
+    errno = 0;
+    char *endptr = NULL;
+    long idxsz_l = strtol(wrd, &endptr, 10);
+    if (errno != 0 || endptr == wrd || idxsz_l <= 0 || idxsz_l > maxentries ||
+        idxsz_l > std::numeric_limits<int>::max() / static_cast<long>(sizeof(char*))) {
+       fprintf(stderr,"Error - bad index %ld\n", idxsz_l);
+       fclose(pifile);
+       return 0;
+    }
+    int idxsz = static_cast<int>(idxsz_l);
+
+    // now allocate list, offst for the given size
+    list = (char**)   calloc(idxsz,sizeof(char*));
+    offst = (unsigned int*) calloc(idxsz,sizeof(unsigned int));
+
+    if ( (!(list)) || (!(offst)) ) {
+       fprintf(stderr,"Error - bad memory allocation\n");
+       fclose(pifile);
+       return 0;
+    }
+
+    // now parse the remaining lines of the index
+    int len = readLine(pifile,wrd,MAX_WD_LEN);
+    while (len >= 0)
+    { 
+        int np = mystr_indexOfChar(wrd,'|');
+        if (nw < idxsz) {
+            if (np >= 0) {
+                *(wrd+np) = '\0';
+                list[nw] = (char *)calloc(1,(np+1));
+                if (!list[nw]) {
+                    fprintf(stderr,"Error - bad memory allocation\n");
+                    fflush(stderr);
+                    fclose(pifile);
+                    return 0;
+                }
+                memcpy((list[nw]),wrd,np);
+                errno = 0;
+                char *off_end = NULL;
+                unsigned long off = strtoul(wrd+np+1, &off_end, 10);
+                if (errno != 0 || off > std::numeric_limits<unsigned int>::max())
+                    off = 0;
+                offst[nw] = static_cast<unsigned int>(off);
+                nw++;
+            }
+        }
+        len = readLine(pifile,wrd,MAX_WD_LEN);
+    }
+
+    fclose(pifile);
+
+    /* next open the data file */
+    pdfile = myfopen(datpath,"rb");
+    if (!pdfile) {
+        return 0;
+    } 
+        
+    return 1;        
+}
+
+
+void MyThes::thCleanup()
+{
+    /* first close the data file */
+    if (pdfile) {
+        fclose(pdfile);
+        pdfile=NULL;
+    }
+
+    if (list)
+    {
+        /* now free up all the allocated strings on the list */
+        for (int i=0; i < nw; i++) 
+        {
+            if (list[i]) {
+                free(list[i]);
+                list[i] = 0;
+            }
+        }
+        free((void*)list);
+    }
+
+    if (encoding) free((void*)encoding);
+    if (offst) free((void*)offst);
+
+    encoding = NULL;
+    list = NULL;
+    offst = NULL;
+    nw = 0;
+}
+
+
+
+// lookup text in index and count of meanings and a list of meaning entries
+// with each entry having a synonym count and pointer to an 
+// array of char * (i.e the synonyms)
+// 
+// note: calling routine should call CleanUpAfterLookup with the original
+// meaning point and count to properly deallocate memory
+
+// free a meaning's synonyms and definition and leave it with none
+static void freeMeaning(mentry * pm)
+{
+    for (int j = 0; j < pm->count; j++) {
+        free(pm->psyns[j]);
+    }
+    free(pm->psyns);
+    pm->psyns = NULL;
+    free(pm->defn);
+    pm->defn = NULL;
+    pm->count = 0;
+}
+
+int MyThes::Lookup(const char * pText, int len, mentry** pme)
+{ 
+
+    *pme = NULL;
+
+    // handle the case of missing file or file related errors
+    if (! pdfile) return 0;
+
+    // index words are shorter than MAX_WD_LEN, so a longer word has no entry
+    std::vector<char> buffer;
+    if (len < 1 || len >= MAX_WD_LEN) {
+        return 0;
+    }
+
+    /* copy search word and make sure null terminated */
+    buffer.resize(len+1);
+    char * wrd = &buffer[0];
+    memcpy(wrd,pText,len);
+  
+    /* find it in the list */
+    int idx = nw > 0 ? binsearch(wrd,list,nw) : -1;
+    if (idx < 0) return 0;
+
+    // now seek to the offset
+    long offset = (long) offst[idx];
+    int rc = fseek(pdfile,offset,SEEK_SET);
+    if (rc) {
+       return 0;
+    }
+
+    // grab the count of the number of meanings
+    // and allocate a list of meaning entries
+    char * buf = (char *) malloc(MAX_LN_LEN);
+    if (!buf) return 0;
+    if (readLine(pdfile, buf, (MAX_LN_LEN-1)) < 0) {
+        free(buf);
+        return 0;
+    }
+    int np = mystr_indexOfChar(buf,'|');
+    if (np < 0) {
+         free(buf);
+         return 0;
+    }          
+    errno = 0;
+    char *nm_end = NULL;
+    long nm = strtol(buf+np+1, &nm_end, 10);
+    int nmeanings = (errno != 0 || nm < 0 || nm > MAX_MEANINGS) ? 0 : static_cast<int>(nm);
+    *pme = (mentry*)(nmeanings ? malloc(nmeanings * sizeof(mentry)) : NULL);
+    if (!(*pme)) {
+        free(buf);
+        return 0;
+    }
+
+    // now read in each meaning and parse it to get defn, count and synonym lists
+    mentry* pm = *(pme);
+    char dfn[MAX_WD_LEN];
+
+    for (int j = 0; j < nmeanings; j++) {
+        if (readLine(pdfile, buf, (MAX_LN_LEN-1)) < 0) {
+            // .dat ended before nmeanings lines were read; return what we got
+            nmeanings = j;
+            break;
+        }
+
+        pm->count = 0;
+        pm->psyns = NULL;
+        pm->defn = NULL;
+
+        // store away the part of speech for later use
+        char * p = buf;
+        char * pos = NULL;
+        np = mystr_indexOfChar(p,'|');
+        if (np >= 0) {
+           *(buf+np) = '\0';
+	   pos = mystrdup(p);
+           p = p + np + 1;
+	} else {
+          pos = mystrdup("");
+        }
+        
+        // count the number of fields in the remaining line
+        int nf = 1;
+        char * d = p;
+        np = mystr_indexOfChar(d,'|');        
+        while ( np >= 0 ) {
+	  nf++;
+          d = d + np + 1;
+          np = mystr_indexOfChar(d,'|');          
+	}
+        pm->psyns = (char **) malloc(nf*sizeof(char*)); 
+        if (!pos || !pm->psyns) {
+            // out of memory, so this meaning stays empty
+            free(pos);
+            free(pm->psyns);
+            pm->psyns = NULL;
+            pm++;
+            continue;
+        }
+        pm->count = nf;
+        
+        // fill in the synonym list
+        d = p;
+        for (int jj = 0; jj < nf; jj++) 
+        {
+            np = mystr_indexOfChar(d,'|');
+            if (np >= 0)
+            {
+                *(d+np) = '\0';
+                pm->psyns[jj] = mystrdup(d);
+                d = d + np + 1;
+            } 
+            else 
+            {
+              pm->psyns[jj] = mystrdup(d);
+            }            
+            if (!pm->psyns[jj]) {
+                // out of memory, so this meaning stays empty
+                pm->count = jj;
+                freeMeaning(pm);
+                break;
+            }
+        }
+
+        // add pos to first synonym to create the definition
+        if (pm->count)
+	{
+            int k = strlen(pos);
+            int m = strlen(pm->psyns[0]);
+            if ((k+m) < (MAX_WD_LEN - 1)) {
+                 memcpy(dfn,pos,k);
+                 *(dfn+k) = ' ';
+                 memcpy((dfn+k+1),(pm->psyns[0]),m+1);
+                 pm->defn = mystrdup(dfn);
+            } else {
+                pm->defn = mystrdup(pm->psyns[0]);
+            }
+            if (!pm->defn) {
+                // out of memory, so this meaning stays empty
+                freeMeaning(pm);
+            }
+        }
+        free(pos);
+        pm++;
+
+    }
+    free(buf);
+
+    if (nmeanings == 0) {
+        free(*pme);
+        *pme = NULL;
+    }
+
+    return nmeanings;
+}
+
+
+
+void MyThes::CleanUpAfterLookup(mentry ** pme, int nmeanings)
+{ 
+
+    if (nmeanings == 0) return;
+    if ((*pme) == NULL) return;
+
+    mentry * pm = *pme;
+       
+    for (int i = 0; i < nmeanings; i++) {
+       freeMeaning(pm);
+       pm++;
+    }
+    pm = *pme;
+    free(pm);
+    *pme = NULL;
+    return;
+}
+
+
+// read a line of text from a text file stripping
+// off the line terminator and replacing it with
+// a null string terminator.
+// returns:  -1 on error or the number of characters in
+//             in the returning string
+
+// A line longer than nc - 1 characters is cut short, and the rest of it is
+// read and dropped
+
+int MyThes::readLine(FILE * pf, char * buf, int nc)
+{
+  // fgets writes the last byte of buf only when the line fills the buffer
+  buf[nc-1] = 1;
+  if (!fgets(buf,nc,pf)) return -1;
+  if (buf[nc-1] == '\0' && buf[nc-2] != '\n') {
+    int c;
+    while ((c = fgetc(pf)) != EOF && c != '\n');
+  }
+  mychomp(buf);
+  return strlen(buf);
+}
+
+
+ 
+//  performs a binary search on null terminated character
+//  strings
+//
+//  returns: -1 on not found
+//           index of wrd in the list[]
+
+int MyThes::binsearch(char * sw, char* _list[], int nlst) 
+{
+    int lp, up, mp, j, indx;
+    lp = 0;
+    up = nlst-1;
+    indx = -1;
+    if (strcmp(sw,_list[lp]) < 0) return -1;
+    if (strcmp(sw,_list[up]) > 0) return -1;
+    while (indx < 0 ) {
+        mp = (int)((lp+up) >> 1);
+        j = strcmp(sw,_list[mp]);
+        if ( j > 0) {
+            lp = mp + 1;
+        } else if (j < 0 ) {
+            up = mp - 1;
+        } else {
+            indx = mp;
+        }
+        if (lp > up) return -1;      
+    }
+    return indx;
+}
+
+char * MyThes::get_th_encoding()
+{
+  return encoding;
+}
+
+
+// string duplication routine
+char * MyThes::mystrdup(const char * s)
+{
+  char * d = NULL;
+  if (s) {
+    int sl = strlen(s)+1;
+    d = (char *) malloc(sl);
+    if (d) memcpy(d,s,sl);
+  }
+  return d;
+}
+
+// remove cross-platform text line end characters
+void MyThes::mychomp(char * s)
+{
+  int k = strlen(s);
+  if ((k > 0) && ((*(s+k-1)=='\r') || (*(s+k-1)=='\n'))) *(s+k-1) = '\0';
+  if ((k > 1) && (*(s+k-2) == '\r')) *(s+k-2) = '\0';
+}
+
+
+// return index of char in string
+int MyThes::mystr_indexOfChar(const char * d, int c)
+{
+  char * p = strchr((char *)d,c);
+  if (p) return (int)(p-d);
+  return -1;
+}
+
+FILE * MyThes::myfopen(const char * path, const char * mode) {
+#ifdef _WIN32
+#define WIN32_LONG_PATH_PREFIX "\\\\?\\"
+    if (strncmp(path, WIN32_LONG_PATH_PREFIX, 4) == 0) {
+        int len = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+        wchar_t *buff = (wchar_t *) malloc(len * sizeof(wchar_t));
+        wchar_t *buff2 = (wchar_t *) malloc(len * sizeof(wchar_t));
+        FILE * f = NULL;
+        if (len > 0 && buff && buff2 &&
+            MultiByteToWideChar(CP_UTF8, 0, path, -1, buff, len) == len &&
+            _wfullpath( buff2, buff, len ) != NULL) {
+          f = _wfopen(buff2, (strcmp(mode, "r") == 0) ? L"r" : L"rb");
+        }
+        free(buff);
+        free(buff2);
+        return f;
+    }
+#endif
+    return fopen(path, mode);
+}

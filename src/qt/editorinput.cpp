@@ -1,7 +1,9 @@
 #include "manuscripteditor.h"
+#include "manuscriptlinks.h"
 #include "textkeys.h"
 #include "committedpunctuation.h"
 #include "manuscripttext.h"
+#include "manuscriptspacing.h"
 #include "viselection.h"
 
 #include <algorithm>
@@ -16,41 +18,17 @@
 #include <QtGui/QInputMethodEvent>
 #include <QtGui/QKeyEvent>
 #include <QtGui/QTextBlock>
+#include <QtGui/QTextLayout>
 #include <QtWidgets/QMenu>
 
 namespace {
-bool horizontal(QChar ch) { return ch == u' ' || ch == u'\t'; }
+using ManuscriptSpacing::horizontal;
 bool newline(QChar ch) { return ch == u'\n' || ch == QChar::ParagraphSeparator; }
 }
 
 QString ManuscriptEditor::normalizeInsertion(QString text, bool keepFinalSpace)
 {
-    // Compact in place. Newlines delimit paragraphs; NBSP and other Unicode
-    // spacing characters are ordinary manuscript data.
-    const qsizetype length = text.size();
-    auto *data = text.data();
-    qsizetype written = 0;
-    bool space = false;
-    for (qsizetype read = 0; read < length; ++read) {
-        QChar ch = data[read];
-        if (horizontal(ch)) {
-            space = true;
-            continue;
-        }
-        if (ch == u'\r') {
-            if (read + 1 < length && data[read + 1] == u'\n')
-                ++read;
-            ch = u'\n';
-        }
-        if (space && ch != u'\n')
-            data[written++] = u' ';
-        space = false;
-        data[written++] = ch;
-    }
-    if (space && keepFinalSpace)
-        data[written++] = u' ';
-    text.resize(written);
-    return text;
+    return ManuscriptSpacing::normalizeInsertion(std::move(text), keepFinalSpace);
 }
 
 void ManuscriptEditor::trackSeparator(const QTextCursor &cursor)
@@ -110,7 +88,7 @@ bool ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
         ManuscriptText::insert(cursor, text);
     }
     if (kind == Input::Typed && smart_)
-        punctuation_->feed(document(), first, text);
+        punctuation_->feed(document(), first, text, model_->isGeneric());
     return true;
 }
 
@@ -139,7 +117,6 @@ void ManuscriptEditor::setCopyDeletedText(bool enabled)
 {
     if (copyDeleted_ == enabled) return;
     finishTyping();
-    deletionRun_.clear();
     copyDeleted_ = enabled;
 }
 
@@ -152,20 +129,6 @@ void ManuscriptEditor::copyRemovedText(const QString &text)
 {
     if (copyDeleted_ && !text.isEmpty())
         QGuiApplication::clipboard()->setText(text);
-}
-
-void ManuscriptEditor::copyDeletionRun(QString removed, EditRun run)
-{
-    if (removed.isEmpty()) return;
-    if (run == EditRun::None) {
-        deletionRun_.clear();
-        copyRemovedText(removed);
-        return;
-    }
-    if (run != editRun_) deletionRun_ = std::move(removed);
-    else if (run == EditRun::Backspace) deletionRun_.prepend(removed);
-    else deletionRun_.append(removed);
-    copyRemovedText(deletionRun_);
 }
 
 void ManuscriptEditor::typeText(const QString &text, int replaceStart, int replaceLength)
@@ -343,12 +306,12 @@ void ManuscriptEditor::eraseSelection(QTextCursor c, EditRun run)
     QScopedValueRollback<bool> guard(editing_, true);
     clearAlignment();
     beginInputBlock(c, run);
-    const QString removed = removedSelection(c);
+    const QString removed = run == EditRun::None ? removedSelection(c) : QString();
     replaceAt(c, {}, Input::Erase);
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);
-    copyDeletionRun(removed, run);
+    copyRemovedText(removed);
     editRun_ = run;
 }
 
@@ -360,9 +323,8 @@ void ManuscriptEditor::showPreedit(QInputMethodEvent *event)
         return;
     }
 
-    // Qt normally draws uncommitted characters in the underlying document
-    // font. In Generic mode that font is the tiny blank separator. Supply the
-    // writing font across the draft, keeping the input method's own styling.
+    // Supply the heading or prose font across the draft, keeping the input
+    // method's own candidate styling.
     QTextCharFormat writing;
     writing.setFont(inputMethodQuery(Qt::ImFont).value<QFont>());
     auto attributes = event->attributes();
@@ -555,16 +517,37 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
     QPlainTextEdit::keyPressEvent(e);
 }
 
+// cursorForPosition snaps to an insertion point even in the empty margin.
+// A pointer gesture must hit an actual printed character to offer its link.
+int ManuscriptEditor::characterUnderPointer(const QPoint &point) const
+{
+    const auto cursor = cursorForPosition(point);
+    const QRect caret = cursorRect(cursor);
+    if (point.y() < caret.top() || point.y() > caret.bottom()) return -1;
+    const auto line = cursor.block().layout()->lineForTextPosition(cursor.positionInBlock());
+    if (!line.isValid()) return -1;
+    const qreal x = point.x() - caret.left() + line.cursorToX(cursor.positionInBlock());
+    const auto bounds = line.naturalTextRect();
+    if (x < bounds.left() || x >= bounds.right()) return -1;
+    return cursor.block().position() + line.xToCursor(x, QTextLine::CursorOnCharacter);
+}
+
 void ManuscriptEditor::contextMenuEvent(QContextMenuEvent *event)
 {
     QMenu menu(this);
-    if (spellingMenu) {
-        const int pos = event->reason() == QContextMenuEvent::Keyboard ? textCursor().position()
-                            : cursorForPosition(event->pos()).position();
-        spellingMenu(&menu, pos);
-        if (!menu.isEmpty())
-            menu.addSeparator();
+    const bool keyboard = event->reason() == QContextMenuEvent::Keyboard;
+    const int pos = keyboard ? (virtualRows() ? -1 : textCursor().position())
+                             : characterUnderPointer(event->pos());
+    if (pos >= 0) {
+        const auto block = document()->findBlock(pos);
+        const auto link = ManuscriptLinks::at(ManuscriptText::blockText(block), pos - block.position(), keyboard);
+        if (!link.isEmpty())
+            menu.addAction(tr("&Open Link"), this, [this, link] { ManuscriptLinks::open(link, this); });
     }
+    if (spellingMenu && pos >= 0)
+        spellingMenu(&menu, pos);
+    if (!menu.isEmpty())
+        menu.addSeparator();
     auto *undoAction = menu.addAction(tr("Undo"), this, &ManuscriptEditor::undo);
     undoAction->setEnabled(document()->isUndoAvailable());
     auto *redoAction = menu.addAction(tr("Redo"), this, &ManuscriptEditor::redo);

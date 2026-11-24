@@ -29,7 +29,7 @@ QString preferencesFile()
 struct HelpRow { const char *scope; const char *keys; const char *effect; };
 constexpr HelpRow shortcuts[] = {
     {"Manuscript modes","First line","A // outside a URL selects Crumb mode. Other manuscripts use Generic mode. The status bar shows the current mode."},
-    {"Generic mode","Titles","The first paragraph is the document title if it lacks a period, is all caps, or precedes a blank line. Blank lines on both sides mark chapter titles."},
+    {"Generic mode","Titles","The first line can be a title if it lacks a period, is all caps, or precedes a blank or marker. Mark other headings with a separate line of one or more ASCII hyphens."},
     {"Manuscript","Ctrl+N","Append the next crumb or a new prose paragraph"},
     {"Crumb mode","Ctrl+1","Select the header and copy its lowercase form without its colon"},
     {"Manuscript","Ctrl+Q / Ctrl+Y","Select and copy the current crumb or paragraph without its newline / delete it"},
@@ -58,25 +58,35 @@ constexpr HelpRow shortcuts[] = {
     {"Manuscript","Ctrl+Enter / Alt+Enter","Center the current visual line / move the start of this crumb or paragraph to the top"},
     {"Navigation","F2 or Alt+Left / Shift+F2 or Alt+Right","Go back / forward in the shared history of references, names, bookmarks, and search results"},
     {"Crumb mode","F4 / Shift+F4","Next / previous numbering warning"},
-    {"Navigation","Ctrl+Shift+J / Ctrl+click","Follow a numbered reference in Crumb mode or find the preceding mention of a name in either mode. Back returns to the original writing position"},
-    {"Names","F6 / Shift+F6","Previous / next mention of any synonym in the group under the caret. Ctrl+Shift+click follows a name forward"},
+    {"Navigation","Ctrl+Shift+J / Ctrl+click","Open a URL, follow a numbered crumb reference, or find the preceding mention of a name or crumb genre. Back returns to the original writing position"},
+    {"Names","F6 / Shift+F6","Previous / next mention of a character, recurring name, or crumb genre at the caret. Ctrl+Shift+click follows a name forward"},
     {"Names","F5 in manuscript","Accept a suggested ending or open name completions. Use arrows and Enter to choose. Escape dismisses"},
     {"Names","Ctrl+, → Names","Choose completion and underlining for Characters and Recurring, the prefix length, and the underline color"},
     {"Symbols","Ctrl+U","Open Insert Symbol. Search by description, theme, symbol, or Unicode code point"},
     {"Insert Symbol","Alt+S or Ctrl+F / Alt+T or Ctrl+T","Focus Search / open the theme selector. Down from Search enters the grid, where arrows browse"},
     {"Insert Symbol","Enter / Ctrl+Enter / Ctrl+D","Insert and close / insert and continue browsing / toggle Favorite. Escape closes"},
-    {"Editing","Ctrl+, → Writing","Copy deleted text to the clipboard is on by default. Each run of Backspaces or Deletes builds a word in reading order"},
+    {"Editing","Ctrl+, → Writing","Enable Copy deleted text to the clipboard to copy deliberate removals. Individual Backspaces and Deletes always preserve the clipboard. Cut always copies."},
     {"Navigation","Ctrl+L","Go to a crumb number in Crumb mode or a physical line in Generic mode"},
     {"Panels","Ctrl+Shift+1 / Ctrl+Shift+2","Search Characters / Recurring by any synonym"},
     {"Panels","Ctrl+Shift+3 / Ctrl+Shift+4","Search visit history / genres or manuscript titles"},
     {"Panels","Type in Search · Up / Down","Highlight the first matching entry. Move among matches while every entry stays visible"},
-    {"History, Genres, Titles","Enter / Ctrl+Enter","Clear the search and visit the selected entry. In Genres, append the next crumb in the selected genre"},
+    {"History, Genres, Titles","Enter / Ctrl+Enter","Open the selected visit or title. In Genres, Enter starts the next crumb and Ctrl+Enter finds all mentions."},
     {"Navigation","Shift+F7","Switch between alphabetical and genre-number order, or alphabetical and document order for titles"},
     {"Panels","F9 / Shift+F9","Show or hide navigation / synonym lists"},
     {"Layout","Ctrl+Shift+F10","Arrange panels and columns in the current window. The View menu can restore all default layouts"},
     {"Synonym lists","Insert / F2 / Delete","Add from the manuscript selection / edit / remove a synonym group"},
     {"Synonym lists","Enter / Ctrl+Enter","Find all occurrences / insert the first synonym at the manuscript caret. Both clear the panel search"},
     {"Synonym lists","F5 / Escape","Reload the list from disk / return to the manuscript"},
+    {"Generic mode","Titles → End of document","Go to the end of the final paragraph. This entry stays last in either sort order."},
+    {"Generic mode","Chapter marker","Type a hyphen on its own line after a heading. Click or move to the marker to see and edit it. Blank lines within the manuscript keep their space."},
+    {"Names","Alt+E in Add or Edit","Exclude this group from autocomplete. Searches, underlines, spelling, and explicit insertion still use its names."},
+    {"Manuscript","Ctrl+2","Select the whole word under the caret, including internal apostrophes and hyphens"},
+    {"Thesaurus","F7","Look up the selection or word at the caret in the offline English thesaurus"},
+    {"Thesaurus","Arrows / Enter / Ctrl+C","Choose an alternative / replace the original passage / copy the chosen word. Ctrl+L edits the lookup and Escape closes."},
+    {"Web reference","Ctrl+Shift+L, then D / S / T","Look up the selection or current word in the Merriam-Webster dictionary / entry synonyms / thesaurus. Escape cancels."},
+    {"Web links","Ctrl+click or Ctrl+Shift+J","Open an HTTP, HTTPS, or www. address in your browser. Open Link is also in the context menu. Spelling skips the address."},
+    {"Daily count","F10 → Set Today’s Count","Enter the new count or choose Reset to Zero, then press Enter. Generic word counts can be negative."},
+    {"Website","F10 → Open TheCrumbs.org","Open Alfredo Llaquet-Alsina’s Crumbs in the browser. The same link appears in the center of the status bar when space permits."},
     {"Spelling","F8 / Shift+F8","Review next / previous spelling issue"},
     {"Spelling","Ctrl+Shift+D","Open the manuscript dictionary"},
     {"Spelling review","Enter / Alt+A","Apply the replacement / replace all occurrences of the misspelling"},
@@ -112,7 +122,7 @@ constexpr HelpRow shortcuts[] = {
     {"Mac keyboard","Command+N / O / S / Shift+S / F","New window / open / save / Save As / find"},
     {"Mac keyboard","Command+,","Open Settings"},
     {"Mac keyboard","Command+W / Command+Q","Close this window / quit Crumb Writer, with normal save confirmation"},
-    {"Mac navigation","Command+click / Command+Shift+click","Follow a reference or the previous / next mention of a name"},
+    {"Mac navigation","Command+click / Command+Shift+click","Open a URL, follow a crumb reference, or jump to the previous / next mention of a name"},
     {"Mac keyboard","Control+Shift+B / Control+Shift+W","Open Bookmarks / toggle Wrap in Find. Option combinations can still type special characters"},
     {"Mac synonym lists","Control+I","Add a group from the manuscript selection while Characters or Recurring has focus. Works in its search field or list"},
     {"Mac lists","Backspace","Remove the selected entry in a focused synonym, bookmark, or manuscript dictionary list. In search and edit fields, Backspace edits the text"},
@@ -128,7 +138,7 @@ Preferences::Preferences(const QString &file)
 
 bool Preferences::enabled(const QString &key) const
 {
-    return settings_.value("editor/" + key, true).toBool();
+    return settings_.value("editor/" + key, key != "copy-deleted").toBool();
 }
 
 int Preferences::saveDelay() const

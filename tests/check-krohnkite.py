@@ -320,7 +320,7 @@ def check_live_resize(app, run, launch, screen):
         wait_for('retiling to full window width', lambda: rectangle(writer)[2] == wide[2])
         assert typing.wait(timeout=8) == 0
     output('xdotool', 'key', '--clearmodifiers', 'ctrl+s')
-    expected = (manuscript + text + '\n\n').encode()
+    expected = (manuscript + text + '\n').encode()
     wait_for('typing saved at last crumb', lambda: path.read_bytes() == expected)
     print(f'Krohnkite resized a 3,371-crumb manuscript from {narrow[2]} to {wide[2]} pixels '
           'during typing. All input reached the final body.', flush=True)

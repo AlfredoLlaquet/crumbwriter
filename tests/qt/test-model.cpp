@@ -15,6 +15,7 @@
 #include <clocale>
 #include <cstdio>
 #include <cstdlib>
+#include <limits>
 #include <random>
 
 static void check(bool passed, const char *function, int line, const char *condition)
@@ -216,7 +217,7 @@ static void incrementalIndex()
     const QStringList inserts = { QStringLiteral("x"), QStringLiteral("\n"), QStringLiteral("5"),
         QStringLiteral("C 7: A #2: x\n"), QStringLiteral("\nC 2: B #4: y\nC 4: A #5: z"),
         QStringLiteral("é"), QStringLiteral(" #1"), QStringLiteral(" "), QStringLiteral("//"),
-        QStringLiteral(".\n\n"), QStringLiteral("\n\nChapter\n\n") };
+        QStringLiteral(".\n\n"), QStringLiteral("\n\nChapter\n\n"), QStringLiteral("\nTitle\n-\n"), QStringLiteral("-") };
     std::mt19937 rng(318);
     for (int step = 0; step < 220; ++step) {
         if (step % 15 == 4 && doc.isUndoAvailable()) {
@@ -260,7 +261,7 @@ static void paragraphStructure()
 {
     using Role = ParagraphRole;
     QTextDocument doc;
-    const QString opening = QStringLiteral("A first sentence.\nAnother sentence.\n\nA chapter.\n\nBody text.\n");
+    const QString opening = QStringLiteral("A first sentence.\nAnother sentence.\n\nA chapter.\n-\nBody text.\n");
     doc.setPlainText(opening);
     CrumbModel model(&doc);
     CHECK(model.isGeneric() && model.paragraphCount() == 4 && model.titleLines() == QVector<int>{3});
@@ -279,10 +280,10 @@ static void paragraphStructure()
     doc.undo();
     CHECK(model.paragraphRole(3) == Role::ChapterTitle);
     replace(doc, doc.findBlockByNumber(1).position(), 0, QStringLiteral("\n"));
-    const QVector<int> moved{0, 2, 4};
+    const QVector<int> moved{0, 4};
     CHECK(last.titlesChanged && model.titleLines() == moved);
     CHECK(model.paragraphRole(0) == Role::DocumentTitle);
-    CHECK(model.neighborTitle(0, false) == 2 && model.neighborTitle(4, true) == 2);
+    CHECK(model.neighborTitle(0, false) == 4 && model.neighborTitle(4, true) == 0);
     CHECK(model.neighborTitle(0, true) == -1 && model.neighborTitle(4, false) == -1);
 
     doc.setPlainText(QStringLiteral("ÁRBOL 2.\nProse."));
@@ -292,7 +293,7 @@ static void paragraphStructure()
     doc.setPlainText(QStringLiteral("Mixed Case\nProse."));
     CHECK(model.paragraphRole(0) == Role::DocumentTitle);
     doc.setPlainText(QStringLiteral("\nName of chapter\n  \t\nText."));
-    CHECK(model.paragraphRole(0) == Role::Blank && model.paragraphRole(1) == Role::ChapterTitle);
+    CHECK(model.paragraphRole(0) == Role::Blank && model.paragraphRole(1) == Role::Body);
     CHECK(model.paragraphCount() == 2);
     doc.setPlainText(QStringLiteral("First paragraph.\n"));
     CHECK(model.titleLines().isEmpty() && model.paragraphCount() == 1);
@@ -303,7 +304,27 @@ static void paragraphStructure()
     doc.setPlainText(QStringLiteral("Body.\n\nChapter"));
     CHECK(model.titleLines().contains(0) && !model.titleLines().contains(2));
     replace(doc, doc.characterCount() - 1, 0, QStringLiteral("\n\n"));
-    CHECK(model.paragraphRole(2) == Role::ChapterTitle);
+    CHECK(model.paragraphRole(2) == Role::Body); // Blank lines preserve prose.
+    doc.setPlainText(QStringLiteral("First paragraph.\n-\nBody\n----\n---\n\n"));
+    CHECK(model.paragraphRole(0) == Role::DocumentTitle && model.paragraphRole(1) == Role::TitleMarker);
+    CHECK(model.paragraphRole(2) == Role::ChapterTitle && model.paragraphRole(3) == Role::TitleMarker);
+    CHECK(model.paragraphRole(4) == Role::Body); // An unattached run stays literal.
+    CHECK(model.paragraphCount() == 3 && model.totalWords() == 4 && model.record(1).words == 0);
+    model.markOpened();
+    replace(doc, doc.findBlockByNumber(1).position(), 0, QStringLiteral("-"));
+    CHECK(model.todayWords() == 0 && model.totalWords() == 4);
+    replace(doc, doc.findBlockByNumber(3).position(), 0, QStringLiteral("x"));
+    CHECK(model.paragraphRole(2) == Role::Body && model.paragraphRole(4) == Role::TitleMarker);
+    CHECK(model.documentEndPosition() == doc.findBlockByNumber(3).position() + 5);
+    doc.undo();
+    CHECK(model.paragraphRole(3) == Role::TitleMarker && model.todayWords() == 0);
+    doc.setPlainText(QStringLiteral("Prose.\nA title\n-\n\n"));
+    CHECK(model.documentEndPosition() == doc.findBlockByNumber(2).position() - 1);
+    doc.setPlainText(QStringLiteral("General title\n\n\nA chapter\n -\nOther\n- more"));
+    CHECK(model.paragraphRole(1) == Role::TitleSpacer && model.paragraphRole(2) == Role::Blank);
+    CHECK(model.titleLines() == QVector<int>{0});
+    doc.setPlainText(QStringLiteral("\n\n"));
+    CHECK(model.documentEndPosition() == 0);
 }
 
 static void firstLineMode()
@@ -564,6 +585,70 @@ static void dailyWordPersistence(const QString &directory)
     CHECK(counted.todayWords() == 1);
 }
 
+static void adjustedCounts(const QString &directory)
+{
+    QDate day(2026, 11, 20);
+    const auto clock = [&] { return day; };
+    const QString manuscript = directory + "/Adjusted.txt";
+    const QString morning = QStringLiteral("Book//Crumb 1: Beginning: The door opened.");
+    QTextDocument doc;
+    doc.setPlainText(morning);
+    CrumbModel model(&doc, clock);
+    CHECK(model.openDailyCount(manuscript).isEmpty());
+    const auto reopen = [&](const QString &path, const QString &contents, qint64 crumbs, qint64 words) {
+        QTextDocument file;
+        file.setPlainText(contents);
+        CrumbModel restored(&file, clock);
+        CHECK(restored.openDailyCount(path).isEmpty());
+        CHECK(restored.todayCount() == crumbs && restored.todayWords() == words);
+    };
+    doc.setModified(false);
+    CHECK(model.setTodayCount(17).isEmpty() && model.todayCount() == 17 && !doc.isModified());
+    reopen(manuscript, morning, 17, 0);
+    const QString second = QStringLiteral("\nCrumb 2: Afterward: The door closed.");
+    replace(doc, morning.size(), 0, second);
+    CHECK(model.todayCount() == 18);
+    const auto pending = model.dailySnapshot();
+    CHECK(model.setTodayCount(5).isEmpty());
+    const qint64 wordsAdded = model.todayWords();
+    CHECK(model.publishDailySnapshot(manuscript, pending).isEmpty()); // Save began before the adjustment.
+    reopen(manuscript, doc.toPlainText(), 5, wordsAdded);
+    doc.undo();
+    CHECK(model.todayCount() == 4);
+    doc.redo();
+    CHECK(model.todayCount() == 5);
+    CHECK(model.setTodayCount(0).isEmpty());
+    doc.undo();
+    CHECK(model.todayCount() == 0);
+    doc.redo();
+    CHECK(model.todayCount() == 0);
+
+    replace(doc, 0, 6, {}); // Switch to prose in the same manuscript.
+    CHECK(model.isGeneric() && model.setTodayCount(-12).isEmpty());
+    CHECK(model.todayWords() == -12 && model.todayCount() == 0);
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral(" Again."));
+    CHECK(model.todayWords() == -11);
+    doc.undo();
+    CHECK(model.todayWords() == -12);
+    CHECK(model.publishDailySnapshot(manuscript, model.dailySnapshot()).isEmpty());
+    reopen(manuscript, doc.toPlainText(), 0, -12);
+    reopen(directory + "/Unadjusted.txt", doc.toPlainText(), 0, 0);
+    doc.undo();
+    CHECK(!model.isGeneric() && model.todayCount() == 0);
+    CHECK(model.setTodayCount(7).isEmpty());
+    doc.redo();
+    CHECK(model.isGeneric() && model.todayWords() == -12 && model.todayCount() == 7);
+    CHECK(model.setTodayCount(std::numeric_limits<qint64>::max()).isEmpty());
+    replace(doc, doc.characterCount() - 1, 0, QStringLiteral(" Again."));
+    CHECK(model.todayWords() == std::numeric_limits<qint64>::max());
+    doc.undo();
+    reopen(manuscript, doc.toPlainText(), 7, std::numeric_limits<qint64>::max());
+    day = day.addDays(1);
+    model.refreshDay();
+    CHECK(model.todayWords() == 0 && model.todayCount() == 0);
+    reopen(manuscript, doc.toPlainText(), 0, 0);
+}
+
 int main(int argc, char **argv)
 {
     QTemporaryDir temp;
@@ -578,6 +663,7 @@ int main(int argc, char **argv)
     numbersAndDailyCount();
     manuscriptStatistics();
     dailyPersistence(temp.path());
+    adjustedCounts(temp.path());
     paragraphStructure();
     firstLineMode();
     dailyWordPersistence(temp.path());

@@ -3,21 +3,82 @@
 #include "synonymmatch.h"
 
 #include <QAbstractTableModel>
+#include <QApplication>
 #include <QDialogButtonBox>
 #include <QHeaderView>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QPushButton>
+#include <QPainter>
+#include <QStyledItemDelegate>
 #include <QElapsedTimer>
 #include <QScreen>
 #include <QTableView>
 #include <QTextBlock>
 #include <QTextDocument>
+#include <QTextLayout>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <vector>
 
 namespace {
+constexpr int passageMatchRole = Qt::UserRole + 2;
+
+// Paint the native cell background, selection and focus. Lay out its plain
+// text separately so only this row's match is bold, even if it occurs twice.
+class PassageDelegate final : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter *painter, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        auto cell = option;
+        initStyleOption(&cell, index);
+        const auto span = index.data(passageMatchRole).toPoint(); // start, length
+        const QString passage = cell.text;
+        const auto *style = cell.widget ? cell.widget->style() : QApplication::style();
+        QRect rect = style->subElementRect(QStyle::SE_ItemViewItemText, &cell, cell.widget);
+        const int margin = style->pixelMetric(QStyle::PM_FocusFrameHMargin, &cell, cell.widget) + 1;
+        rect.adjust(margin, 0, -margin, 0);
+        cell.text.clear();
+        style->drawControl(QStyle::CE_ItemViewItem, &cell, painter, cell.widget);
+        if (rect.isEmpty()) return;
+
+        QFont bold = cell.font;
+        bold.setBold(true);
+        const QFontMetrics boldMetrics(bold, painter->device());
+        const QFontMetrics metrics(cell.font, painter->device());
+        QString match = boldMetrics.elidedText(passage.mid(span.x(), span.y()), Qt::ElideRight, rect.width());
+        const int space = qMax(0, rect.width() - boldMetrics.horizontalAdvance(match));
+        const auto suffix = passage.mid(span.x() + span.y());
+        const int leftRoom = qMax(space / 2, space - metrics.horizontalAdvance(suffix));
+        const QString left = metrics.elidedText(passage.left(span.x()), Qt::ElideLeft, leftRoom);
+        const QString right = metrics.elidedText(suffix, Qt::ElideRight, qMax(0, space - metrics.horizontalAdvance(left)));
+        QTextLayout layout(left + match + right, cell.font, painter->device());
+        QTextOption textOption;
+        textOption.setTextDirection(Qt::LayoutDirectionAuto);
+        textOption.setAlignment(cell.displayAlignment & Qt::AlignHorizontal_Mask);
+        layout.setTextOption(textOption);
+        QTextLayout::FormatRange range;
+        range.start = int(left.size());
+        range.length = int(match.size());
+        range.format.setFontWeight(QFont::Bold);
+        layout.setFormats({range});
+        layout.beginLayout();
+        auto line = layout.createLine();
+        if (line.isValid()) line.setLineWidth(rect.width());
+        layout.endLayout();
+        if (!line.isValid()) return;
+        const auto group = !(cell.state & QStyle::State_Enabled) ? QPalette::Disabled :
+                           (cell.state & QStyle::State_Active) ? QPalette::Active : QPalette::Inactive;
+        const auto role = cell.state & QStyle::State_Selected ? QPalette::HighlightedText : QPalette::Text;
+        painter->save();
+        painter->setClipRect(rect, Qt::IntersectClip);
+        painter->setPen(cell.palette.color(group, role));
+        layout.draw(painter, QPointF(rect.left(), rect.top() + (rect.height() - line.height()) / 2));
+        painter->restore();
+    }
+};
+
 struct Occurrence {
     int line, start, end; // UTF-16 columns within the physical line.
 };
@@ -58,12 +119,15 @@ public:
         if (!block.isValid()) return {};
         if (role == Qt::UserRole) return block.position() + hit.start;
         if (role == Qt::UserRole + 1) return block.position() + hit.end;
-        if (role != Qt::DisplayRole && role != Qt::ToolTipRole) return {};
+        if (role != Qt::DisplayRole && role != Qt::ToolTipRole && role != passageMatchRole) return {};
         if (index.column() == 0) return hit.line + 1;
         const auto text = ManuscriptText::blockText(block);
         if (index.column() == 1) return text.mid(hit.start, hit.end - hit.start);
-        const int left = std::max(0, hit.start - 50);
-        const int right = hit.end + std::min(70, int(text.size()) - hit.end);
+        int left = std::max(0, hit.start - 50);
+        if (left && text.at(left).isLowSurrogate()) --left;
+        if (role == passageMatchRole) return QPoint(hit.start - left + (left != 0), hit.end - hit.start);
+        int right = hit.end + std::min(70, int(text.size()) - hit.end);
+        if (right < text.size() && text.at(right).isLowSurrogate()) ++right;
         QString excerpt = text.mid(left, right - left);
         if (left > 0) excerpt.prepend(QChar(0x2026));
         if (right < text.size()) excerpt.append(QChar(0x2026));
@@ -124,6 +188,7 @@ SynonymResults::SynonymResults(QTextDocument *document, SynonymMatcher *matcher,
     view_->setObjectName(QStringLiteral("synonymMatches"));
     view_->setAccessibleName(QStringLiteral("Manuscript occurrences"));
     view_->setModel(model_);
+    view_->setItemDelegateForColumn(2, new PassageDelegate(view_));
     view_->setSelectionBehavior(QAbstractItemView::SelectRows);
     view_->setSelectionMode(QAbstractItemView::SingleSelection);
     view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -170,12 +235,27 @@ void SynonymResults::showGroup(int group)
     if (!matcher_ || group < 0 || group >= matcher_->groups().size()) return;
     const bool refresh = !current_ || group_ != group;
     group_ = group;
-    setWindowTitle(QStringLiteral("Occurrences — %1").arg(matcher_->groups().at(group).aliases.first()));
+    shown_ = matcher_->groups().at(group);
+    setWindowTitle(QStringLiteral("Occurrences — %1").arg(shown_.aliases.first()));
     show();
     raise();
     activateWindow();
     if (refresh) invalidate();
     view_->setFocus();
+}
+
+void SynonymResults::refreshGroup()
+{
+    if (!matcher_ || group_ < 0) return;
+    const auto &groups = matcher_->groups();
+    for (int row = 0; row < groups.size(); ++row) {
+        if (groups[row].source == shown_.source && groups[row].aliases == shown_.aliases) {
+            group_ = row;
+            invalidate();
+            return;
+        }
+    }
+    reset();
 }
 
 void SynonymResults::reset()

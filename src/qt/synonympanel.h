@@ -19,6 +19,8 @@ public:
     bool flush(QString *error = nullptr);
     bool hasPending() const;
     QStringList allAliases() const;
+    void setGenres(const QStringList &genres);
+    bool showGenreOccurrences(const QString &genre);
     SynonymMatcher *matcher() const { return matcher_; }
 
     std::function<void()> onChanged;
@@ -29,11 +31,13 @@ public:
 
 private:
     class Section;
-    void showOccurrences(bool recurring, int row);
+    void showOccurrences(int group);
+    void rebuildMatcher();
     void changed();
     QPointer<QTextDocument> document_;
     SynonymMatcher *matcher_;
     Section *characters_;
     Section *recurring_;
     SynonymResults *results_ = nullptr;
+    QStringList genres_;
 };

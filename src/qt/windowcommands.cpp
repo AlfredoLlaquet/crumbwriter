@@ -1,7 +1,9 @@
 #include "mainwindow.h"
+#include "wordtools.h"
 #include "bookmarks.h"
 #include "commandicons.h"
 #include "manuscripteditor.h"
+#include "manuscriptlinks.h"
 #include "manuscripttext.h"
 #include "preferences.h"
 #include "searchpanel.h"
@@ -22,7 +24,6 @@
 #include <QRegularExpression>
 #include <QSplitter>
 #include <QTextBlock>
-#include <QTextLayout>
 #include <QToolBar>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -52,20 +53,6 @@ protected:
     }
 };
 
-// cursorForPosition snaps to an insertion point even in the empty margin.
-// Look up the actual character so clicking unused paper cannot follow a name.
-int characterUnderPointer(ManuscriptEditor *editor, const QPoint &point)
-{
-    const auto cursor = editor->cursorForPosition(point);
-    const QRect caret = editor->cursorRect(cursor);
-    if (point.y() < caret.top() || point.y() > caret.bottom()) return -1;
-    const auto line = cursor.block().layout()->lineForTextPosition(cursor.positionInBlock());
-    if (!line.isValid()) return -1;
-    const qreal x = point.x() - caret.left() + line.cursorToX(cursor.positionInBlock());
-    const auto bounds = line.naturalTextRect();
-    if (x < bounds.left() || x >= bounds.right()) return -1;
-    return cursor.block().position() + line.xToCursor(x, QTextLine::CursorOnCharacter);
-}
 }
 
 void MainWindow::buildToolbar(QVBoxLayout *layout)
@@ -116,6 +103,12 @@ void MainWindow::buildMenu()
     copyAction_ = add(edit, "Copy crumb", "Ctrl+Q", [this] { editor_->copyCrumb(); editor_->setFocus(); });
     deleteAction_ = add(edit, "Delete current crumb", "Ctrl+Y", [this] { editor_->deleteCrumb(); editor_->setFocus(); });
     add(edit, "Delete word or space", "Ctrl+W", [this] { editor_->deleteWord(); editor_->setFocus(); });
+    add(edit, "Select word at caret", "Ctrl+2", [this] { words_->selectWord(); });
+    add(edit, "Offline Thesaurus…", "F7", [this] { words_->showThesaurus(); });
+    auto *web = edit->addMenu("Look Up in Merriam-Webster");
+    add(web, "Dictionary", "Ctrl+Shift+L, D", [this] { words_->openWeb(WordTools::Reference::Dictionary); });
+    add(web, "Dictionary synonyms", "Ctrl+Shift+L, S", [this] { words_->openWeb(WordTools::Reference::Synonyms); });
+    add(web, "Thesaurus", "Ctrl+Shift+L, T", [this] { words_->openWeb(WordTools::Reference::Thesaurus); });
     add(edit, "Insert Symbol…", "Ctrl+U", [this] { openSymbols(); });
     add(edit, "Complete Name", "F5", [this] { editor_->setFocus(); synonymWriting_->complete(); });
     add(edit, "Next spelling issue…", "F8", [this] { spelling_->next(false); });
@@ -141,7 +134,7 @@ void MainWindow::buildMenu()
     goToNumberAction_ = add(nav, "Go to crumb number…", "Ctrl+L", [this] { search_->goToNumber(); });
     add(nav, "Back", "F2 / Alt+Left", [this] { goBack(false); });
     add(nav, "Forward", "Shift+F2 / Alt+Right", [this] { goBack(true); });
-    add(nav, "Follow Reference or Name", "Ctrl+Shift+J", [this] {
+    add(nav, "Follow Link, Reference, or Mention", "Ctrl+Shift+J", [this] {
         followAt(editor_->textCursor().position(), true);
     });
     add(nav, "Previous Mention", "F6", [this] { synonymWriting_->navigate(true); });
@@ -164,8 +157,10 @@ void MainWindow::buildMenu()
     add(view, "Arrange Panels and Columns…", "Ctrl+Shift+F10", [this] { layouts_->arrange(this); });
     add(view, "Restore Default Layouts", {}, [this] { layouts_->restoreDefaults(); });
     add(menu_, "Manuscript statistics…", "Ctrl+Shift+I", [this] { showStatistics(); });
+    add(menu_, "Set Today’s Count…", {}, [this] { side_->showTodayCountDialog(); });
     add(menu_, "Settings…", "Ctrl+,", [this] { prefs_.show(this); });
     add(menu_, "Keyboard Shortcuts…", "F1", [this] { showShortcutHelp(this); });
+    add(menu_, "Open TheCrumbs.org", {}, [this] { openCrumbsWebsite(); });
     add(menu_, "&About Crumb Writer…", {}, [this] { showAbout(); });
 #ifdef Q_OS_MACOS
     add(menu_, "Close window", "Cmd+W", [this] { close(); });
@@ -204,6 +199,7 @@ void MainWindow::updateModeControls()
     const bool generic = editor_->model().isGeneric();
     mode_->setText(generic ? "Generic mode" : "Crumb mode");
     mode_->setToolTip("The first line selects Crumb mode when it contains // outside a URL.");
+    fitFooter();
     appendTool_->setText(generic ? "New Paragraph" : "New Crumb");
     appendTool_->setToolTip(generic ? "Append a paragraph (Ctrl+N)" : "Append a crumb (Ctrl+N)");
     appendAction_->setText(generic ? "New paragraph\tCtrl+N" : "New crumb\tCtrl+N");
@@ -268,10 +264,19 @@ bool MainWindow::followAt(int position, bool backward, bool mouse)
     if (position < 0) return false;
     QTextCursor c(editor_->document());
     c.setPosition(position);
+    const int here = c.positionInBlock();
+    const QString line = ManuscriptText::blockText(c.block());
+    if (mouse || !editor_->virtualRows()) {
+        const auto link = ManuscriptLinks::at(line, here, !mouse);
+        if (!link.isEmpty()) {
+            ManuscriptLinks::open(link, this);
+            return true;
+        }
+    }
     const auto &record = editor_->model().record(c.blockNumber());
     if (editor_->model().isGeneric() || (!mouse && editor_->virtualRows())) {
         if ((mouse || !editor_->virtualRows()) && synonymWriting_->follow(position, backward, mouse)) return true;
-        if (!mouse) showNavigationStatus("Place the caret on a name from Characters or Recurring.");
+        if (!mouse) showNavigationStatus("Place the caret on a web link or a name from Characters or Recurring.");
         return false;
     }
     QString labels = "crumb";
@@ -280,8 +285,6 @@ bool MainWindow::followAt(int position, bool backward, bool mouse)
     const QRegularExpression expression("(?<![\\p{L}\\p{M}\\p{N}_])(?:" + labels +
         ")\\h+([0-9]+)(?![\\p{L}\\p{M}\\p{N}_])",
         QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
-    const int here = c.positionInBlock();
-    const QString line = ManuscriptText::blockText(c.block());
     auto matches = expression.globalMatch(line);
     while (matches.hasNext()) {
         const auto match = matches.next();
@@ -295,7 +298,7 @@ bool MainWindow::followAt(int position, bool backward, bool mouse)
         return true;
     }
     if (synonymWriting_->follow(position, backward, mouse)) return true;
-    if (!mouse) showNavigationStatus("Place the caret on a name or a reference such as “crumb 200”.");
+    if (!mouse) showNavigationStatus("Place the caret on a web link, a mention, or a reference such as “crumb 200”.");
     return false;
 }
 
@@ -311,9 +314,13 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
         follow |= mods == Qt::MetaModifier;
 #endif
         if (click->button() == Qt::LeftButton && follow) {
-            const int position = characterUnderPointer(editor_, click->position().toPoint());
+            const int position = editor_->characterUnderPointer(click->position().toPoint());
             if (followAt(position, !click->modifiers().testFlag(Qt::ShiftModifier), true)) return true;
         }
+    }
+    if (webLookupPending_ && watched == editor_ && e->type() == QEvent::FocusOut) {
+        webLookupPending_ = false;
+        documentStateChanged();
     }
     if (e->type() != QEvent::KeyPress) return false;
     auto *key = static_cast<QKeyEvent *>(e);
@@ -327,7 +334,26 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     auto *widget = qobject_cast<QWidget *>(watched);
     if (!widget || widget->window() != this) return false;
     if (widget == editor_ && editor_->viSelectionActive()) return false;
+    if (widget == editor_ && webLookupPending_) {
+        if (key->key() == Qt::Key_Control || key->key() == Qt::Key_Shift) return true;
+        webLookupPending_ = false;
+        documentStateChanged();
+        switch (key->key()) {
+        case Qt::Key_D: words_->openWeb(WordTools::Reference::Dictionary); break;
+        case Qt::Key_S: words_->openWeb(WordTools::Reference::Synonyms); break;
+        case Qt::Key_T: words_->openWeb(WordTools::Reference::Thesaurus); break;
+        case Qt::Key_Escape: break;
+        default: showNavigationStatus("Lookup canceled. Use D, S, or T after Ctrl+Shift+L."); break;
+        }
+        return true;
+    }
     if (isComposedTextKey(*key)) return false;
+    if (widget == editor_ && key->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier)
+        && key->key() == Qt::Key_L) {
+        webLookupPending_ = true;
+        setStatusMessage("Merriam-Webster — D Dictionary · S Synonyms · T Thesaurus · Esc Cancel");
+        return true;
+    }
     const bool inSynonyms = widget == synonyms_ || synonyms_->isAncestorOf(widget);
     const bool inPanel = inSynonyms || widget == side_ || side_->isAncestorOf(widget);
     if (widget == editor_ && key->key() == Qt::Key_Escape && !key->modifiers())
@@ -338,6 +364,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     const int code = key->key();
     if (mods == Qt::ControlModifier) {
         switch (code) {
+        case Qt::Key_2: if (widget == editor_) { words_->selectWord(); return true; } break;
         case Qt::Key_O: chooseFile(false); return true;
         case Qt::Key_S: save(false); return true;
         case Qt::Key_Comma: prefs_.show(this); return true;
@@ -392,6 +419,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     }
     if (editor_->hasFocus() && (mods == Qt::NoModifier || mods == Qt::ShiftModifier)) {
         if (code == Qt::Key_F2) { goBack(mods == Qt::ShiftModifier); return true; }
+        if (code == Qt::Key_F7 && !mods) { words_->showThesaurus(); return true; }
         if (code == Qt::Key_F5 && !mods) { synonymWriting_->complete(); return true; }
         if (code == Qt::Key_F6) { synonymWriting_->navigate(mods == Qt::NoModifier); return true; }
         if (code == Qt::Key_F4 && !editor_->model().isGeneric()) { numberingWarning(mods == Qt::ShiftModifier); return true; }

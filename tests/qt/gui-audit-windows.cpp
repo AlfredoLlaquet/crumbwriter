@@ -405,6 +405,30 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
     audit.require(opened, "The manuscript context menu was visible");
 }
 
+void auditWritingAids(GuiAudit &audit, MainWindow &window)
+{
+    auto *editor = window.editor();
+    if (audit.wantsView("offline-thesaurus")) {
+        key(editor, Qt::Key_F7);
+        auto *dialog = visible<QDialog>(window, "offlineThesaurus");
+        auto *query = visible<QLineEdit>(*dialog, "thesaurusQuery");
+        query->setText("doctor");
+        key(query, Qt::Key_Return);
+        auto *results = visible<QTreeWidget>(*dialog, "thesaurusResults");
+        waitFor([results] { return results->topLevelItemCount() > 0; }, "No offline thesaurus results appeared");
+        audit.capture("offline-thesaurus", dialog);
+        dismiss(dialog);
+    }
+    if (audit.wantsView("today-count")) {
+        action(documentMenu(window), "Set Today’s Count…")->trigger();
+        auto *dialog = visible<QDialog>(window, "todayCountDialog");
+        visible<QLineEdit>(*dialog, "todayCountValue");
+        visible<QPushButton>(*dialog, "resetTodayCount");
+        audit.capture("today-count", dialog);
+        dismiss(dialog);
+    }
+}
+
 void auditSymbols(GuiAudit &audit, MainWindow &window)
 {
     auto *editor = window.editor();
@@ -524,8 +548,8 @@ void auditGeneric(GuiAudit &audit, MainWindow &window)
     QTemporaryDir temp;
     QFile file(temp.filePath("The Observatory.txt"));
     if (!file.open(QIODevice::WriteOnly)
-        || file.write("The Observatory\n\nA clear night\n\nThe telescope waited for the first star.\n"
-                      "Ada Finch adjusted the focus.\n\nDaybreak\n\nA kettle began to whistle.") < 0)
+        || file.write("The Observatory\n\nA clear night\n-------------\nThe telescope waited for the first star.\n"
+                      "Ada Finch adjusted the focus.\n\nDaybreak\n--------\nA kettle began to whistle.") < 0)
         throw std::runtime_error("Could not write the generic manuscript fixture");
     file.close();
     audit.require(!window.loadDocument(temp.filePath("Missing.txt")),
@@ -619,6 +643,7 @@ void auditWindows(GuiAudit &audit, MainWindow &window)
         inspect(views, [&] { auditSynonyms(audit, window, name); });
     }
     inspect({"spelling", "dictionary", "editor-context-menu", "spelling-menu"}, [&] { auditSpelling(audit, window); });
+    inspect({"offline-thesaurus", "today-count"}, [&] { auditWritingAids(audit, window); });
     inspect({"symbols"}, [&] { auditSymbols(audit, window); });
     inspect({"name-completion"}, [&] { auditNameCompletion(audit, window); });
     inspect({"file-open", "file-save-as"}, [&] { auditFiles(audit, window); });

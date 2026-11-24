@@ -6,6 +6,8 @@
 #include <QApplication>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QContextMenuEvent>
+#include <QDesktopServices>
 #include <QDialog>
 #include <QElapsedTimer>
 #include <QFile>
@@ -22,9 +24,13 @@
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QTableView>
 #include <QTemporaryDir>
 #include <QTextBlock>
+#include <QTextBrowser>
+#include <QTextLayout>
 #include <QThread>
+#include <QTimer>
 #include <QToolBar>
 #include <QToolButton>
 #include <QTreeWidget>
@@ -211,8 +217,8 @@ void testDuplicateHistory(const QTemporaryDir &tmp)
 void testMentionCommands(const QTemporaryDir &tmp)
 {
     const auto path = tmp.filePath("Goose.txt");
-    const QByteArray text = "Book//Cranolo 1: First: Inspector Goose writes.\n"
-                            "Cranolo 2: Next: The lunar auditor reads Cranolo 1.\n"
+    const QByteArray text = "Book//Cranolo 1: Moonglass #1: Inspector Goose writes.\n"
+                            "Cranolo 2: Next: The lunar auditor reads Cranolo 1 beside Moonglass.\n"
                             "Cranolo 3: Last: Goose is at the desk.";
     write(path, text);
     write(path + ".characters", "Inspector Goose, The lunar auditor, Goose\n");
@@ -262,6 +268,38 @@ void testMentionCommands(const QTemporaryDir &tmp)
     CHECK(editor->textCursor().blockNumber() == 0);
     key(Qt::Key_F2);
     CHECK(editor->textCursor().position() == second);
+    const int genreTitle = text.indexOf("Moonglass"), genreBody = text.lastIndexOf("Moonglass");
+    editor->jumpTo(genreBody + 2, false);
+    key(Qt::Key_F6);
+    CHECK(editor->textCursor().position() == genreTitle);
+    key(Qt::Key_F6, Qt::ShiftModifier);
+    CHECK(editor->textCursor().position() == genreBody);
+    key(Qt::Key_4, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *genreSearch = window.findChild<QLineEdit *>("genresSearch");
+    CHECK(genreSearch && genreSearch->hasFocus());
+    genreSearch->setText("moongl");
+    key(Qt::Key_Return, Qt::ControlModifier);
+    auto *results = window.findChild<QTableView *>("synonymMatches");
+    CHECK(results && until([&] { return results->isVisible() && results->model()->rowCount() == 2; }));
+    key(Qt::Key_Return);
+    CHECK(editor->textCursor().selectedText() == "Moonglass");
+    // Deleting the first-line separator switches modes in the same editor.
+    auto mode = editor->textCursor();
+    mode.setPosition(4);
+    mode.setPosition(6, QTextCursor::KeepAnchor);
+    mode.removeSelectedText();
+    CHECK(editor->model().isGeneric());
+    editor->jumpTo(genreBody, false);
+    key(Qt::Key_F6);
+    CHECK(editor->textCursor().position() == genreBody);
+    key(Qt::Key_Z, Qt::ControlModifier);
+    CHECK(!editor->model().isGeneric());
+    editor->jumpTo(genreBody + 2, false);
+    key(Qt::Key_F6);
+    CHECK(editor->textCursor().position() == genreTitle);
+    editor->jumpTo(second, false);
+    key(Qt::Key_S, Qt::ControlModifier);
+    CHECK(until([&] { return !window.windowTitle().startsWith(QStringLiteral("• ")); }));
     key(Qt::Key_U, Qt::ControlModifier);
     auto *picker = window.findChild<QDialog *>("symbolPicker");
     CHECK(picker && until([&] { return picker->findChild<QLineEdit *>("symbolSearch")->hasFocus(); }));
@@ -290,6 +328,120 @@ void testMentionCommands(const QTemporaryDir &tmp)
     CHECK(editor->textCursor().selectedText() == "lunar auditor");
     CHECK(editor->textCursor().anchor() == oldAnchor && editor->textCursor().position() == oldPosition);
     if (!window.close()) pressChoice(window, "Discard Unsaved Changes");
+}
+
+void testWordCommandsAndStatus(const QTemporaryDir &tmp)
+{
+    Preferences prefs(tmp.filePath("word-shortcuts.ini"));
+    CHECK(!prefs.enabled("copy-deleted"));
+    prefs.settings().setValue("editor/copy-deleted", true);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    window.resize(1050, 650);
+    window.activateManuscript(false);
+    auto *editor = window.editor();
+    editor->loadText("The well-read doctor.");
+    editor->jumpTo(7, false);
+    CHECK(editor->copiesDeletedText() && until([&] { return editor->hasFocus(); }));
+    auto *link = window.findChild<QToolButton *>("crumbsWebsite");
+    CHECK(link && until([&] { return link->isVisible(); }));
+    CHECK(qAbs(link->mapTo(&window, link->rect().center()).x() - window.rect().center().x()) <= 2);
+    QTextBrowser browser;
+    QList<QUrl> urls;
+    QObject::connect(&browser, &QTextBrowser::sourceChanged, [&](const QUrl &url) { urls << url; });
+    QDesktopServices::setUrlHandler("https", &browser, "sourceChanged");
+    link->click();
+    CHECK(urls.size() == 1 && urls.last() == QUrl("https://www.thecrumbs.org/"));
+    editor->setFocus();
+    key(Qt::Key_2, Qt::ControlModifier);
+    CHECK(editor->textCursor().selectedText() == "well-read");
+    for (const int suffix : {Qt::Key_D, Qt::Key_S, Qt::Key_T}) {
+        key(Qt::Key_L, Qt::ControlModifier | Qt::ShiftModifier);
+        CHECK(!link->isVisible());
+        key(suffix);
+    }
+    CHECK(urls.size() == 4 && urls[1].path() == "/dictionary/well-read"
+          && urls[2].fragment() == "synonyms" && urls[3].path() == "/thesaurus/well-read");
+    key(Qt::Key_L, Qt::ControlModifier | Qt::ShiftModifier);
+    key(Qt::Key_Escape);
+    CHECK(link->isVisible() && urls.size() == 4);
+    window.resize(270, 350);
+    CHECK(until([&] { return !link->isVisible(); }));
+    QDesktopServices::unsetUrlHandler("https");
+}
+
+void testManuscriptLinks(const QTemporaryDir &tmp)
+{
+    const auto path = tmp.filePath("Links.txt");
+    const QString text = QStringLiteral("Book//Crumb 1: T: Goose writes.\nCrumb 2: www.example.org/Goose: End.");
+    write(path, text.toUtf8());
+    write(path + ".characters", "Goose\n");
+    Preferences prefs(tmp.filePath("link-shortcuts.ini"));
+    prefs.settings().setValue("editor/backup", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.loadDocument(path));
+    window.activateManuscript(true);
+    auto *editor = window.editor();
+    CHECK(until([&] { return editor->hasFocus(); }));
+
+    // Qt's URL handler can invoke an existing QUrl signal. Observe the exact
+    // target, without launching a browser or issuing a network request.
+    QTextBrowser receiver;
+    QList<QUrl> opened;
+    QObject::connect(&receiver, &QTextBrowser::sourceChanged, [&](const QUrl &url) { opened << url; });
+    QDesktopServices::setUrlHandler("https", &receiver, "sourceChanged");
+    const QUrl expected("https://www.example.org/Goose");
+    const int name = text.lastIndexOf("Goose");
+    editor->jumpTo(name + 2);
+    auto formatAt = [&](int position) {
+        const auto block = editor->document()->findBlock(position);
+        for (const auto &span : block.layout()->formats())
+            if (position >= block.position() + span.start && position < block.position() + span.start + span.length)
+                return span.format;
+        return QTextCharFormat();
+    };
+    CHECK(until([&] { return formatAt(name).fontUnderline(); }));
+    CHECK(formatAt(name).fontWeight() == QFont::Bold && !formatAt(name + 5).fontUnderline());
+    key(Qt::Key_J, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(opened.size() == 1 && opened.last() == expected && editor->textCursor().position() == name + 2);
+
+    auto point = editor->cursorRect().center() + QPoint(1, 0);
+    auto global = editor->viewport()->mapToGlobal(point);
+#ifdef Q_OS_MACOS
+    const auto modifier = Qt::MetaModifier;
+#else
+    const auto modifier = Qt::ControlModifier;
+#endif
+    QMouseEvent click(QEvent::MouseButtonPress, point, global, Qt::LeftButton, Qt::LeftButton, modifier);
+    QApplication::sendEvent(editor->viewport(), &click);
+    CHECK(opened.size() == 2 && opened.last() == expected && editor->textCursor().position() == name + 2);
+
+    QTimer::singleShot(0, [&] {
+        auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+        CHECK(menu && !menu->actions().isEmpty());
+        auto *action = menu->actions().constFirst();
+        CHECK(action->text() == "&Open Link");
+        action->trigger();
+        menu->close();
+    });
+    QContextMenuEvent request(QContextMenuEvent::Mouse, point, global);
+    QApplication::sendEvent(editor->viewport(), &request);
+    CHECK(opened.size() == 3 && opened.last() == expected);
+
+    const auto generic = tmp.filePath("LinkNovel.txt");
+    write(generic, "A Novel\nRead https://example.org/a_(b).");
+    CHECK(window.loadDocument(generic));
+    window.activateManuscript(false);
+    CHECK(until([&] { return editor->hasFocus(); }));
+    const int end = editor->manuscriptText().lastIndexOf(u'.');
+    editor->jumpTo(end);
+    CHECK(until([&] { return formatAt(end - 1).fontUnderline(); }));
+    CHECK(!formatAt(end).fontUnderline());
+    key(Qt::Key_J, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(opened.size() == 4 && opened.last() == QUrl("https://example.org/a_(b)"));
+    QDesktopServices::unsetUrlHandler("https");
+    CHECK(window.close());
 }
 
 void testWritingTools(const QTemporaryDir &tmp)
@@ -411,7 +563,7 @@ void testGroupedLiveEdits(const QTemporaryDir &tmp)
     auto *ed = window.editor();
     CHECK(until([&] { return ed->hasFocus(); }));
     key(Qt::Key_A, {}, "a");
-    CHECK(until([&] { return read(path) == original + 'a'; }));
+    CHECK(until([&] { return read(path) == original + "a\n"; }));
     key(Qt::Key_B, {}, "b");
     key(Qt::Key_Z, Qt::ControlModifier);
     CHECK(ed->manuscriptText() == original && !ed->document()->isUndoAvailable());
@@ -421,7 +573,7 @@ void testGroupedLiveEdits(const QTemporaryDir &tmp)
     key(Qt::Key_Space, Qt::ControlModifier);
     key(Qt::Key_Q, Qt::ShiftModifier, "Q");
     key(Qt::Key_F, {}, "f");
-    CHECK(until([&] { return read(path) == original + "ab"; }));
+    CHECK(until([&] { return read(path) == original + "ab\n"; }));
     CHECK(status->text().contains("Qf") && ed->viSelectionActive());
     key(Qt::Key_O, {}, "o");
     key(Qt::Key_X, {}, "x");
@@ -472,7 +624,7 @@ void testKeyboardLayouts(const QTemporaryDir &tmp)
 void testGenericWindow(const QTemporaryDir &tmp)
 {
     const QString path = tmp.filePath("Moon.txt");
-    const QByteArray bytes = "Cartography\n\nThe Arrival\n\nA goose counted twice.\nThe moon waited.\n";
+    const QByteArray bytes = "Cartography\n\nThe Arrival\n-----------\nA goose counted twice.\nThe moon waited.\n";
     write(path, bytes);
     write(path + ".bookmarks",
           R"({"version":1,"bookmarks":[{"category":"Scenes","name":"Arrival","line":3}]})");
@@ -673,6 +825,8 @@ int main(int argc, char **argv)
     testWindow(tmp);
     testDuplicateHistory(tmp);
     testMentionCommands(tmp);
+    testWordCommandsAndStatus(tmp);
+    testManuscriptLinks(tmp);
     testWritingTools(tmp);
     testGroupedLiveEdits(tmp);
     testKeyboardLayouts(tmp);

@@ -11,6 +11,8 @@ class DocumentStore;
 class QAction;
 class QDialog;
 class QFileDialog;
+class QGridLayout;
+class QResizeEvent;
 class QLabel;
 class QMenu;
 class QMessageBox;
@@ -25,6 +27,7 @@ class SymbolPicker;
 class SynonymPanel;
 class SynonymWriting;
 class WindowLayouts;
+class WordTools;
 
 class MainWindow final : public QWidget {
 public:
@@ -42,6 +45,7 @@ public:
     std::function<bool(const QString &)> pathAvailable;
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 private:
@@ -51,6 +55,9 @@ private:
     void focusNavigation(bool titlesOrGenres);
     void chooseFile(bool saving);
     void documentStateChanged();
+    void setStatusMessage(const QString &message);
+    void fitFooter();
+    void openCrumbsWebsite();
     void showCloseDialog();
     void save(bool asNew);
     void appendCrumb();
@@ -83,6 +90,10 @@ private:
     DocumentStore *store_ = nullptr;
     QSplitter *split_ = nullptr;
     QLabel *status_ = nullptr;
+    QToolButton *website_ = nullptr;
+    QGridLayout *footer_ = nullptr;
+    WordTools *words_ = nullptr;
+    bool webLookupPending_ = false;
     QLabel *mode_ = nullptr;
     QLabel *notice_ = nullptr;
     QWidget *noticeBar_ = nullptr;

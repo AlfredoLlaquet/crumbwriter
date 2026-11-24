@@ -20,7 +20,7 @@ hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$image"
 test "$(readlink "$mount/Applications")" = /Applications
 cmp LICENSE "$mount/LICENSE"
 ditto "$mount/Crumb Writer.app" "$installed"
-unset DICPATH QT_PLUGIN_PATH QT_QPA_PLATFORM DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
+unset DICPATH CRUMBWRITER_THESAURUS_DIR QT_PLUGIN_PATH QT_QPA_PLATFORM DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 python3 packaging/macos/bundle.py verify "$installed" arm64 x86_64
 executable="$installed/Contents/MacOS/Crumb Writer"

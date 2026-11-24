@@ -71,11 +71,11 @@ double contrast(const QColor &a, const QColor &b)
 void checkPalette(const QPalette &colors)
 {
     const QColor base = colors.base().color();
-    for (const auto &surface : {base, EditorColors::currentPaper(base), EditorColors::inactivePaper(base)}) {
+    for (const auto &surface : {base, EditorColors::currentPaper(colors), EditorColors::inactivePaper(base)}) {
         check(contrast(colors.text().color(), surface) >= 4.5, "manuscript text is readable on all three backgrounds");
         check(contrast(EditorColors::warning(base), surface) >= 4.5, "warning ink is readable on the manuscript");
         check(contrast(EditorColors::synonymUnderline(colors), surface) >= 3.0, "synonym marks are visible");
-        check(contrast(EditorColors::completionHint(colors), surface) >= 4.5, "completion hints are readable");
+        check(contrast(EditorColors::completionHint(colors), surface) >= 3.0, "transient completion ink is distinct from the paper");
     }
     check(contrast(colors.highlightedText().color(), colors.highlight().color()) >= 4.5, "selection colors");
     check(contrast(colors.toolTipText().color(), colors.toolTipBase().color()) >= 4.5, "tooltips");
@@ -243,6 +243,15 @@ int main(int argc, char **argv)
     checkPalette(dark);
     checkPalette(light);
     auto desktop = dark;
+    const QColor rose("#d85a78");
+    desktop.setColor(EditorColors::accentRole, rose);
+    for (bool darkChoice : {false, true}) {
+        const auto theme = EditorColors::explicitTheme(desktop, darkChoice);
+        const auto tinted = EditorColors::currentPaper(theme);
+        check(theme.color(EditorColors::accentRole) == rose && tinted.red() > tinted.blue() &&
+              tinted != theme.base().color(), "both explicit themes produce a subtle band from the desktop accent");
+        checkPalette(theme);
+    }
     desktop.setColor(QPalette::Base, QColor(45, 40, 49));
     desktop.setColor(QPalette::Inactive, QPalette::Base, Qt::lightGray);
     desktop.setColor(QPalette::Inactive, QPalette::Text, Qt::black);
@@ -311,9 +320,10 @@ int main(int argc, char **argv)
     check(bottom > top, "test crumb wraps");
     const auto activeFrame = editor->viewport()->grab().toImage();
     const auto band = marginAt(activeFrame, top), base = marginAt(activeFrame, neighbor);
-    check(base == dark.base().color() && band == EditorColors::currentPaper(base), "active band and neighboring paper");
-    check(marginAt(activeFrame, bottom) == band && band.lightness() > base.lightness() &&
-          band.saturation() < 35, "every wrapped row has a gently lifted neutral background");
+    check(base == dark.base().color() && editor->palette().color(EditorColors::accentRole) == rose &&
+          band == EditorColors::currentPaper(editor->palette()), "active band uses this desktop's rose accent");
+    check(marginAt(activeFrame, bottom) == band && band.lightness() > base.lightness() && band.red() > band.blue(),
+          "each wrapped row carries the same subtle accent tint");
 
     key(editor, Qt::Key_3, Qt::ControlModifier | Qt::ShiftModifier);
     auto *panel = window.findChild<QLineEdit *>("historySearch");

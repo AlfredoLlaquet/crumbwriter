@@ -1,7 +1,7 @@
 Crumb Writer
 ============
 
-Version 2.5.1. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 2.6. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
 
 Build, update and launch
 ------------------------
@@ -15,6 +15,23 @@ search interface. FreeBSD's base C and C++ compilers and make build the
 program. The qt6-base package supplies Qt Widgets, Qt Network and the rcc
 tool that embeds the application icon. The Makefile locates them through
 pkg-config, supplied by pkgconf.
+
+Installing the Ubuntu and FreeBSD release packages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+CrumbWriter-Ubuntu-24.04-amd64.deb and CrumbWriter-FreeBSD-15-amd64.pkg
+are published under releases/latest/download with stable names. In the
+download directory use the corresponding platform package manager.
+
+    Ubuntu 24.04 amd64   sudo apt install ./CrumbWriter-Ubuntu-24.04-amd64.deb
+    FreeBSD 15 amd64     pkg install ./CrumbWriter-FreeBSD-15-amd64.pkg  (as root)
+
+To update, close all Crumb Writer windows, download the newer asset and run
+the same command. Ubuntu installs under /usr and FreeBSD under /usr/local.
+Both register the crumbwriter package and the desktop launcher. apt remove
+crumbwriter or pkg delete crumbwriter removes the installed program.
+The manuscript, sidecars, settings and backups live outside the package.
+The README explains first installation and updates separately for readers.
 
 First installation on Windows and macOS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -50,6 +67,8 @@ Every public installer has a signed GitHub build record (an artifact
 attestation). In its download directory, a signed-in GitHub CLI can identify
 the workflow and source revision that produced this exact file.
 
+    gh attestation verify CrumbWriter-Ubuntu-24.04-amd64.deb --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
     gh attestation verify CrumbWriter-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
     gh attestation verify CrumbWriter-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
 
@@ -58,6 +77,8 @@ the output of the corresponding command with SHA256SUMS on the same release.
 
     Get-FileHash .\CrumbWriter-Windows-x64-Setup.exe -Algorithm SHA256
     shasum -a 256 CrumbWriter-macOS-Universal.dmg
+    sha256sum CrumbWriter-Ubuntu-24.04-amd64.deb
+    sha256 -q CrumbWriter-FreeBSD-15-amd64.pkg
 
 The Windows installer has no Windows publisher certificate. SmartScreen
 can display an unfamiliar-app or unknown-publisher warning. After verifying
@@ -98,7 +119,7 @@ First installation on FreeBSD
 
 On a FreeBSD 15+ desktop with Plasma 6, install the packages as root.
 
-    pkg install git pkgconf glib qt6-base hunspell en-hunspell
+    pkg install git pkgconf glib qt6-base hunspell en-hunspell en-mythes
 
 Get the source as the desktop account.
 
@@ -126,7 +147,7 @@ The Linux CI job builds and tests on Ubuntu 24.04. The desktop account
 can install these packages and the program with the following commands.
 
     sudo apt update
-    sudo apt install git build-essential pkgconf qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us libxcb-cursor0
+    sudo apt install git build-essential pkgconf qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us mythes-en-us libxcb-cursor0
     git clone https://github.com/AlfredoLlaquet/crumbwriter.git
     cd crumbwriter
     sudo make install
@@ -140,8 +161,9 @@ application ID share the identifier org.thecrumbs.CrumbWriter.
 Update
 ~~~~~~
 
-Versions 2.1 through 2.5 already have the FreeBSD build dependencies for 2.5.1. Older
-checkouts can use the full package list above. Save the manuscript and close
+On an existing FreeBSD source installation, add en-mythes for the offline
+thesaurus. On Ubuntu add mythes-en-us. The source tree supplies the
+MyThes lookup engine. New builders can use the package lists above. Save the manuscript and close
 all Crumb Writer windows. In the existing checkout on main, update as the
 desktop account.
 
@@ -149,7 +171,7 @@ desktop account.
 
 Repeat the original make install command with the same account and prefix.
 Launch from the desktop menu. F10, then A, opens About and shows the installed
-version. The command crumbwriter --version also prints "Crumb Writer 2.5.1".
+version. The command crumbwriter --version also prints "Crumb Writer 2.6".
 
 Opening a manuscript
 ~~~~~~~~~~~~~~~~~~~~
@@ -214,42 +236,48 @@ Cranolo label above.
 Writing novels and other prose in Generic mode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Each physical line is one paragraph. Write adjacent prose paragraphs on
-successive file lines and let the window do the wrapping. Use blank lines to
-mark chapter headings. The following is the complete six-line worked example
-from the README.
+The writer types consecutive prose paragraphs on consecutive file lines.
+The editor wraps each line to the available width. These six file lines
+form the worked example in the reader guide.
 
     The Harbor of Borrowed Tides
 
     The Night Clerk
-
+    ---------------
     At dusk the harbor clerk signed for a tide that had arrived in six wooden crates.
     By dawn the water had learned the shape of the pier.
 
-The nonblank first physical line becomes the general title if it has no
-literal period, if its cased letters are all uppercase (with at least one
-such letter), or if it is followed immediately by a blank line. Any one of
-these conditions suffices. Other
-nonblank paragraphs become chapter titles only when both physical neighbors
-are blank. A whitespace-only line is blank. A final line terminator alone
-does not supply a following blank paragraph. Two final line terminators
-supply one. Empty rows reached below the manuscript are virtual and take
-no part in classification.
+The first physical line is a general title if nonblank and any one rule
+applies: it has no ASCII period, its cased letters are all uppercase, or
+the immediate next line is blank or a hyphen marker. Subsequent headings
+require a marker directly below the title. A marker consists of one or
+more ASCII hyphens beginning in column one and nothing else. A marker
+needs a preceding nonblank text line; a sequence of marker rows does not
+create nested headings. No migration of existing prose is attempted.
 
-The general title has the largest bold type, followed by bold chapter titles
-and the selected body font. Blank separators have a smaller height. All six
-example lines are ordinary text. A narrower window may wrap line 5 onto
-several rows. Searching that file with grep -nF 'six wooden crates' Harbor.txt
-still returns the full paragraph on line 5. A publishing program can
-translate the general title to an HTML h1, chapter titles to h2, and the
-paragraphs to p elements. A print layout or an ebook can reuse those same
-lines. Revise the text in the source and rebuild the derived editions.
-README.md describes this drafting and publication workflow in more detail.
+General titles use the largest bold face. Chapter titles use the smaller
+bold, underlined heading face. Markers count as physical lines for
+bookmarks and line-number searches. An inactive marker paints as a short
+empty row. Moving the caret onto it reveals its editable hyphens in the
+body face. The first blank after a general title can be compact. Other
+interior blank rows keep normal body height, including repeated blanks.
+The marker's canonical length counts Unicode grapheme clusters in its
+title, including spaces. A title "I" takes one hyphen, "Act I" takes five.
+Typing -- in ordinary prose still produces an em dash; typing the marker
+below a heading preserves the structural ASCII hyphens.
+
+A publishing script can map the book title to h1, chapters to h2, and each
+ordinary line to a paragraph in HTML. In the example grep -nF 'six wooden
+crates' Harbor.txt identifies the entire paragraph on the fifth file line. The
+README explains how the same source supports revision and ebook or print
+publication.
 
 Ctrl+Shift+4 searches Titles, listing the general title and the chapters
 in document order by default. Shift+F7 switches to alphabetical order.
 The choice for Titles is independent of the genre sort preference. Enter
-jumps to the highlighted heading. Ctrl+Shift+3 searches the full text of
+jumps to the highlighted heading. End of document stays last in either order
+and moves to the end of the last real paragraph, skipping trailing markers,
+blank lines and virtual space. Ctrl+Shift+3 searches the full text of
 visited paragraphs while displaying their openings. Blank separators and
 unaccepted movement previews do not enter visit history. Ctrl+Shift+I opens
 live statistics for nonblank paragraphs and their total and average words.
@@ -294,7 +322,7 @@ byte. The Windows display language has no effect on these rules.
 Ctrl+Shift+I opens modeless Manuscript Statistics. In Crumb mode, Crumbs
 counts recognized records. Total words includes the first-line work title
 and words on unfinished lines. In Generic mode, Paragraphs counts nonblank
-physical lines, including recognized headings. Blank separators supply no
+physical prose lines, including recognized headings. Markers and blank lines supply no
 words or paragraphs to the average. In either mode, the average divides the
 whole-manuscript total by the indicated count and displays two decimal places.
 An empty manuscript shows zero. Figures share a right-aligned column with
@@ -324,8 +352,8 @@ A successful manuscript or recovery-draft save checkpoints the saved revision.
 Appearance and editing
 ----------------------
 
-The active crumb or paragraph has a pale blue band in a light theme. A dark
-theme uses a lighter neutral gray across the wrapped lines. When the main
+The active crumb or paragraph uses a faint tint of the desktop accent on
+all its wrapped lines in both light and dark themes. When the main
 window loses focus, the whole manuscript takes a softer gray and the band
 disappears. Dark paper keeps light text. Focus in a side panel, Find, or
 Replace belongs to the main window. Selections, search matches, warnings,
@@ -420,15 +448,16 @@ the typing run. An automatic save may publish part of a run while typing
 continues. Undo still covers the complete run. Ctrl+Shift+Z replays the
 same edits, including typographic characters and genre-number completion.
 
-Settings → Writing → Copy deleted text to the clipboard is on by default.
-Backspace prepends each removed character and forward Delete appends it.
-Each uninterrupted deletion run thus leaves the removed text in reading order.
-Deleting a selected passage, word, or entire crumb also updates the regular
-system clipboard. Pasting over selected text reads the incoming clipboard
-first, then copies the displaced passage. Replace All and bulk spelling
-corrections copy their displaced passages in manuscript order, separated by LF.
-Automatic punctuation, whitespace cleanup, and undo/redo preserve the last
-deliberate clipboard entry. This preference applies to the manuscript.
+Settings → Writing → Copy deleted text to the clipboard defaults to off.
+Read an existing editor/copy-deleted preference as stored. Cut always
+writes to the clipboard. Plain Backspace or Delete with no selected text
+never writes to it, even on autorepeat. Those edits still coalesce for
+undo. With the option enabled, erasing an explicit selection, word, or
+entire crumb copies the removed passage. Pasting over a selection reads
+the incoming text before copying the displaced text. Replace All and
+bulk spelling corrections copy the actual displaced passages in manuscript
+order separated by LF. Automatic punctuation, normalization and replaying
+undo or redo preserve the clipboard.
 
 Visits are ordered most recent first. The list shows only titles in Crumb
 mode (Untitled for an empty title), or the opening text of paragraphs in
@@ -437,10 +466,11 @@ can lead to different passages. Click an entry or press Ctrl+Shift+3, type
 a fragment, and press Enter. Escape returns focus to the manuscript. F2
 and Shift+F2 move back and forward among deliberate jumps. Alt+Left and
 Alt+Right do the same. Refining a search keeps its original return position.
-Ctrl+Shift+J and Ctrl+click follow a numbered reference in Crumb mode, or
-the previous mention of a synonym in either mode. Both "crumb 200" and
+Ctrl+Shift+J and Ctrl+click first open any URL under the caret or pointer,
+then look for a numbered crumb reference and finally for a previous mention
+of a name or crumb genre. Both "crumb 200" and
 "see Cranolo 200" work in a manuscript whose label is Cranolo. Numbered
-references take precedence. A mouse jump searches from the clicked word,
+references take precedence over names. A mouse jump searches from the clicked word,
 and Back returns to the writer's caret before the click.
 
 Navigation and window keys
@@ -470,9 +500,12 @@ Navigation and window keys
     F2 / Shift+F2             Back / forward after a deliberate jump
     Alt+Left / Alt+Right      Back / forward through the same jump history
     F4 / Shift+F4             Next / previous numbering warning
-    Ctrl+Shift+J / Ctrl+click Follow a numbered reference or previous mention
+    Ctrl+Shift+J / Ctrl+click Open link, follow numbered reference, or find previous mention
     F5 (manuscript)           Accept a name suggestion or show completions
-    F6 / Shift+F6             Previous / next mention of the same group
+    F6 / Shift+F6             Previous / next mention of the name or genre
+    Ctrl+2                   Select complete word at caret
+    F7                       Offline English thesaurus for selection or word
+    Ctrl+Shift+L, D/S/T       Web dictionary / dictionary synonyms / thesaurus
     Ctrl+Shift+click          Next mention of the clicked name
     Ctrl+U                    Insert Symbol
     Ctrl+L                   Find header number in Crumb mode or line in Generic mode
@@ -522,7 +555,7 @@ lowercased. The colon and work title are outside the selection. Ctrl+Q selects
 through the end of the crumb's body, excluding its terminating newline and
 any first-line work title. Both operations copy plain text and leave the
 copied span selected. Ctrl+Y deletes the crumb at the caret in one edit,
-preserving the work title and the file's final-newline convention. It is a
+preserving the work title. It is a
 manuscript shortcut. Typing in Find, Replace or the sidebar cannot invoke
 that deletion through Ctrl+Y. In Generic mode Ctrl+Q copies the current
 paragraph and Ctrl+Y deletes it. The newline is outside the copied text.
@@ -706,13 +739,16 @@ the manuscript. F2 in the manuscript returns to the place where that jump
 began. Shift+F9 shows or hides the entire left panel.
 
 The right panel follows the same search rules. Ctrl+Shift+3 searches visit
-history. Ctrl+Shift+4 searches Genres or Titles. Either Enter or Ctrl+Enter
-activates the current result and clears the corresponding field. A visit
-or title jumps to the entry. A genre appends its next crumb.
+history. Ctrl+Shift+4 searches Genres or Titles. Enter activates the current result. A visit or title jumps to its passage;
+a genre appends its next crumb. In Genres Ctrl+Enter finds all occurrences.
 
 A manuscript named Crumbs.txt has two UTF-8 text companions named
 Crumbs.txt.characters and Crumbs.txt.recurring. Each physical line is one
 group. The first synonym determines the display order and insertion text.
+The optional leading metadata fields ,no-complete, exclude this group from
+automatic and F5 completion. The group editor exposes this as Exclude from
+autocomplete (Alt+E), initially unchecked. Legacy rows retain their behavior.
+Underlining, occurrences, spell exemptions and explicit insertion continue.
 Separate aliases with commas. Spaces around separators are ignored. Put an
 alias containing a comma in double quotes. Double a literal straight quote
 inside a quoted alias. For example, this line has three aliases.
@@ -739,6 +775,13 @@ treats straight and curly apostrophes as equivalent. A shorter alias
 contained in a longer mention contributes no extra hit. In "Inspector
 Goose saluted a goose", Inspector Goose and the second goose are two hits.
 
+The matcher also indexes the current Crumb manuscript's genre names as
+navigation terms. It drops them when the mode or source changes. Genres
+use Recurring's underline preference and never supply a completion by
+themselves. Longer overlapping matches suppress shorter matches; the
+exact visible match in each occurrence excerpt is bold. Replace All uses
+the matched source spans for its before previews.
+
 F6 finds an earlier mention of any alias in the group under or immediately
 before the caret. Shift+F6 looks forward. Ctrl+Shift+click follows a name
 forward. macOS accepts Command+click and Command+Shift+click as well.
@@ -747,6 +790,38 @@ jump centers its destination and records the departure in Back/Forward.
 Reaching the first or last mention shows a brief message and leaves the
 writer in place. Completion and underlining settings are independent of
 navigation and of F3 manuscript search.
+
+Word tools, web addresses and status
+------------------------------------
+
+Ctrl+2 selects a word including internal hyphens and apostrophes without
+copying it. F7 opens the modeless Offline English Thesaurus against the
+selected phrase or the word under the caret. The list groups alternatives
+by sense. Arrows choose, Ctrl+C copies, Enter replaces the bookmarked
+source span in one undoable edit, Ctrl+L focuses the lookup, and Escape
+closes. WordTools closes its dialog on a manuscript change to protect the
+captured range. The three Merriam-Webster commands share a two-key prefix:
+Ctrl+Shift+L then D (dictionary), S (dictionary entry #synonyms), or T
+(thesaurus). Escape cancels. Each sends only the selected term as an
+encoded path component to the default browser. Local F7 stays offline.
+
+http://, https:// and www. addresses are recognized across both modes.
+Keep balanced parentheses/brackets; trim unrelated sentence punctuation.
+The actual hit range has priority over local references and names. Open
+with Ctrl+click, Command+click on macOS, Ctrl+Shift+J, or the editor's
+Open Link context command. Spell checking skips the complete range in
+underlines, review and bulk correction. Treat a singular possessive 's
+or ’s as a suffix when checking a saved stem (Hedberg covers Hedberg’s).
+Keep intact contractions and internal apostrophes such as I’m and O’Brien.
+
+The center of the footer opens https://www.thecrumbs.org/ in the default
+browser. Its text uses the ordinary foreground in both palettes. The left
+writing status and right mode take priority at narrow widths or during
+a movement or lookup command. F10 > Open TheCrumbs.org also activates it.
+F10 > Set Today’s Count opens a modeless signed-integer editor. Reset to
+Zero fills the field; Enter applies the chosen value. Generic words can
+be negative. Crumb totals have zero as their lower bound. Keep adjustments
+separate by local date, manuscript and mode and apply later edit deltas.
 
 American English spelling
 -------------------------
@@ -840,8 +915,10 @@ unique filename, for example Crumbs.txt.YYYYMMDD-HHMMSS-xxxxxxxx.bak.
 
 Manuscripts and drafts are written as UTF-8 without a BOM. Invalid UTF-8
 and embedded NUL bytes are reported at open. File loading accepts LF, CRLF
-or CR and exposes LF to the editor. Saving retains the existing line-ending
-convention and final-newline state. The storage layer preserves mixed endings
+or CR and exposes LF to the editor. A saved nonempty manuscript ends with one logical line terminator using the
+existing line-ending convention. Remove trailing blank/whitespace-only rows
+in both modes. An empty manuscript writes zero bytes. Canonicalization of
+the saved snapshot preserves an active editing position and open undo run. The storage layer preserves mixed endings
 when matching existing lines. It also keeps adjacent CR and LF separators
 distinct when an intervening whitespace-only line is cleaned. Ctrl+S can
 strip an input signature and normalize spacing even on an untouched document.
@@ -983,6 +1060,15 @@ adapter keeps file bytes, clipboard text and search positions consistent.
     data/crumbwriter.qrc, data/icons/      Embedded license and application icons
     Makefile, .github/workflows/check.yml  FreeBSD, Ubuntu and Plasma desktop builds
     CMakeLists.txt                         Shared C/C++ build and test targets
+    third_party/mythes/                   Pinned MyThes engine and BSD license
+    src/qt/thesaurus.*, wordtools.*        US data discovery, sense lookup, dialog,
+                                          word selection and web reference URLs
+    src/qt/manuscriptlinks.*               Shared UTF-16 hit ranges, browser targets
+    src/qt/genericparagraph.h             Marker recognition and grapheme sizing
+    src/qt/todaycountdialog.*             Keyboard counter adjustment
+    src/qt/synonymentry.h                 Portable group aliases and exclusion flag
+    packaging/unix/                       Native deb/pkg manifests and lifecycle check
+    packaging/shared/thesaurus.py         Pinned US data and redistribution notices
     packaging/windows, packaging/macos    Native installers and package checks
     packaging/shared                      Dictionary, notices and package sources
     packaging/release                     Asset checks, release notes and publishing
@@ -1044,7 +1130,8 @@ reparses that line, and a genre edit revisits affected successor warnings.
 A change to physical line numbering reuses the parsed records for unaffected
 text. Header lookups use duplicate-aware sorted positions, and genre
 completion finds the nearest earlier occurrence. In Generic mode, physical
-neighboring blank lines determine paragraph roles. An ordinary edit can
+the next ASCII hyphen line marks a heading. The first line also uses the
+general-title rules, including an immediately following blank. An ordinary edit can
 change the role of an adjacent paragraph. Changing the first-line mode
 reclassifies the manuscript and updates the outline, statistics, status bar,
 search labels, and editor formatting. Each window owns its mode.
@@ -1086,9 +1173,12 @@ Native runner labels, dependency installation and packaging commands
 live in .github/workflows/windows.yml and .github/workflows/macos.yml.
 The installed-program test runs the packaged executable with --smoke-test.
 It opens a real editor window, decodes the icon, reads the embedded license,
-checks US spelling and a curly-apostrophe contraction, and round-trips a
+checks US spelling, a curly-apostrophe contraction and a real thesaurus lookup, and round-trips a
 Unicode-named manuscript with its backup and personal dictionary. The
-Windows and Mac checks require the dictionary shipped inside that package.
+Windows and Mac checks require the dictionaries shipped inside that package.
+Ubuntu and FreeBSD package tests install on a clean target, upgrade an older
+package fixture, launch and smoke-test the installed editor, and remove it.
+They verify personal manuscripts and companion files survive the lifecycle.
 Fresh runner jobs exercise installing, updating and removing the desktop app.
 The public release workflow also runs the FreeBSD and Linux suites.
 A release request must identify a commit already on the default branch,
@@ -1098,10 +1188,10 @@ default branch can also take its version from buildinfo.h.
 
 All required platform jobs must pass before publication. The publishing job
 collects their tested installers and matching source archives, computes
-SHA256SUMS, and obtains GitHub build attestations for both installers and the
+SHA256SUMS, and obtains GitHub build attestations for all four platform packages and the
 checksum list. It uploads everything to a draft, checks the uploaded file
 digests, and publishes the release. It then verifies GitHub’s immutable
-release record and both downloadable installers with gh release verify and
+release record and all four downloadable packages with gh release verify and
 gh release verify-asset. A correction to a published build uses a new version.
 The installed editor and ordinary downloads do not require GitHub CLI.
 
@@ -1222,7 +1312,7 @@ word, waited for autosave, typed a replacement and verified the saved
 separator and replacement text.
 
 The spacing test measures from the last wrapped row of one crumb to the
-first row of the next. It checks the blue band and the paper in the gap at
+first row of the next. It checks the active accent band and the paper in the gap at
 the screen's device scale, including on fractional-scale displays.
 
 The 2.0 release built on FreeBSD 15.1 with Qt 6.11.3. In the native
@@ -1252,11 +1342,13 @@ The native Wayland check changes a manuscript to Generic mode, searches the
 chapter outline from the keyboard, accepts j2 and writes over the selection.
 
 For Generic mode, compare an all-uppercase first line with periods, a first
-line followed by a blank, an isolated chapter heading and adjacent prose.
+line followed by a blank, a marked chapter and an unmarked paragraph between blanks.
 Add and remove the first-line delimiter and edit either neighbor of a heading.
 Try a first-line URL containing // and check that its file opens as Generic.
 Check the daily net after deletion, Undo, a same-day reopen and a new local
-date. A single final LF and two final LFs must give different heading results.
+date. Check that adding a marker makes a title, that interior blanks survive,
+and that a nonempty file ends with just one terminator. Check the active/inactive
+marker and the final Titles entry under both sorting choices.
 Search every panel by keyboard without hiding rows. Exercise bookmark moves,
 target deletion, undo/redo, v1 migration and reopening after outside edits.
 
@@ -1278,3 +1370,19 @@ inactive paper colors with tests/sample-x11-paper.c.
 Update this manual in the same change as each modification to Crumb Writer.
 Update README.md and the in-app shortcut reference when controls, platform
 dependencies or build commands change.
+
+Focused maintenance checks for the 2.6 controls
+------------------------------------------------
+
+When a control changes, reproduce its normal keyboard path with the
+native GUI audit in light and dark on FreeBSD, Ubuntu, Windows and macOS.
+Select the affected views for routine work. Include adjacent focus,
+selection and menu states. For changes to shared colors, fonts, menus or
+window layout, run the full set. Inspect the rendered views, repair the
+underlying control and repeat. Keep the previous native GUI audit procedure
+and the desktop-theme checks. The new views are offline-thesaurus and
+today-count. Also cover generic-manuscript with markers, the group editor
+with its exclusion checkbox, bold occurrence excerpts, and the footer at
+full and narrow widths. A fresh package installation must find both English
+dictionaries offline. Compare SHA256SUMS and the four subjects in the
+immutable release after the native package lifecycle tests pass.

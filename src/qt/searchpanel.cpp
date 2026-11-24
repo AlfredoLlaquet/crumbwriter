@@ -240,6 +240,7 @@ void SearchPanel::buildUi()
     preview->setObjectName(QStringLiteral("cw-replace-preview"));
     preview->setAccessibleName(QStringLiteral("Replacement preview"));
     preview->setReadOnly(true);
+    preview->setUndoRedoEnabled(false);
     preview->setTabChangesFocus(true);
     preview->setMinimumHeight(fontMetrics().height() * 2);
     preview->setMaximumHeight(fontMetrics().height() * 6);
@@ -927,6 +928,21 @@ void SearchPanel::previewReady(cwsearch::ReplacementPlan plan)
         lines.append(QStringLiteral("Line %1 after      %2").arg(example.line).arg(example.after));
     }
     preview->setPlainText(lines.join(u'\n'));
+    QTextCharFormat bold;
+    bold.setFontWeight(QFont::Bold);
+    auto block = preview->document()->begin().next();
+    QTextCursor highlight(preview->document());
+    highlight.beginEditBlock();
+    for (const auto &example : plan.examples) {
+        const int start = block.position() + block.length() - 1 - int(example.before.size());
+        for (const auto match : example.beforeMatches) {
+            highlight.setPosition(start + match.start);
+            highlight.setPosition(start + match.end, QTextCursor::KeepAnchor);
+            highlight.mergeCharFormat(bold);
+        }
+        block = block.next().next();
+    }
+    highlight.endEditBlock();
     preview->show();
     cancelButton->show();
     allButton->setText(QStringLiteral("Apply all"));

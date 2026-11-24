@@ -1,4 +1,5 @@
 #include "spellwords.h"
+#include "manuscriptlinks.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -222,24 +223,41 @@ QVector<SpellingRange> SpellWords::issues(const QString &original, int start) co
     // Conversion preserves UTF-16 lengths so ranges also locate curly words.
     const QString text = straight(original);
     const auto aliases = phraseRanges(text, start);
-    int alias = 0;
+    const auto links = ManuscriptLinks::findAll(original);
+    int alias = 0, link = 0;
     auto it = wordPattern().globalMatch(text, start);
     // A dictionary may contain hyphenated terms directly. For other compounds
     // check the individual components so that corrections replace one word.
+    auto known = [&](const QString &word) {
+        return accepted_.contains(key(word)) || american().correct(word);
+    };
     auto check = [&](int begin, int end) {
         while (alias < aliases.size() && aliases[alias].end <= begin) ++alias;
-        if (alias < aliases.size() && aliases[alias].start <= begin && aliases[alias].end >= end) return;
-        const auto word = text.mid(begin, end-begin);
+        const auto inPhrase = [&](int limit) {
+            return alias < aliases.size() && aliases[alias].start <= begin && aliases[alias].end >= limit;
+        };
+        if (inPhrase(end)) return;
+        auto word = text.mid(begin, end-begin);
         static const QRegularExpression letter(QStringLiteral(R"(\p{L})"));
-        if (!letter.match(word).hasMatch() || accepted_.contains(key(word)) || american().correct(word)) return;
+        if (!letter.match(word).hasMatch() || known(word)) return;
+        // Check contractions and apostrophized names intact first. A personal
+        // word or a complete multiword name also owns its possessive spelling.
+        if (word.endsWith(QStringLiteral("'s"), Qt::CaseInsensitive)) {
+            word.chop(2);
+            end -= 2;
+            if (inPhrase(end) || known(word)) return;
+        }
         errors.append({begin, end});
     };
     while (it.hasNext()) {
         const auto match = it.next();
         const int begin = int(match.capturedStart()), end = int(match.capturedEnd());
+        while (link < links.size() && links[link].end <= begin) ++link;
+        if (link < links.size() && links[link].start < end) continue;
         const QString word = match.captured();
         if (!word.contains(u'-')) { check(begin, end); continue; }
-        if (accepted_.contains(key(word)) || american().correct(word)) continue;
+        if (known(word) || (word.endsWith(QStringLiteral("'s"), Qt::CaseInsensitive)
+                         && known(word.chopped(2)))) continue;
         int piece = begin;
         for (int i = begin; i <= end; ++i) {
             if (i == end || text.at(i) == u'-') {

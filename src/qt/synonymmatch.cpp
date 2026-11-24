@@ -42,13 +42,15 @@ struct SynonymMatcher::Data {
     QPointer<QTextDocument> document;
     QList<SynonymGroup> groups;
     QList<PrefixNode> nodes{PrefixNode{}};
-    int longest = 0; // Maximum alias length in Unicode scalar values.
+    int longest = 0; // Maximum alias lengths in Unicode scalar values.
+    int longestCompletable = 0;
     quint64 generation = 0;
 
-    void addGroup(const QStringList &aliases, bool recurring)
+    void addGroup(const QStringList &aliases, NameSource source, bool complete)
     {
         const int group = int(groups.size());
-        groups.append({aliases, recurring});
+        groups.append({aliases, source});
+        const bool recurring = source == NameSource::Recurring;
         for (const QString &alias : aliases) {
             if (alias.isEmpty()) continue;
             int node = 0, length = 0;
@@ -63,15 +65,20 @@ struct SynonymMatcher::Data {
                     nodes.append(PrefixNode{});
                 }
                 node = child;
-                if (recurring) nodes[node].hasRecurring = true;
-                else nodes[node].hasCharacters = true;
+                if (complete) {
+                    if (recurring) nodes[node].hasRecurring = true;
+                    else nodes[node].hasCharacters = true;
+                }
             }
             auto &terminal = nodes[node];
             if (terminal.groups.isEmpty() || terminal.groups.last() != group)
                 terminal.groups.append(group);
-            auto &spelling = recurring ? terminal.recurringAlias : terminal.characterAlias;
-            if (spelling.isEmpty()) spelling = alias;
+            if (complete) {
+                auto &spelling = recurring ? terminal.recurringAlias : terminal.characterAlias;
+                if (spelling.isEmpty()) spelling = alias;
+            }
             longest = std::max(longest, length);
+            if (complete) longestCompletable = std::max(longestCompletable, length);
         }
     }
 
@@ -160,14 +167,18 @@ SynonymMatcher::SynonymMatcher(QTextDocument *document, QObject *parent)
 
 SynonymMatcher::~SynonymMatcher() = default;
 
-void SynonymMatcher::setGroups(const QList<QStringList> &characters, const QList<QStringList> &recurring)
+void SynonymMatcher::setGroups(const QList<SynonymEntry> &characters, const QList<SynonymEntry> &recurring,
+                               const QStringList &genres)
 {
     d->nodes = {PrefixNode{}};
     d->groups.clear();
-    d->longest = 0;
+    d->longest = d->longestCompletable = 0;
     ++d->generation;
-    for (const auto &group : characters) d->addGroup(group, false);
-    for (const auto &group : recurring) d->addGroup(group, true);
+    for (const auto &entry : characters)
+        d->addGroup(entry.aliases, NameSource::Characters, !entry.excludeFromAutocomplete);
+    for (const auto &entry : recurring)
+        d->addGroup(entry.aliases, NameSource::Recurring, !entry.excludeFromAutocomplete);
+    for (const auto &genre : genres) d->addGroup({genre}, NameSource::Genre, false);
 }
 
 const QList<SynonymGroup> &SynonymMatcher::groups() const { return d->groups; }
@@ -238,11 +249,11 @@ std::optional<SynonymMention> SynonymMatcher::neighbor(const SynonymMention &ori
 QList<SynonymSuggestion> SynonymMatcher::completions(int position, bool characters, bool recurring,
                                                      int minimumPrefix, int limit) const
 {
-    if (!d->document || !d->longest || (!characters && !recurring)) return {};
+    if (!d->document || !d->longestCompletable || (!characters && !recurring)) return {};
     const QTextBlock block = d->document->findBlock(position);
     if (!block.isValid() || position == block.position()) return {};
     // Bound the slice by the longest alias, even for a chapter-length paragraph.
-    const int first = int(std::max<qint64>(block.position(), qint64(position) - 2LL * d->longest - 2));
+    const int first = int(std::max<qint64>(block.position(), qint64(position) - 2LL * d->longestCompletable - 2));
     const int last = int(std::min<qint64>(block.position() + block.length() - 1, qint64(position) + 2));
     QTextCursor c(block);
     c.setPosition(first);

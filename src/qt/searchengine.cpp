@@ -108,7 +108,7 @@ int commonPrefix(QStringView a, QStringView b)
     return n;
 }
 
-QString excerpt(const QString &text, int at)
+QString excerpt(const QString &text, int at, Span *visible = nullptr)
 {
     constexpr int width = 104;
     int start = std::max(0, at - 36);
@@ -117,6 +117,7 @@ QString excerpt(const QString &text, int at)
     int end = std::min(int(text.size()), start + width);
     if (end < text.size() && text.at(end).isLowSurrogate())
         --end;
+    if (visible) *visible = {start, end};
     QString result = text.mid(start, end - start);
     result.replace(u'\n', QChar(0x21b5));
     if (start)
@@ -354,8 +355,21 @@ ReplacementPlan Pattern::plan(const QString &text, const QString &replacement,
             plan.edits.append({changed, after.mid(prefix, after.size() - prefix - suffix)});
             plan.changes += changes;
             plan.affectedLines += lineAt(changed.end) - lineAt(changed.start) + 1;
-            if (plan.examples.size() < 4)
-                plan.examples.append({first + 1, excerpt(before.toString(), prefix), excerpt(after, prefix)});
+            if (plan.examples.size() < 4) {
+                Span visible;
+                Example example{first + 1, excerpt(before.toString(), prefix, &visible), excerpt(after, prefix), {}};
+                const int origin = begin + visible.start;
+                const int limit = begin + visible.end;
+                const int ellipsis = visible.start > 0 ? 1 : 0;
+                for (qsizetype i = priorRemovals; i < plan.removedMatches.size(); ++i) {
+                    const auto match = plan.removedMatches.at(i);
+                    if (match.start >= limit) break;
+                    if (match.end > origin)
+                        example.beforeMatches.append({std::max(match.start, origin) - origin + ellipsis,
+                                                      std::min(match.end, limit) - origin + ellipsis});
+                }
+                plan.examples.append(std::move(example));
+            }
         } else {
             // Normalization can make every textual edit on these lines a no-op.
             plan.removedMatches.resize(priorRemovals);
