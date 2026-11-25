@@ -21,9 +21,22 @@
 #include <QTextBlock>
 #include <QTimer>
 
+namespace {
+QWidget *makePanelContainer(ManuscriptEditor *editor, MainWindow *window)
+{
+    auto *container = new QWidget(editor);
+    // Keep document ownership for modeless tools. The parked controls must
+    // inherit the window's complete interface font instead of the writing font.
+    auto font = window->font();
+    font.setResolveMask(QFont::AllPropertiesResolved);
+    container->setFont(font);
+    return container;
+}
+}
+
 ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences, int untitledNumber)
     : QObject(host), host_(host), prefs_(preferences), untitledNumber_(untitledNumber),
-      editor_(new ManuscriptEditor), parkedPanels_(new QWidget(host)),
+      editor_(new ManuscriptEditor), parkedPanels_(makePanelContainer(editor_, host)),
       search_(new SearchPanel(editor_, &prefs_.settings(), parkedPanels_)),
       synonyms_(new SynonymPanel(editor_->document(), parkedPanels_)),
       side_(new NavigationPanel(editor_, &prefs_.settings(), parkedPanels_)),
@@ -84,8 +97,11 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
     store_->onChanged = [this] { changed(); };
     store_->onError = [this](const QString &error) {
         pendingSavePath_.clear();
+        if (host_->closingSession_ == this) {
+            host_->selectSession(this);
+            host_->cancelClose();
+        }
         showNotice(error);
-        if (host_->closingSession_ == this) host_->cancelClose();
     };
     store_->onPathChanged = [this](const QString &, const QString &target) {
         pendingSavePath_.clear();
@@ -97,7 +113,7 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
                 if (host_->closingSession_ == this) host_->cancelClose();
             }
         }
-        if (host_->active_ == this) prefs_.remember(target);
+        if (host_->active_ == this && host_->isActiveWindow()) prefs_.remember(target);
         changed();
     };
     store_->onSaveAsNeeded = [this] { chooseFile(true); };
@@ -145,7 +161,6 @@ ManuscriptSession::~ManuscriptSession()
     delete bookmarks_;
     delete words_;
     delete options_;
-    delete parkedPanels_;
     delete editor_;
 }
 
@@ -263,6 +278,7 @@ void ManuscriptSession::chooseFile(bool saving)
     chooser_ = dialog;
     connect(dialog, &QDialog::finished, this, [this, dialog] {
         if (chooser_ == dialog) chooser_.clear();
+        if (host_->active_ == this) host_->restoreEditorFocus(dialog);
     });
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setWindowModality(Qt::NonModal);

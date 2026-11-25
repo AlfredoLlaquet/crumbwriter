@@ -172,8 +172,11 @@ void testRecoveredTabSettings(const QTemporaryDir &tmp)
     key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
     auto *chooser = editor->findChild<QFileDialog *>();
     CHECK(chooser);
+    chooser->hide();
     chooser->selectFile(promoted);
-    QMetaObject::invokeMethod(chooser, "accept");
+    chooser->show();
+    CHECK(chooser->selectedFiles() == QStringList{promoted});
+    static_cast<QDialog *>(chooser)->accept();
     CHECK(until([&] { return window.path() == promoted && !QFileInfo::exists(draft + ".config"); }));
     CHECK(read(promoted + ".config") == settings);
     const QString discarded = tmp.filePath("Discarded recovery.txt");
@@ -312,8 +315,11 @@ void testManuscriptTabs(const QTemporaryDir &tmp)
     pressChoice(window, "Save and Close");
     CHECK(until([&] { return blank->findChild<QFileDialog *>() != nullptr; }));
     chooser = blank->findChild<QFileDialog *>();
-    chooser->fileSelected(renamed);
-    static_cast<QDialog *>(chooser)->done(QDialog::Accepted);
+    chooser->hide();
+    chooser->selectFile(renamed);
+    chooser->show();
+    CHECK(chooser->selectedFiles() == QStringList{renamed});
+    static_cast<QDialog *>(chooser)->accept();
     CHECK(until([&] { return !window.isVisible(); }));
     CHECK(read(renamed).contains("An unsaved draft"));
 }

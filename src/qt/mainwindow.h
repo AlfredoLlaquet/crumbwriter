@@ -66,6 +66,7 @@ private:
     void stepTab(int direction);
     void sessionChanged(ManuscriptSession *session);
     void updateFooter();
+    void restoreEditorFocus(QWidget *finishedDialog = nullptr);
     void requestClose(const QList<ManuscriptSession *> &sessions, bool wholeWindow);
     void showCloseDialog();
     void refreshCloseDialog();

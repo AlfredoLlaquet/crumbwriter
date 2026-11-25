@@ -16,6 +16,8 @@ the writing reference. AGENTS.md contains the standing maintenance rule.
   store and its search, navigation, spelling, bookmark and companion tools.
   The window shows the active session’s controls. Move Tab to New Window
   moves the live session. It preserves undo and outstanding background work.
+  Shared panel typography follows the application font independently of the
+  manuscript font. Closing a file picker returns the keyboard to its editor.
   Ctrl+T opens a blank tab, Ctrl+O opens a file, Ctrl+Tab and Ctrl+Shift+Tab
   cycle in display order, Ctrl+F4 closes and Ctrl+Shift+T reopens. Ctrl+N
   appends text, Ctrl+W erases a word and Alt+W closes a window.
@@ -70,6 +72,8 @@ the writing reference. AGENTS.md contains the standing maintenance rule.
   supports Alt+B. The badge’s CC0 dedication is in data/bsd-first-LICENSE.
   packaging/release/assets.py names the seven versioned downloads. Changing
   a version requires updating the literal versioned links in README.md.
+  tests/test-release-assets.py verifies those links, release-note filenames
+  and checksums, including corresponding sources that span several files.
   A version-specific changelog in packaging/release/changes supplies the
   reader-facing release summary. The Krohnkite check opens a second window
   explicitly before measuring tiles; opening additional files exercises

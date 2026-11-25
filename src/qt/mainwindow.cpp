@@ -158,7 +158,27 @@ int MainWindow::tabCount() const { return tabs_->count(); }
 
 bool MainWindow::loadDocument(const QString &path, bool recovery)
 {
+    if (!recovery) {
+        if (auto *other = findOpen(path); other && other != active_) {
+            other->host_->selectSession(other);
+            other->host_->activateManuscript(false);
+            return true;
+        }
+    }
+    if (active_->companionsPending()) {
+        showNotice(tr("Save this manuscript’s pending companion files before reloading it."));
+        return false;
+    }
     return active_->load(path, recovery);
+}
+
+void MainWindow::restoreEditorFocus(QWidget *finishedDialog)
+{
+    if (!active_ || !isVisible()) return;
+    auto *foreground = QApplication::activeWindow();
+    if (foreground && foreground != this && foreground != finishedDialog && foreground->isVisible()) return;
+    activateWindow();
+    editor()->setFocus();
 }
 
 void MainWindow::activateManuscript(bool goToEnd)

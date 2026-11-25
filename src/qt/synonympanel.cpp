@@ -83,7 +83,7 @@ public:
         layout->setSpacing(2);
         auto *header = new QHBoxLayout;
         auto *label = new QLabel(title, this);
-        QFont font = label->font();
+        QFont font;
         font.setBold(true);
         label->setFont(font);
         label->setBuddy(search_);

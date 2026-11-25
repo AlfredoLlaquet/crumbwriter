@@ -93,7 +93,7 @@ QLabel *label(QWidget *parent, bool bold = false)
     out->setTextFormat(Qt::PlainText);
     out->setMinimumWidth(0);
     out->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-    QFont font = out->font();
+    QFont font;
     font.setBold(bold);
     out->setFont(font);
     return out;

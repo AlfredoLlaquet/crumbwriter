@@ -62,8 +62,6 @@ void MainWindow::addSession(ManuscriptSession *session)
 {
     session->host_ = this;
     session->setParent(this);
-    // Parked controls belong to the desktop window font, including after detach.
-    session->parkedPanels_->setParent(this);
     sessions_.append(session);
     tabs_->addTab(session->editor_, session->label());
     selectSession(session);
@@ -315,7 +313,7 @@ void MainWindow::cancelClose()
         closeDialog_.clear();
     }
     for (auto *s : targets) s->store_->keepEditing();
-    if (active_) editor()->setFocus();
+    restoreEditorFocus();
 }
 
 void MainWindow::continueClose()
@@ -370,7 +368,7 @@ void MainWindow::continueClose()
         removeSession(s);
     }
     if (sessions_.isEmpty()) newTab();
-    else editor()->setFocus();
+    else restoreEditorFocus();
 }
 
 void MainWindow::closeReady(ManuscriptSession *session)
