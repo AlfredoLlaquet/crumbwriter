@@ -15,7 +15,10 @@ the writing reference. AGENTS.md contains the standing maintenance rule.
   close confirmation and reopening. ManuscriptSession owns one editor, its
   store and its search, navigation, spelling, bookmark and companion tools.
   The window shows the active session’s controls. Duplicate detection covers
-  the named document and its live private recovery draft. Resetting the layout
+  the named document and its live private recovery draft. ManuscriptPath
+  compares the filesystem identity of existing targets, including aliases,
+  and normalized destinations for prospective saves. Unrelated missing files
+  each take their own error path. Resetting the layout
   restores the default sort for every open tab’s Titles or Genres panel.
   Move Tab to New Window
   moves the live session. It preserves undo and outstanding background work.
@@ -82,6 +85,8 @@ the writing reference. AGENTS.md contains the standing maintenance rule.
   explicitly before measuring tiles; opening additional files exercises
   tabs in the same native window. The Windows and macOS install tests
   check OS window identity and frame through subsequent file-open events.
+  The conflict-dialog audit discards its disposable changes explicitly before
+  restoring the original file, exercising the same pending-save prompt as a writer.
 
 For a change to a control or window, exercise its real keyboard and mouse
 entry points, inspect a light and a dark capture on the affected native

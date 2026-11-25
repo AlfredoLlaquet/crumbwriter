@@ -573,10 +573,17 @@ void auditReloadWarnings(GuiAudit &audit, MainWindow &window)
         dismiss(question);
         dismiss(bookmarks);
     } catch (...) {
-        window.loadDocument(original);
+        window.openDocumentInTab(original);
         throw;
     }
-    if (!window.loadDocument(original)) throw std::runtime_error("Could not restore the conflict fixture");
+    // Canceling the reloads deliberately leaves unsaved companions in this
+    // disposable tab. Close it through the ordinary confirmation path before
+    // removing its temporary directory or reopening the untouched original.
+    window.closeCurrentTab();
+    auto *closing = visible<QMessageBox>(window, "confirmClose");
+    button(*closing, "Discard Unsaved Changes")->click();
+    waitFor([&] { return window.path() != copy; }, "The disposable conflict tab did not close");
+    if (!window.openDocumentInTab(original)) throw std::runtime_error("Could not reopen the original manuscript");
 }
 
 void auditGeneric(GuiAudit &audit, MainWindow &window)

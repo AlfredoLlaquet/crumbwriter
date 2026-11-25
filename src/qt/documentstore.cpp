@@ -1,6 +1,7 @@
 #include "storage.h"
 #include "draft.h"
 #include "documentstore.h"
+#include "manuscriptpath.h"
 #include "genericparagraph.h"
 #include "manuscriptspacing.h"
 
@@ -149,10 +150,8 @@ public:
                 result.ok = cw_file_save_guarded(file, utf8.constData(), gate, &error);
                 break;
             case Operation::SaveAs: {
-                QFileInfo destination(request.destination);
                 const QString source = localPath(cw_file_path(file));
-                if (!source.isEmpty() && (source == destination.absoluteFilePath() ||
-                                          destination == QFileInfo(source))) {
+                if (ManuscriptPath::same(source, request.destination)) {
                     result.ok = cw_file_save_guarded(file, utf8.constData(), gate, &error);
                 } else {
                     const QByteArray name = diskPath(request.destination);

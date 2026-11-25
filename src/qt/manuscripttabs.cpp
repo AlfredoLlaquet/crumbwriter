@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "manuscriptsession.h"
+#include "manuscriptpath.h"
 #include "documentstore.h"
 #include "manuscripteditor.h"
 #include "preferences.h"
@@ -9,7 +10,6 @@
 
 #include <QApplication>
 #include <QCloseEvent>
-#include <QFileInfo>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QPushButton>
@@ -17,17 +17,6 @@
 #include <QTabWidget>
 #include <QTimer>
 #include <QVBoxLayout>
-
-namespace {
-bool sameFile(const QString &a, const QString &b)
-{
-    if (a.isEmpty() || b.isEmpty()) return false;
-    const QFileInfo first(a), second(b);
-    if (first == second) return true;
-    const QString canonical = first.canonicalFilePath();
-    return !canonical.isEmpty() && canonical == second.canonicalFilePath();
-}
-}
 
 MainWindow *MainWindow::newWindow()
 {
@@ -40,8 +29,8 @@ ManuscriptSession *MainWindow::findOpen(const QString &path)
         auto *window = dynamic_cast<MainWindow *>(widget);
         if (!window || window->allowClose_) continue;
         for (auto *session : window->sessions_) {
-            if (sameFile(session->path(), path) || sameFile(session->pendingSavePath_, path) ||
-                sameFile(session->store_->draftPath(), path))
+            if (ManuscriptPath::same(session->path(), path) || ManuscriptPath::same(session->pendingSavePath_, path) ||
+                ManuscriptPath::same(session->store_->draftPath(), path))
                 return session;
         }
     }
@@ -51,7 +40,7 @@ ManuscriptSession *MainWindow::findOpen(const QString &path)
 bool MainWindow::canWritePath(const ManuscriptSession *writer, const QString &path) const
 {
     auto *owner = findOpen(path);
-    return !owner || (owner == writer && !sameFile(writer->store_->draftPath(), path));
+    return !owner || (owner == writer && !ManuscriptPath::same(writer->store_->draftPath(), path));
 }
 
 void MainWindow::addSession(ManuscriptSession *session)

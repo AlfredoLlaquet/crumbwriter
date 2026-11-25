@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "documentstore.h"
+#include "manuscriptpath.h"
 #include "buildinfo.h"
 #include "manuscripteditor.h"
 #include "preferences.h"
@@ -10,6 +11,7 @@
 #include <QContextMenuEvent>
 #include <QDesktopServices>
 #include <QDialog>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileDialog>
@@ -27,6 +29,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QTableView>
+#include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTextBlock>
 #include <QTextBrowser>
@@ -38,6 +41,7 @@
 #include <QTreeWidget>
 #include <cstdio>
 #include <cstdlib>
+#include <optional>
 
 namespace {
 void require(bool value, const char *expression, int line)
@@ -81,11 +85,32 @@ void write(const QString &path, const QByteArray &bytes)
     CHECK(out.write(bytes) == bytes.size());
 }
 
-QByteArray read(const QString &path)
+std::optional<QByteArray> readIfAvailable(const QString &path, QString *error = nullptr)
 {
-    QFile f(path);
-    CHECK(f.open(QIODevice::ReadOnly));
-    return f.readAll();
+    QFile file(path);
+    if (file.open(QIODevice::ReadOnly)) {
+        const QByteArray data = file.readAll();
+        if (file.error() == QFileDevice::NoError) return data;
+    }
+    if (error) *error = file.errorString();
+    return std::nullopt;
+}
+
+QByteArray readAt(const QString &path, int line)
+{
+    QString error;
+    auto bytes = readIfAvailable(path, &error);
+    if (!bytes) std::fprintf(stderr, "Cannot read %s at test line %d: %s\n",
+                             qPrintable(path), line, qPrintable(error));
+    require(bytes.has_value(), "read the published file", line);
+    return *bytes;
+}
+#define read(path) readAt(path, __LINE__)
+
+bool published(ManuscriptEditor *editor)
+{
+    const auto *tabs = editor->window()->findChild<QTabWidget *>("manuscript");
+    return !tabs->tabText(tabs->indexOf(editor)).startsWith(QStringLiteral("• "));
 }
 
 void pressChoice(MainWindow &window, const QString &choice)
@@ -101,6 +126,81 @@ void pressChoice(MainWindow &window, const QString &choice)
         }
     }
     CHECK(false);
+}
+
+void testManuscriptPaths(const QTemporaryDir &tmp)
+{
+    const QDir files(tmp.filePath("Path fixtures"));
+    CHECK(QDir().mkpath(files.absolutePath()));
+    const QString sourceA = files.filePath("Original A.txt"), sourceB = files.filePath("Original B.txt");
+    const QString missingA = files.filePath("Missing A.txt"), missingB = files.filePath("Missing B.txt");
+    const QString newA = files.filePath("New A.txt"), newB = files.filePath("New B.txt");
+    write(sourceA, "Original A.");
+    write(sourceB, "Original B.");
+    CHECK(!ManuscriptPath::same(missingA, missingB));
+    CHECK(ManuscriptPath::same(missingA, files.path() + "/./Missing A.txt"));
+    CHECK(!ManuscriptPath::same(sourceA, sourceB));
+
+    namespace fs = std::filesystem;
+    const auto native = [](const QString &name) { return QFileInfo(name).filesystemAbsoluteFilePath(); };
+    const QString hardLink = tmp.filePath("Hard link.txt");
+    std::error_code error;
+    fs::create_hard_link(native(sourceA), native(hardLink), error);
+    CHECK(!error && ManuscriptPath::same(sourceA, hardLink));
+    const QString linkedDirectory = tmp.filePath("Link to originals");
+    fs::create_directory_symlink(native(files.path()), native(linkedDirectory), error);
+#ifdef Q_OS_WIN
+    // Windows can require Developer Mode or an elevated token for symlinks.
+    const bool symlinkAllowed = !error;
+#else
+    CHECK(!error);
+    const bool symlinkAllowed = true;
+#endif
+    if (symlinkAllowed) {
+        CHECK(ManuscriptPath::same(sourceA, linkedDirectory + "/Original A.txt"));
+        CHECK(ManuscriptPath::same(newA, linkedDirectory + "/New A.txt"));
+    }
+
+    Preferences prefs(tmp.filePath("path-identities.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    prefs.settings().setValue("editor/backup", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.openDocumentInTab(sourceA));
+    auto *first = window.editor();
+    CHECK(window.openDocumentInTab(hardLink) && window.tabCount() == 1 && window.editor() == first);
+    CHECK(window.openDocumentInTab(files.path() + "/./Original A.txt") && window.tabCount() == 1);
+    if (symlinkAllowed) CHECK(window.openDocumentInTab(linkedDirectory + "/Original A.txt") && window.tabCount() == 1);
+    CHECK(QFile::remove(sourceA));
+    CHECK(!window.openDocumentInTab(missingB) && window.tabCount() == 1 && window.editor() == first);
+    CHECK(window.openDocumentInTab(sourceB));
+    auto *second = window.editor();
+    CHECK(window.openDocumentInTab(sourceA) && window.editor() == first);
+    first->insertLiteral(" pending A.");
+    CHECK(until([&] { return first->hasFocus(); }));
+    key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *chooserA = first->findChild<QFileDialog *>();
+    CHECK(chooserA);
+    CHECK(window.openDocumentInTab(sourceB));
+    second->insertLiteral(" pending B.");
+    CHECK(until([&] { return second->hasFocus(); }));
+    key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *chooserB = second->findChild<QFileDialog *>();
+    CHECK(chooserB);
+
+    // Three choices without pumping the GUI event queue. A's Save As is
+    // reserved until its worker reports the new path to the application.
+    chooserA->fileSelected(newA);
+    chooserB->fileSelected(newA);
+    CHECK(window.findChild<QLabel *>("notice")->text().contains("already open"));
+    chooserB->fileSelected(newB);
+    chooserA->reject();
+    chooserB->reject();
+    CHECK(until([&] { return published(first) && published(second); }));
+    CHECK(read(newA).contains("pending A.") && read(newB).contains("pending B."));
+    CHECK(!QFile::exists(sourceA));
+    CHECK(window.openDocumentInTab(newA) && window.editor() == first && window.tabCount() == 2);
+    CHECK(window.close());
 }
 
 void testTabsSurviveFailedSave(const QTemporaryDir &tmp)
@@ -130,7 +230,8 @@ void testTabsSurviveFailedSave(const QTemporaryDir &tmp)
     CHECK(until([&] {
         for (const auto &candidate : DocumentStore::recoveryDrafts()) {
             if (earlierDrafts.contains(candidate) || !QFile::exists(candidate + ".config")) continue;
-            if (read(candidate).contains("Local second.")) { draft = candidate; return true; }
+            auto contents = readIfAvailable(candidate);
+            if (contents && contents->contains("Local second.")) { draft = candidate; return true; }
         }
         return false;
     }));
@@ -249,7 +350,10 @@ void testManuscriptTabs(const QTemporaryDir &tmp)
     CHECK(window.openDocumentInTab(novel));
     chooser->fileSelected(crumbs); // Saving one's own path is allowed.
     chooser->reject();
-    CHECK(until([&] { return read(crumbs).contains(" END"); }));
+    CHECK(until([&] {
+        auto contents = published(first) ? readIfAvailable(crumbs) : std::nullopt;
+        return contents && contents->contains(" END");
+    }));
     CHECK(window.path() == novel && !read(novel).contains(" EDIT"));
     first->insertLiteral("x");
 
@@ -831,7 +935,7 @@ void testGroupedLiveEdits(const QTemporaryDir &tmp)
     auto *ed = window.editor();
     CHECK(until([&] { return ed->hasFocus(); }));
     key(Qt::Key_A, {}, "a");
-    CHECK(until([&] { return read(path) == original + "a\n"; }));
+    CHECK(until([&] { return published(ed) && readIfAvailable(path) == original + "a\n"; }));
     key(Qt::Key_B, {}, "b");
     key(Qt::Key_Z, Qt::ControlModifier);
     CHECK(ed->manuscriptText() == original && !ed->document()->isUndoAvailable());
@@ -841,7 +945,7 @@ void testGroupedLiveEdits(const QTemporaryDir &tmp)
     key(Qt::Key_Space, Qt::ControlModifier);
     key(Qt::Key_Q, Qt::ShiftModifier, "Q");
     key(Qt::Key_F, {}, "f");
-    CHECK(until([&] { return read(path) == original + "ab\n"; }));
+    CHECK(until([&] { return published(ed) && readIfAvailable(path) == original + "ab\n"; }));
     CHECK(status->text().contains("Qf") && ed->viSelectionActive());
     key(Qt::Key_O, {}, "o");
     key(Qt::Key_X, {}, "x");
@@ -932,13 +1036,15 @@ void testGenericWindow(const QTemporaryDir &tmp)
     ed->jumpTo(0);
     ed->insertLiteral("Preface.\n");
     auto savedLine = [&] {
-        auto json = QJsonDocument::fromJson(read(path + ".bookmarks")).object();
+        auto bytes = readIfAvailable(path + ".bookmarks");
+        if (!bytes) return 0;
+        auto json = QJsonDocument::fromJson(*bytes).object();
         auto rows = json.value("bookmarks").toArray();
         return rows.isEmpty() ? -1 : rows.first().toObject().value("line").toInt();
     };
-    CHECK(until([&] { return read(path) == "Preface.\n" + bytes && savedLine() == 4; }));
+    CHECK(until([&] { return published(window.editor()) && readIfAvailable(path) == "Preface.\n" + bytes && savedLine() == 4; }));
     ed->undo();
-    CHECK(until([&] { return read(path) == bytes && savedLine() == 3; }));
+    CHECK(until([&] { return published(window.editor()) && readIfAvailable(path) == bytes && savedLine() == 3; }));
     stats->close();
     CHECK(window.close());
 }
@@ -1093,6 +1199,7 @@ int main(int argc, char **argv)
     QApplication::setQuitOnLastWindowClosed(false);
     testWindow(tmp);
     testManuscriptTabs(tmp);
+    testManuscriptPaths(tmp);
     testRecoveredTabSettings(tmp);
     testTabsSurviveFailedSave(tmp);
     testDuplicateHistory(tmp);

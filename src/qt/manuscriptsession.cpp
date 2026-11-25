@@ -6,6 +6,7 @@
 #include "manuscripteditor.h"
 #include "manuscriptlinks.h"
 #include "manuscriptoptions.h"
+#include "manuscriptpath.h"
 #include "manuscripttext.h"
 #include "preferences.h"
 #include "searchpanel.h"
@@ -69,7 +70,7 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
             if (!saved) showNotice(configError);
         }
         if (path == store_->path()) {
-            if (QFileInfo(path) == QFileInfo(pendingSavePath_)) pendingSavePath_.clear();
+            if (ManuscriptPath::same(path, pendingSavePath_)) pendingSavePath_.clear();
             QString error;
             if (!bookmarks_->publishSave(&error)) showNotice(error);
             if (store_->draftPath().isEmpty() && !configPromotionFailed_ && !options_->pending() &&
