@@ -4,22 +4,18 @@ import hashlib
 from pathlib import Path
 import shutil
 
-INSTALLERS = {
-    "ubuntu-installer": "CrumbWriter-Ubuntu-24.04-amd64.deb",
-    "freebsd-installer": "CrumbWriter-FreeBSD-15-amd64.pkg",
-    "windows-installer": "CrumbWriter-Windows-x64-Setup.exe",
-    "macos-installer": "CrumbWriter-macOS-Universal.dmg",
+from assets import installers, project_version
+
+SOURCE_PACKAGES = {
+    "windows-runtime-sources": "CrumbWriter-{version}-Windows-x64-Sources.tar",
+    "macos-runtime-sources-arm64": "CrumbWriter-{version}-macOS-arm64-Sources.tar",
+    "macos-runtime-sources-x86_64": "CrumbWriter-{version}-macOS-x86_64-Sources.tar",
 }
-SOURCE_PACKAGES = (
-    "windows-runtime-sources",
-    "macos-runtime-sources-arm64",
-    "macos-runtime-sources-x86_64",
-)
 # GitHub Releases has a 2 GiB limit per asset. Source archives may grow.
 PART_SIZE = 1800 * 1024 * 1024
 
 
-def stage(source, destination):
+def stage(source, destination, allow_split=False):
     if not source.is_file() or source.is_symlink() or not source.stat().st_size:
         raise ValueError(f"Missing or empty release asset: {source}")
     target = destination / source.name
@@ -28,7 +24,7 @@ def stage(source, destination):
     if source.stat().st_size <= PART_SIZE:
         shutil.move(source, target)
         return
-    if source.name in INSTALLERS.values():
+    if not allow_split:
         raise ValueError(f"Installer exceeds the release asset limit: {source.name}")
     with source.open("rb") as stream:
         for index, offset in enumerate(range(0, source.stat().st_size, PART_SIZE), start=1):
@@ -45,15 +41,12 @@ def stage(source, destination):
 
 
 def collect(incoming, destination):
+    version = project_version()
     destination.mkdir()
-    for artifact, name in INSTALLERS.items():
-        stage(incoming / artifact / name, destination)
-    for artifact in SOURCE_PACKAGES:
-        archives = sorted((incoming / artifact).glob("CrumbWriter-*"))
-        if not archives:
-            raise ValueError(f"No matching library sources in {artifact}")
-        for path in archives:
-            stage(path, destination)
+    for target, name in installers(version).items():
+        stage(incoming / f"{target}-installer" / name, destination)
+    for artifact, template in SOURCE_PACKAGES.items():
+        stage(incoming / artifact / template.format(version=version), destination, allow_split=True)
     with (destination / "SHA256SUMS").open("x", encoding="ascii", newline="\n") as sums:
         for path in sorted(destination.iterdir()):
             if path.name != "SHA256SUMS":

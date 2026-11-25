@@ -27,7 +27,7 @@ function Compile-Installer([string]$Version, [string]$Name) {
     & $compiler @options "/DAppVersion=$Version" "/DPayloadDir=$payload" "/DOutputFolder=$build" "/DInstallerName=$Name" (Join-Path $PSScriptRoot 'setup.iss')
     if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE." }
 }
-Compile-Installer $version 'CrumbWriter-Windows-x64-Setup'
+Compile-Installer $version "CrumbWriter-$version-Windows-x64-Setup"
 if ($WithUpgradeFixture) {
     # Same AppId and real payload; only the installed version is older.
     Compile-Installer '0.0.1' 'CrumbWriter-UpgradeFixture'

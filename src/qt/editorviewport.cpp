@@ -43,6 +43,12 @@ void ManuscriptEditor::applyPaper()
     viewport()->update();
 }
 
+QColor ManuscriptEditor::paperAtCaret() const
+{
+    return activePaper_ && activeLine_ == textCursor().blockNumber()
+        ? EditorColors::currentPaper(palette()) : palette().base().color();
+}
+
 void ManuscriptEditor::paintCrumbBackground(QPainter &p)
 {
     if (activeLine_ < 0 || !activePaper_)
@@ -139,6 +145,7 @@ void ManuscriptEditor::setVirtualRows(int rows)
         else
             ensureCursorVisible();
     }
+    if (rows) model_->confirmMarkerOutside(-1);
     refreshBand();
     viewport()->update();
     if (onVirtualChanged)

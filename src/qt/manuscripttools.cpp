@@ -1,4 +1,7 @@
 #include "mainwindow.h"
+#include "manuscriptsession.h"
+#include "manuscriptoptions.h"
+#include <QTabWidget>
 #include "bookmarks.h"
 #include "documentstore.h"
 #include "manuscripteditor.h"
@@ -14,10 +17,10 @@
 #include <QLabel>
 #include <QSplitter>
 
-void MainWindow::connectWritingTools()
+void ManuscriptSession::connectWritingTools()
 {
-    bookmarks_->onChanged = [this] { documentStateChanged(); };
-    spelling_->onChanged = [this] { documentStateChanged(); };
+    bookmarks_->onChanged = [this] { changed(); };
+    spelling_->onChanged = [this] { changed(); };
     spelling_->onNotice = [this](const QString &message) { showNotice(message); };
     side_->genreOccurrences = [this](const QString &genre) { return synonyms_->showGenreOccurrences(genre); };
     editor_->model().observe(synonyms_, [this](const CrumbChange &change) {
@@ -34,7 +37,7 @@ void MainWindow::connectWritingTools()
     synonyms_->onChanged = [this] {
         spelling_->setAliases(synonyms_->allAliases());
         synonymWriting_->listsChanged();
-        documentStateChanged();
+        changed();
     };
     synonymWriting_->jumpTo = [this](int position) { jump(position); };
     synonymWriting_->onNotice = [this](const QString &message) { showNavigationStatus(message); };
@@ -57,18 +60,18 @@ void MainWindow::connectWritingTools()
     };
 }
 
-void MainWindow::openSymbols()
+void ManuscriptSession::openSymbols()
 {
-    if (!symbols_) symbols_ = new SymbolPicker(editor_, prefs_.settings(), this);
+    if (!symbols_) symbols_ = new SymbolPicker(editor_, prefs_.settings(), editor_);
     symbols_->openPicker();
 }
 
-bool MainWindow::companionsPending() const
+bool ManuscriptSession::companionsPending() const
 {
-    return bookmarks_->hasPending() || synonyms_->hasPending() || spelling_->hasPending();
+    return options_->pending() || bookmarks_->hasPending() || synonyms_->hasPending() || spelling_->hasPending();
 }
 
-bool MainWindow::updateCompanions(CompanionAction action, const QString &manuscript)
+bool ManuscriptSession::updateCompanions(CompanionAction action, const QString &manuscript)
 {
     QStringList errors;
     auto update = [&](auto *companion) {
@@ -88,15 +91,23 @@ bool MainWindow::updateCompanions(CompanionAction action, const QString &manuscr
     if (action != CompanionAction::Flush || !store_->isDirty()) update(bookmarks_);
     update(synonyms_);
     update(spelling_);
+    if (action == CompanionAction::SaveAs) {
+        QString error;
+        if (!options_->carryToPath(manuscript, &error) || !removeDraftConfig(&error)) errors.append(error);
+    } else if (action == CompanionAction::Flush && options_->pending()) {
+        QString error;
+        if (!options_->flush(&error) || (!path().isEmpty() && !removeDraftConfig(&error)))
+            errors.append(error);
+    }
     if (!errors.isEmpty()) showNotice(errors.join(u'\n'));
     return errors.isEmpty();
 }
 
 void MainWindow::focusSynonyms(bool recurring)
 {
-    showPanel(synonyms_, true, synonymWidth_);
-    if (recurring) synonyms_->focusRecurring();
-    else synonyms_->focusCharacters();
+    showPanel(leftPane_, true, synonymWidth_);
+    if (recurring) active_->synonyms_->focusRecurring();
+    else active_->synonyms_->focusCharacters();
 }
 
 void MainWindow::showPanel(QWidget *panel, bool show, int &preferredWidth)
@@ -106,12 +117,12 @@ void MainWindow::showPanel(QWidget *panel, bool show, int &preferredWidth)
         preferredWidth = qMax(1, panel->width());
         panel->setProperty("layoutRememberedSize", preferredWidth);
         panel->hide();
-        editor_->setFocus();
+        editor()->setFocus();
         return;
     }
     auto sizes = split_->sizes();
     const int index = split_->indexOf(panel);
-    const int editorIndex = split_->indexOf(editor_);
+    const int editorIndex = split_->indexOf(tabs_);
     const int savedWidth = panel->property("layoutRememberedSize").toInt();
     const int width = qMin(savedWidth > 0 ? savedWidth : preferredWidth, qMax(1, sizes[editorIndex] / 2));
     sizes[index] = width;
@@ -122,12 +133,12 @@ void MainWindow::showPanel(QWidget *panel, bool show, int &preferredWidth)
 
 void MainWindow::showSidebar(bool show)
 {
-    showPanel(side_, show, sidebarWidth_);
+    showPanel(rightPane_, show, sidebarWidth_);
 }
 
-void MainWindow::showStatistics()
+void ManuscriptSession::showStatistics()
 {
-    if (!statistics_) statistics_ = new StatisticsDialog(editor_->model(), this);
+    if (!statistics_) statistics_ = new StatisticsDialog(editor_->model(), editor_);
     statistics_->show();
     statistics_->raise();
     statistics_->activateWindow();

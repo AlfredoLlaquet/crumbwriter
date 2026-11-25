@@ -58,10 +58,19 @@ inline QColor synonymUnderline(const QPalette &palette)
     return darkPaper(palette.base().color()) ? QColor(126, 168, 210) : QColor(82, 118, 159);
 }
 
-inline QColor completionHint(const QPalette &palette)
+inline QColor completionHint(const QColor &paper, const QColor &ink)
 {
-    const auto paper = currentPaper(palette);
-    return blend(paper, palette.text().color(), darkPaper(paper) ? 107 : 138);
+    return blend(paper, ink, 77); // 30% of the ordinary lettering, rounded to 8 bits.
+}
+
+inline QPalette statusHintPalette(const QPalette &surface)
+{
+    QPalette result;
+    for (auto group : {QPalette::Active, QPalette::Inactive, QPalette::Disabled})
+        result.setColor(group, QPalette::WindowText,
+                        completionHint(surface.color(group, QPalette::Window),
+                                       surface.color(group, QPalette::WindowText)));
+    return result;
 }
 
 inline QColor searchPaper(const QPalette &palette)

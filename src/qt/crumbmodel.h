@@ -10,6 +10,7 @@
 #include <optional>
 
 class QTextDocument;
+class QTextBlock;
 
 enum class ParagraphRole { Body, Blank, DocumentTitle, ChapterTitle, TitleMarker, TitleSpacer };
 
@@ -43,7 +44,8 @@ struct CrumbRecord {
     int words = 0;
     int fileWords = 0; // Whole-file convention, including any first-line work title.
     bool blank = true;
-    bool onlyHyphens = false;
+    int markerLevel = 0; // Syntax of this line, including a provisional marker.
+    int headingLevel = 0; // Confirmed section heading on this line, 1–4.
     bool hasWorkSeparator = false; // Meaningful on physical line 1 only.
     ParagraphRole role = ParagraphRole::Body;
     int recordStart = 0;
@@ -75,6 +77,7 @@ struct CrumbChange {
     bool textChanged = false;
     bool modeChanged = false;
     bool titlesChanged = false;
+    bool markerConfirmed = false; // A previously saved short marker can now expand.
 };
 
 class CrumbModel final : public QObject {
@@ -86,6 +89,11 @@ public:
     const CrumbRecord &record(int line) const;
     bool isGeneric() const;
     ParagraphRole paragraphRole(int line) const;
+    int headingLevel(int line) const;
+    void setGeneralTitleDisabled(bool disabled);
+    void deferTypedMarker(const QTextBlock &block);
+    int provisionalMarkerLine() const;
+    void confirmMarkerOutside(int caretLine);
     QVector<int> titleLines() const; // Zero-based, in document order.
     int neighborTitle(int line, bool backward) const;
     int documentEndPosition() const; // End of the final prose paragraph or its title.

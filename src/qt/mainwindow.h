@@ -1,48 +1,48 @@
 #ifndef CRUMBWRITER_MAINWINDOW_H
 #define CRUMBWRITER_MAINWINDOW_H
 
-#include "navigation.h"
+#include <QHash>
 #include <QPointer>
 #include <QWidget>
 #include <functional>
 
-class Bookmarks;
-class DocumentStore;
 class QAction;
+class MainWindow;
+class ManuscriptEditor;
+class ManuscriptSession;
+class Preferences;
 class QDialog;
-class QFileDialog;
 class QGridLayout;
-class QResizeEvent;
 class QLabel;
 class QMenu;
 class QMessageBox;
 class QSplitter;
+class QTabWidget;
 class QToolButton;
 class QVBoxLayout;
-class Preferences;
-class SearchPanel;
-class SpellCheck;
-class StatisticsDialog;
-class SymbolPicker;
-class SynonymPanel;
-class SynonymWriting;
 class WindowLayouts;
-class WordTools;
 
 class MainWindow final : public QWidget {
+    friend class ManuscriptSession;
 public:
     explicit MainWindow(Preferences &preferences, QWidget *parent = nullptr);
     ~MainWindow() override;
+    // Replace the active document only when its store permits it (reload/test
+    // entry point). Normal file opens always use openDocumentInTab().
     bool loadDocument(const QString &path, bool recovery = false);
+    bool openDocumentInTab(const QString &path, bool recovery = false);
+    void newTab();
+    void closeCurrentTab();
+    void reopenClosedTab();
+    void moveTabToNewWindow();
+    int tabCount() const;
     QString path() const;
     void activateManuscript(bool goToEnd);
     void applyPreferences();
     void showNotice(const QString &message);
-    ManuscriptEditor *editor() const { return editor_; }
+    ManuscriptEditor *editor() const;
+    std::function<MainWindow *()> makeWindow;
 
-    std::function<void(const QString &)> openRequested;
-    std::function<void()> newRequested;
-    std::function<bool(const QString &)> pathAvailable;
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -53,71 +53,60 @@ private:
     void buildMenu();
     void updateModeControls();
     void focusNavigation(bool titlesOrGenres);
-    void chooseFile(bool saving);
-    void documentStateChanged();
-    void setStatusMessage(const QString &message);
-    void fitFooter();
-    void openCrumbsWebsite();
-    void showCloseDialog();
-    void save(bool asNew);
-    void appendCrumb();
-    void jump(int position);
-    void goBack(bool forward);
-    void numberingWarning(bool backward);
-    bool followAt(int position, bool backward, bool mouse = false);
-    void openSymbols();
-    void showNavigationStatus(const QString &message);
-    void connectWritingTools();
-    void showStatistics();
-    void showAbout();
     void focusSynonyms(bool recurring);
-    bool companionsPending() const;
-    enum class CompanionAction { Open, SaveAs, Flush };
-    bool updateCompanions(CompanionAction action, const QString &manuscript = {});
     void showPanel(QWidget *panel, bool show, int &preferredWidth);
     void showSidebar(bool show);
+    void fitFooter();
+    void openCrumbsWebsite();
+    void showAbout();
+    MainWindow *newWindow();
+    void addSession(ManuscriptSession *session);
+    void removeSession(ManuscriptSession *session);
+    void currentTabChanged();
+    void stepTab(int direction);
+    void sessionChanged(ManuscriptSession *session);
+    void updateFooter();
+    void requestClose(const QList<ManuscriptSession *> &sessions, bool wholeWindow);
+    void showCloseDialog(const QStringList &pendingNames);
+    void continueClose();
+    void closeReady(ManuscriptSession *session);
+    void cancelClose();
+    void rememberClosed(ManuscriptSession *session);
+    bool canWritePath(const ManuscriptSession *writer, const QString &path) const;
+    static ManuscriptSession *findOpen(const QString &path);
+    void selectSession(ManuscriptSession *session, bool focus = true);
+    ManuscriptSession *sessionForDialog(QWidget *dialog) const;
 
+    struct ClosedTab { QString path; int anchor, position, scroll; };
     Preferences &prefs_;
-    ManuscriptEditor *editor_ = nullptr;
-    NavigationPanel *side_ = nullptr;
-    SearchPanel *search_ = nullptr;
-    SynonymPanel *synonyms_ = nullptr;
-    SynonymWriting *synonymWriting_ = nullptr;
+    QTabWidget *tabs_ = nullptr;
+    QList<ManuscriptSession *> sessions_;
+    ManuscriptSession *active_ = nullptr;
+    QList<ClosedTab> closedTabs_;
     WindowLayouts *layouts_ = nullptr;
-    QPointer<SymbolPicker> symbols_;
-    SpellCheck *spelling_ = nullptr;
-    Bookmarks *bookmarks_ = nullptr;
-    DocumentStore *store_ = nullptr;
     QSplitter *split_ = nullptr;
+    QWidget *leftPane_, *rightPane_;
+    QVBoxLayout *searchLayout_, *leftLayout_, *rightLayout_;
     QLabel *status_ = nullptr;
     QToolButton *website_ = nullptr;
     QGridLayout *footer_ = nullptr;
-    WordTools *words_ = nullptr;
-    bool webLookupPending_ = false;
     QLabel *mode_ = nullptr;
     QLabel *notice_ = nullptr;
     QWidget *noticeBar_ = nullptr;
     QMenu *menu_ = nullptr;
     QToolButton *menuButton_ = nullptr;
-    QAction *appendTool_ = nullptr;
-    QAction *appendAction_ = nullptr;
-    QAction *copyAction_ = nullptr;
-    QAction *deleteAction_ = nullptr;
-    QAction *goToNumberAction_ = nullptr;
-    QAction *indexAction_ = nullptr;
-    QAction *sortAction_ = nullptr;
-    QList<QAction *> crumbOnlyActions_;
-    QPointer<QFileDialog> chooser_;
+    QAction *appendTool_ = nullptr, *appendAction_ = nullptr, *copyAction_ = nullptr;
+    QAction *deleteAction_ = nullptr, *goToNumberAction_ = nullptr, *indexAction_ = nullptr, *sortAction_ = nullptr;
+    QAction *reopenAction_ = nullptr, *markupAction_ = nullptr;
+    QList<QAction *> crumbOnlyActions_, genericOnlyActions_;
     QPointer<QMessageBox> closeDialog_;
-    QPointer<StatisticsDialog> statistics_;
     QPointer<QDialog> about_;
-    QString synonymHint_;
-    JumpHistory trail_;
-    bool loading_ = false;
-    bool allowClose_ = false;
-    bool discarding_ = false;
-    int sidebarWidth_ = 230;
-    int synonymWidth_ = 190;
+    QList<ManuscriptSession *> closeTargets_, closeQueue_;
+    quint64 closeAttempt_ = 0;
+    QHash<ManuscriptSession *, int> discardRevisions_;
+    ManuscriptSession *closingSession_ = nullptr;
+    bool closingWindow_ = false, discarding_ = false, allowClose_ = false;
+    int sidebarWidth_ = 230, synonymWidth_ = 190;
 };
 
 #endif

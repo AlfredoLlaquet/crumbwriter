@@ -401,6 +401,7 @@ void SynonymPanel::setGenres(const QStringList &genres)
     genres_ = genres;
     rebuildMatcher();
     if (results_) results_->refreshGroup();
+    if (onChanged) onChanged();
 }
 
 bool SynonymPanel::showGenreOccurrences(const QString &genre)
@@ -462,7 +463,7 @@ bool SynonymPanel::hasPending() const
 
 QStringList SynonymPanel::allAliases() const
 {
-    QStringList aliases;
+    QStringList aliases = genres_;
     for (auto *section : {characters_, recurring_})
         for (const auto &group : section->file.groups())
             aliases.append(group.aliases);

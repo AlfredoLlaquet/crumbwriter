@@ -8,6 +8,7 @@
 #include <QDialog>
 #include <QKeyEvent>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QTextBrowser>
 #include <QTreeWidget>
@@ -68,6 +69,33 @@ void testWords(ManuscriptEditor &editor, WordTools &tools)
     tools.openWeb(Ref::Synonyms);
     require(browser.requested == WordTools::referenceUrl(Ref::Synonyms, "‘I’m’"), "web lookup uses exact selection");
     QDesktopServices::unsetUrlHandler("https");
+}
+
+void testManuscriptSelection(ManuscriptEditor &editor, WordTools &tools)
+{
+    const QString source = QStringLiteral("notwithstanding—not O’Brien co‑author re-enter cafe\u0301 🦆.");
+    editor.resize(900, 230);
+    editor.loadText(source);
+    QApplication::processEvents();
+    for (const auto &word : QStringList{"notwithstanding", "—", "not", "O’Brien",
+                                        "co‑author", "re-enter", QStringLiteral("cafe\u0301"), "🦆"}) {
+        // 'not' also starts the first word. Target the independent final word.
+        const int start = int(word == "not" ? source.indexOf(QStringLiteral("—not")) + 1 : source.indexOf(word));
+        QTextCursor glyph(editor.document());
+        glyph.setPosition(start);
+        const QRect left = editor.cursorRect(glyph);
+        glyph.movePosition(QTextCursor::NextCharacter);
+        const QRect right = editor.cursorRect(glyph);
+        const QPoint point((left.x() + right.x()) / 2, left.center().y());
+        QMouseEvent click(QEvent::MouseButtonDblClick, point, editor.viewport()->mapToGlobal(point),
+                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(editor.viewport(), &click);
+        require(editor.textCursor().selectedText() == word, "double-click selects the printed word or grapheme");
+        if (word == QStringLiteral("🦆")) continue;
+        editor.jumpTo(start, false);
+        tools.selectWord();
+        require(editor.textCursor().selectedText() == word, "keyboard word selection respects the em dash");
+    }
 }
 
 void testDialog(ManuscriptEditor &editor, WordTools &tools)
@@ -135,6 +163,7 @@ int main(int argc, char **argv)
     require(thesaurus.lookup("doctor’s bill").size() == thesaurus.lookup("doctor's bill").size() &&
             !thesaurus.lookup("doctor’s bill").isEmpty(), "curly apostrophe matches the index");
     testWords(editor, tools);
+    testManuscriptSelection(editor, tools);
     testDialog(editor, tools);
     std::puts("Word selection, Merriam-Webster addresses and offline thesaurus passed.");
 }

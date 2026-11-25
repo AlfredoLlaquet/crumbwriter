@@ -1,4 +1,5 @@
 #include "wordtools.h"
+#include "wordselection.h"
 #include "manuscripteditor.h"
 #include "manuscriptlinks.h"
 #include "manuscripttext.h"
@@ -12,7 +13,6 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
-#include <QRegularExpression>
 #include <QShortcut>
 #include <QSignalBlocker>
 #include <QTextBlock>
@@ -22,7 +22,7 @@
 class ThesaurusDialog final : public QDialog {
 public:
     explicit ThesaurusDialog(ManuscriptEditor *editor)
-        : QDialog(editor->window()), editor_(editor)
+        : QDialog(editor), editor_(editor)
     {
         setObjectName("offlineThesaurus");
         setWindowTitle(tr("Offline English Thesaurus"));
@@ -197,21 +197,7 @@ QTextCursor WordTools::wordAtCaret() const
     auto cursor = editor_->textCursor();
     cursor.clearSelection();
     if (editor_->virtualRows()) return cursor;
-    static const QRegularExpression words(QStringLiteral(
-        R"([\p{L}\p{N}_][\p{L}\p{M}\p{N}_]*(?:['’ʼ‐‑-][\p{L}\p{N}_][\p{L}\p{M}\p{N}_]*)*)"));
-    const auto block = cursor.block();
-    const int offset = cursor.positionInBlock();
-    auto matches = words.globalMatch(ManuscriptText::blockText(block));
-    while (matches.hasNext()) {
-        const auto word = matches.next();
-        if (word.capturedStart() > offset) break;
-        if (word.capturedEnd() >= offset) {
-            cursor.setPosition(block.position() + int(word.capturedStart()));
-            cursor.setPosition(block.position() + int(word.capturedEnd()), QTextCursor::KeepAnchor);
-            break;
-        }
-    }
-    return cursor;
+    return WordSelection::atCaret(cursor);
 }
 
 QTextCursor WordTools::lookupTarget() const

@@ -98,8 +98,9 @@ private:
     {
         const QString text = ManuscriptText::blockText(block);
         // Publishing can resize a heading's underline. Its position among
-        // its neighbors identifies the marker regardless of its dash count.
-        const QByteArray bytes = GenericParagraph::onlyHyphens(text) ? QByteArray("-") : text.toUtf8();
+        // its neighbors and its level identify it regardless of the saved length.
+        const QByteArray bytes = GenericParagraph::markerLevel(text)
+            ? QByteArray(1, text.front().toLatin1()) : text.toUtf8();
         return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256);
     }
     const QTextDocument *document;

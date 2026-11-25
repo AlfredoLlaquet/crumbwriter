@@ -97,14 +97,17 @@ int CommittedPunctuation::resolve(QTextDocument *doc, bool generic)
             elisionEnd_ = start_ + 1;
         }
     } else if (character_ == u'-' && length == 2) {
-        if (generic && GenericParagraph::onlyHyphens(doc->findBlock(start_).text()))
-            return 0;
         result = u'—';
     } else if (character_ == u'.' && length == 3) {
         result = u'…';
     }
     if (result.isNull())
         return 0;
+    if (generic && (character_ == u'-' || character_ == u'.')) {
+        const auto block = doc->findBlock(start_);
+        if (GenericParagraph::markerLevel(block.text()) && block.previous().isValid() &&
+            GenericParagraph::canHaveMarker(block.previous().text())) return 0;
+    }
     replace(doc, start_, start_ + length, result);
     return 1 - length;
 }

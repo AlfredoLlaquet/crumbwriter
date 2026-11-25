@@ -99,6 +99,128 @@ void pressChoice(MainWindow &window, const QString &choice)
     CHECK(false);
 }
 
+void testManuscriptTabs(const QTemporaryDir &tmp)
+{
+    const QString crumbs = tmp.filePath("Tab Crumbs.txt"), novel = tmp.filePath("Tab Novel.txt");
+    const QString renamed = tmp.filePath("Tab Renamed.txt");
+    write(crumbs, "Project//Note 1: First: red goose.\nNote 2: Last: blue goose.\n");
+    write(novel, "The Novel\nA red bicycle.\nFinal line.\n");
+    write(crumbs + ".characters", "Ferdinand, Fred\n");
+    Preferences prefs(tmp.filePath("tabs.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    prefs.settings().setValue("editor/backup", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.openDocumentInTab(crumbs));
+    CHECK(window.tabCount() == 1);
+    auto *first = window.editor();
+    CHECK(until([&] { return first->hasFocus(); }));
+    key(Qt::Key_F, Qt::ControlModifier);
+    auto *query = QApplication::focusWidget();
+    CHECK(query && query->objectName() == "cw-find");
+    static_cast<QLineEdit *>(query)->setText("goose");
+    CHECK(until([&] { return first->textCursor().selectedText() == "goose"; }));
+    const auto start = first->textCursor();
+    CHECK(window.openDocumentInTab(novel));
+    auto *second = window.editor();
+    CHECK(window.tabCount() == 2 && first != second && second->model().isGeneric());
+    CHECK(!query->isVisible());
+    key(Qt::Key_Tab, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(window.editor() == first && !first->model().isGeneric() && query->isVisible());
+    CHECK(first->textCursor().anchor() == start.anchor() && first->textCursor().position() == start.position());
+    CHECK(!window.findChild<QLabel *>("documentMode")->text().contains("Generic"));
+    key(Qt::Key_Tab, Qt::ControlModifier);
+    CHECK(window.editor() == second);
+    second->openAtEnd();
+    second->insertLiteral(" EDIT");
+    CHECK(!window.openDocumentInTab(tmp.filePath("No such tab")));
+    CHECK(window.editor() == second && window.tabCount() == 2 && second->manuscriptText().contains(" EDIT"));
+    CHECK(window.openDocumentInTab(crumbs));
+    CHECK(window.tabCount() == 2 && window.editor() == first);
+    first->openAtEnd();
+    first->insertLiteral(" END");
+    first->selectRange(4, 8, false);
+
+    // The file dialog belongs to its initiating manuscript throughout a tab switch.
+    key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *chooser = first->findChild<QFileDialog *>();
+    CHECK(chooser && chooser->isVisible());
+    CHECK(window.openDocumentInTab(novel));
+    chooser->fileSelected(crumbs); // Saving one's own path is allowed.
+    chooser->reject();
+    CHECK(until([&] { return read(crumbs).contains(" END"); }));
+    CHECK(window.path() == novel && !read(novel).contains(" EDIT"));
+    first->insertLiteral("x");
+
+    // One confirmation for the window. Cancel preserves every tab and undo stack.
+    CHECK(!window.close());
+    auto *box = window.findChild<QMessageBox *>("confirmClose");
+    CHECK(box && box->informativeText().contains(crumbs) && box->informativeText().contains(novel));
+    pressChoice(window, "Keep Editing");
+    CHECK(window.tabCount() == 2 && window.editor() == second);
+    second->undo();
+    CHECK(!second->manuscriptText().contains(" EDIT"));
+    second->redo();
+    CHECK(second->manuscriptText().contains(" EDIT"));
+    CHECK(window.openDocumentInTab(crumbs));
+
+    // A save targeting a different open manuscript is refused.
+    key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+    chooser = first->findChild<QFileDialog *>();
+    CHECK(chooser);
+    chooser->fileSelected(novel);
+    chooser->reject();
+    CHECK(window.path() == crumbs && !read(novel).contains(" END"));
+    CHECK(window.findChild<QLabel *>("notice")->text().contains("already open"));
+    first->selectRange(2, 7, false);
+    key(Qt::Key_F4, Qt::ControlModifier);
+    pressChoice(window, "Save and Close");
+    CHECK(until([&] { return window.tabCount() == 1; }));
+    key(Qt::Key_T, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(window.tabCount() == 2 && window.path() == crumbs);
+    CHECK(window.editor()->textCursor().anchor() == 2 && window.editor()->textCursor().position() == 7);
+    CHECK(window.openDocumentInTab(novel));
+
+    QPointer<MainWindow> moved;
+    window.makeWindow = [&] {
+        moved = new MainWindow(prefs);
+        return moved.data();
+    };
+    window.moveTabToNewWindow();
+    CHECK(moved && moved->editor() == second && moved->tabCount() == 1 && window.tabCount() == 1);
+    CHECK(until([&] { return second->hasFocus(); }));
+    second->undo();
+    CHECK(!second->manuscriptText().contains(" EDIT"));
+    second->redo();
+    CHECK(second->manuscriptText().contains(" EDIT"));
+    CHECK(window.openDocumentInTab(novel));
+    CHECK(window.path() == crumbs && moved->path() == novel && window.tabCount() == 1);
+    CHECK(!moved->close());
+    pressChoice(*moved, "Save and Close");
+    CHECK(until([&] { return !moved || !moved->isVisible(); }));
+    CHECK(read(novel).contains(" EDIT"));
+    window.activateManuscript(false);
+    CHECK(until([&] { return window.editor()->hasFocus(); }));
+    key(Qt::Key_T, Qt::ControlModifier);
+    auto *blank = window.editor();
+    CHECK(window.tabCount() == 2 && window.path().isEmpty());
+    blank->insertLiteral("An unsaved draft");
+    CHECK(!window.close());
+    pressChoice(window, "Save and Close");
+    CHECK(until([&] { return blank->findChild<QFileDialog *>() != nullptr; }));
+    chooser = blank->findChild<QFileDialog *>();
+    chooser->reject();
+    CHECK(window.tabCount() == 2 && window.isVisible());
+    CHECK(!window.close());
+    pressChoice(window, "Save and Close");
+    CHECK(until([&] { return blank->findChild<QFileDialog *>() != nullptr; }));
+    chooser = blank->findChild<QFileDialog *>();
+    chooser->fileSelected(renamed);
+    static_cast<QDialog *>(chooser)->done(QDialog::Accepted);
+    CHECK(until([&] { return !window.isVisible(); }));
+    CHECK(read(renamed).contains("An unsaved draft"));
+}
+
 void testWindow(const QTemporaryDir &tmp)
 {
     const auto path = tmp.filePath("Manuscript.txt");
@@ -328,6 +450,48 @@ void testMentionCommands(const QTemporaryDir &tmp)
     CHECK(editor->textCursor().selectedText() == "lunar auditor");
     CHECK(editor->textCursor().anchor() == oldAnchor && editor->textCursor().position() == oldPosition);
     if (!window.close()) pressChoice(window, "Discard Unsaved Changes");
+}
+
+void testGenreSpelling(const QTemporaryDir &tmp)
+{
+    const QString path = tmp.filePath("GenreSpelling.txt");
+    const auto manuscript = QStringLiteral("Book//Crumb 1: Qzäß Blepik #1: Here is QZÄSS BLEPIK. "
+                                           "Elsewhere: Blepik.\nCrumb 2: Note: Blepik.");
+    write(path, manuscript.toUtf8());
+    Preferences prefs(tmp.filePath("genre-spelling.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    prefs.settings().setValue("editor/spell-check", true);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.loadDocument(path));
+    window.activateManuscript(true);
+    auto *editor = window.editor();
+    auto errors = [&] {
+        QList<int> positions;
+        for (const auto &sel : editor->extraSelections())
+            if (sel.format.underlineStyle() == QTextCharFormat::WaveUnderline)
+                positions.append(sel.cursor.selectionStart());
+        return positions;
+    };
+    const int first = int(manuscript.indexOf("Elsewhere: Blepik")) + 11;
+    CHECK(until([&] { return errors() == QList<int>{first, int(manuscript.lastIndexOf("Blepik"))}; }));
+    editor->jumpTo(0);
+    key(Qt::Key_F8);
+    auto *review = window.findChild<QDialog *>("spellingReview");
+    CHECK(review && until([&] { return editor->textCursor().selectionStart() == first; }));
+    review->findChild<QLineEdit *>("spellingReplacement")->setText("reed");
+    review->findChild<QPushButton *>("spellingReplaceAll")->click();
+    CHECK(until([&] { return editor->manuscriptText().count("reed") == 2; }));
+    CHECK(editor->manuscriptText().contains(QStringLiteral("Qzäß Blepik #1: Here is QZÄSS BLEPIK.")));
+    review->close();
+    editor->undo();
+    CHECK(editor->manuscriptText() == manuscript);
+    QTextCursor prefix(editor->document());
+    prefix.setPosition(6, QTextCursor::KeepAnchor);
+    prefix.removeSelectedText();
+    CHECK(editor->model().isGeneric() && until([&] { return errors().size() > 2; }));
+    editor->undo();
+    CHECK(!editor->model().isGeneric() && until([&] { return errors().size() == 2; }));
 }
 
 void testWordCommandsAndStatus(const QTemporaryDir &tmp)
@@ -823,8 +987,10 @@ int main(int argc, char **argv)
     QTemporaryDir tmp;
     CHECK(tmp.isValid());
     testWindow(tmp);
+    testManuscriptTabs(tmp);
     testDuplicateHistory(tmp);
     testMentionCommands(tmp);
+    testGenreSpelling(tmp);
     testWordCommandsAndStatus(tmp);
     testManuscriptLinks(tmp);
     testWritingTools(tmp);

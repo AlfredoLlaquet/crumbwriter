@@ -1,36 +1,35 @@
 #include "mainwindow.h"
-#include "wordtools.h"
-#include <QDesktopServices>
-#include <QGridLayout>
-#include <QResizeEvent>
-#include <QUrl>
-#include "commandicons.h"
-#include "bookmarks.h"
+#include "manuscriptsession.h"
 #include "documentstore.h"
+#include "editorcolors.h"
 #include "manuscripteditor.h"
 #include "preferences.h"
 #include "searchpanel.h"
-#include "spellcheck.h"
 #include "synonympanel.h"
-#include "synonymwriting.h"
 #include "windowlayout.h"
 
 #include <QApplication>
-#include <QCloseEvent>
-#include <QDir>
-#include <QFileDialog>
-#include <QFileInfo>
-#include <QHBoxLayout>
+#include <QDesktopServices>
+#include <QGridLayout>
 #include <QLabel>
 #include <QMenu>
-#include <QMessageBox>
-#include <QPushButton>
 #include <QScreen>
 #include <QSplitter>
-#include <QTextBlock>
-#include <QTimer>
+#include <QTabBar>
+#include <QTabWidget>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QUrl>
+
+namespace {
+QVBoxLayout *paneLayout(QWidget *widget)
+{
+    auto *layout = new QVBoxLayout(widget);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(0);
+    return layout;
+}
+}
 
 MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     : QWidget(parent), prefs_(preferences)
@@ -58,27 +57,38 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     dismiss->setText("×");
     dismiss->setAccessibleName("Dismiss message");
     dismiss->setFocusPolicy(Qt::StrongFocus);
-    connect(dismiss, &QToolButton::clicked, noticeBar_, &QWidget::hide);
+    connect(dismiss, &QToolButton::clicked, this, [this] { showNotice({}); });
     noticeLayout->addWidget(dismiss);
     layout->addWidget(noticeBar_);
     noticeBar_->hide();
 
-    editor_ = new ManuscriptEditor(this);
-    editor_->setObjectName("manuscript");
-    editor_->setAccessibleName("Manuscript");
-    search_ = new SearchPanel(editor_, &prefs_.settings(), this);
-    layout->addWidget(search_);
+    searchLayout_ = new QVBoxLayout;
+    searchLayout_->setContentsMargins(0, 0, 0, 0);
+    layout->addLayout(searchLayout_);
     split_ = new QSplitter(Qt::Horizontal, this);
     split_->setObjectName("manuscriptSplitter");
-    synonyms_ = new SynonymPanel(editor_->document(), this);
-    split_->addWidget(synonyms_);
-    split_->addWidget(editor_);
-    side_ = new NavigationPanel(editor_, &prefs_.settings(), this);
-    split_->addWidget(side_);
+    leftPane_ = new QWidget(split_);
+    leftPane_->setObjectName("synonymPanel");
+    leftPane_->setAccessibleName(tr("Synonym lists"));
+    leftLayout_ = paneLayout(leftPane_);
+    tabs_ = new QTabWidget(split_);
+    // Preserve the manuscript pane's saved layout identity across upgrades.
+    tabs_->setObjectName("manuscript");
+    tabs_->setAccessibleName(tr("Manuscript"));
+    tabs_->setDocumentMode(true);
+    tabs_->setMovable(true);
+    tabs_->setTabsClosable(true);
+    tabs_->tabBar()->setObjectName("manuscriptTabs");
+    tabs_->tabBar()->setAccessibleName(tr("Open manuscripts"));
+    tabs_->tabBar()->setExpanding(false);
+    tabs_->setElideMode(Qt::ElideMiddle);
+    rightPane_ = new QWidget(split_);
+    rightPane_->setObjectName("sidebar");
+    rightPane_->setAccessibleName(tr("Navigation"));
+    rightLayout_ = paneLayout(rightPane_);
     split_->setChildrenCollapsible(false);
     for (int i = 0; i < split_->count(); ++i) split_->setStretchFactor(i, 1);
     layout->addWidget(split_, 1);
-
     status_ = new QLabel(this);
     status_->setTextFormat(Qt::PlainText);
     status_->setObjectName("documentStatus");
@@ -110,170 +120,67 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     footer_->addWidget(mode_, 0, 2);
     layout->addLayout(footer_);
 
-    store_ = new DocumentStore(this);
-    editor_->onViPrompt = [this](const QString &prompt) {
-        setStatusMessage(prompt.isEmpty() ? store_->status() : prompt);
-    };
-    store_->setSnapshotProvider([this] { return editor_->manuscriptText(); });
-    store_->captureMetadata = [this] {
-        bookmarks_->captureForSave();
-        return editor_->model().dailySnapshot();
-    };
-    store_->onPublished = [this](const QString &path, const QByteArray &metadata) {
-        const QString error = editor_->model().publishDailySnapshot(path, metadata);
-        if (!error.isEmpty()) showNotice(error);
-        if (path == store_->path()) {
-            QString bookmarkError;
-            if (!bookmarks_->publishSave(&bookmarkError)) showNotice(bookmarkError);
-        }
-    };
-    bookmarks_ = new Bookmarks(this,
-        [this] { return editor_->textCursor().blockNumber() + 1 + editor_->virtualRows(); },
-        editor_->document(),
-        [this](int line) {
-            const auto &model = editor_->model();
-            const auto &record = model.record(line - 1);
-            return model.isGeneric() ? record.text : record.title;
-        },
-        [this](int line) {
-            const auto block = editor_->document()->findBlockByNumber(line - 1);
-            if (block.isValid()) jump(block.position());
-        });
-    spelling_ = new SpellCheck(editor_, this);
-    synonymWriting_ = new SynonymWriting(editor_, synonyms_->matcher());
-    words_ = new WordTools(editor_);
-    words_->onNotice = [this](const QString &message) { showNavigationStatus(message); };
-    connectWritingTools();
-    editor_->model().onDailyCountError = [this](const QString &error) { showNotice(error); };
-    store_->onChanged = [this] { documentStateChanged(); };
-    store_->onError = [this](const QString &error) { showNotice(error); };
-    store_->onPathChanged = [this](const QString &, const QString &target) {
-        if (!loading_) {
-            const QString dailyError = editor_->model().saveDailyCountAs(target);
-            if (!dailyError.isEmpty()) showNotice(dailyError);
-            if (!updateCompanions(CompanionAction::SaveAs, target)) store_->keepEditing();
-        }
-        prefs_.remember(target);
-        documentStateChanged();
-    };
-    store_->onSaveAsNeeded = [this] { chooseFile(true); };
-    store_->onReadyToClose = [this] {
-        if (!discarding_ && !updateCompanions(CompanionAction::Flush)) {
-            store_->keepEditing();
-            return;
-        }
-        allowClose_ = true;
-        close();
-    };
-    side_->jumpTo = [this](int pos) { jump(pos); };
-    search_->recordOrigin = [this](const QTextCursor &c) { trail_.remember(c); };
-    editor_->model().observe(this, [this](const CrumbChange &change) {
-        if (change.modeChanged) updateModeControls();
-        if (!loading_ && change.textChanged) {
-            store_->markEdited();
-            bookmarks_->refresh();
-            if (isActiveWindow()) prefs_.remember(store_->path());
-        }
-    });
-    connect(editor_, &QPlainTextEdit::cursorPositionChanged, this, [this] {
-        if (!loading_ && isActiveWindow()) prefs_.remember(store_->path());
-    });
-
     buildMenu();
-    updateModeControls();
+    connect(tabs_, &QTabWidget::currentChanged, this, [this] { currentTabChanged(); });
+    connect(tabs_, &QTabWidget::tabCloseRequested, this, [this](int index) {
+        for (auto *session : sessions_) {
+            if (session->editor_ == tabs_->widget(index)) { requestClose({session}, false); return; }
+        }
+    });
+    newTab();
     const QSize available = screen()->availableGeometry().size();
     resize(QSize(1060, 720).boundedTo(available * 0.80));
     const int left = qMin(synonymWidth_, width() / 5);
     const int right = qMin(sidebarWidth_, width() / 4);
     split_->setSizes({left, qMax(1, width() - left - right), right});
     qApp->installEventFilter(this);
-    applyPreferences();
     layouts_ = new WindowLayouts(this, prefs_.settings());
-    documentStateChanged();
-    editor_->setFocus();
 }
 
 MainWindow::~MainWindow()
 {
     qApp->removeEventFilter(this);
-    editor_->onViPrompt = {};
-    editor_->model().onDailyCountError = {};
-    store_->onChanged = {};
-    store_->onError = {};
-    store_->onSaveAsNeeded = {};
-    store_->onReadyToClose = {};
-    store_->onPathChanged = {};
-    store_->captureMetadata = {};
-    store_->onPublished = {};
-    bookmarks_->onChanged = {};
-    synonyms_->onChanged = {};
-    delete synonymWriting_; // Disconnect from the matcher while both panels are alive.
-    delete spelling_; // Its viewport callbacks belong to the still-live editor.
+    delete layouts_;
+    layouts_ = nullptr;
+    tabs_->disconnect(this);
+    active_ = nullptr;
+    qDeleteAll(sessions_);
 }
 
-bool MainWindow::loadDocument(const QString &name, bool recovery)
+ManuscriptEditor *MainWindow::editor() const { return active_ ? active_->editor_ : nullptr; }
+QString MainWindow::path() const { return active_ ? active_->path() : QString(); }
+int MainWindow::tabCount() const { return tabs_->count(); }
+
+bool MainWindow::loadDocument(const QString &path, bool recovery)
 {
-    loading_ = true;
-    QString text, error;
-    const bool ok = recovery ? store_->openDraft(name, &text, &error)
-                             : store_->open(name, prefs_.enabled("backup"), &text, &error);
-    if (ok) {
-        showNotice({});
-        trail_.clear();
-        search_->reset();
-        words_->closeThesaurus();
-        webLookupPending_ = false;
-        editor_->loadText(text);
-        const QString dailyError = editor_->model().openDailyCount(recovery ? name : store_->path());
-        if (!dailyError.isEmpty()) showNotice(dailyError);
-        side_->reset();
-        updateCompanions(CompanionAction::Open, store_->path());
-        if (recovery) showNotice("Recovered an unsaved manuscript. Use Save As to give it a filename.");
-        prefs_.remember(store_->path());
-    } else {
-        showNotice(error);
-    }
-    loading_ = false;
-    documentStateChanged();
-    return ok;
+    return active_->load(path, recovery);
 }
-
-QString MainWindow::path() const { return store_->path(); }
 
 void MainWindow::activateManuscript(bool goToEnd)
 {
-    if (goToEnd) editor_->openAtEnd();
+    if (goToEnd) editor()->openAtEnd();
     if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
     show();
     raise();
     activateWindow();
-    editor_->setFocus();
-    prefs_.remember(store_->path());
+    editor()->setFocus();
+    prefs_.remember(path());
 }
 
 void MainWindow::applyPreferences()
 {
-    const QPalette p = prefs_.applyControlTheme();
-    editor_->setPaperPalette(p);
-    editor_->setPaperActive(isActiveWindow());
-    const QFont font = prefs_.manuscriptFont();
-    if (editor_->font() != font)
-        editor_->setFont(font);
-    editor_->setSmartPunctuation(prefs_.enabled("smart-punctuation"));
-    editor_->setCopyDeletedText(prefs_.enabled("copy-deleted"));
-    synonymWriting_->applySettings(prefs_.synonymSettings());
-    spelling_->setEnabled(prefs_.enabled("spell-check"));
-    store_->configureLiveSave(prefs_.enabled("live-save"), prefs_.saveDelay());
-    side_->updateCurrent();
+    const QPalette palette = prefs_.applyControlTheme();
+    for (auto *session : sessions_) session->applyPreferences(palette);
+    if (active_) updateFooter();
 }
 
 void MainWindow::changeEvent(QEvent *e)
 {
     QWidget::changeEvent(e);
-    if (!editor_ || !store_) return;
+    if (!active_) return;
     if (e->type() == QEvent::ActivationChange) {
-        editor_->setPaperActive(isActiveWindow());
-        if (isActiveWindow() && !loading_) prefs_.remember(store_->path());
+        editor()->setPaperActive(isActiveWindow());
+        if (isActiveWindow() && !active_->loading_) prefs_.remember(path());
     }
 }
 
@@ -283,12 +190,6 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     if (mode_) fitFooter();
 }
 
-void MainWindow::setStatusMessage(const QString &message)
-{
-    status_->setText(message);
-    fitFooter();
-}
-
 void MainWindow::fitFooter()
 {
     // Equal side columns center the full link on the window. At smaller widths
@@ -296,7 +197,7 @@ void MainWindow::fitFooter()
     const int side = qMax(status_->fontMetrics().horizontalAdvance(status_->text()) + 12,
                           mode_->sizeHint().width());
     const bool fits = website_->sizeHint().width() + 2 * side + 12 <= width()
-                      && !editor_->viSelectionActive() && !webLookupPending_;
+                      && active_ && !editor()->viSelectionActive() && !active_->webLookupPending_;
     if (fits == !website_->isHidden()) return;
     website_->setVisible(fits);
     footer_->setColumnStretch(2, fits ? 1 : 0);
@@ -308,112 +209,37 @@ void MainWindow::openCrumbsWebsite()
         showNotice(QStringLiteral("Could not open TheCrumbs.org in your browser."));
 }
 
-void MainWindow::documentStateChanged()
-{
-    const QString name = store_->path().isEmpty() ? QString("Untitled") : QFileInfo(store_->path()).fileName();
-    const bool pending = store_->isDirty() || companionsPending();
-    const QString title = (pending ? QString("• ") : QString()) + name + " — Crumb Writer";
-    if (title != windowTitle()) setWindowTitle(title);
-    if (!editor_->viSelectionActive() && !webLookupPending_)
-        setStatusMessage(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
-    status_->setToolTip(store_->backupPath().isEmpty() ? store_->path()
-                       : store_->path() + "\nStartup backup: " + store_->backupPath());
-}
-
 void MainWindow::showNotice(const QString &message)
 {
-    notice_->setText(message);
-    noticeBar_->setVisible(!message.isEmpty());
+    if (active_) active_->showNotice(message);
 }
 
-void MainWindow::showNavigationStatus(const QString &message)
+void MainWindow::sessionChanged(ManuscriptSession *session)
 {
-    setStatusMessage(message);
-    QTimer::singleShot(2500, this, [this, message] {
-        if (status_->text() == message && !editor_->viSelectionActive() && !webLookupPending_)
-            setStatusMessage(synonymHint_.isEmpty() ? store_->status() : synonymHint_);
-    });
-}
-
-void MainWindow::chooseFile(bool saving)
-{
-    if (chooser_) { chooser_->raise(); chooser_->activateWindow(); return; }
-    auto *dialog = new QFileDialog(this, saving ? "Save Manuscript As" : "Open Manuscript");
-    chooser_ = dialog;
-    dialog->setAttribute(Qt::WA_DeleteOnClose);
-    dialog->setWindowModality(Qt::NonModal);
-    dialog->setAcceptMode(saving ? QFileDialog::AcceptSave : QFileDialog::AcceptOpen);
-    dialog->setFileMode(saving ? QFileDialog::AnyFile : QFileDialog::ExistingFile);
-    dialog->setNameFilters({"Text files (*.txt)", "All files (*)"});
-    if (!path().isEmpty()) dialog->setDirectory(QFileInfo(path()).absolutePath());
-    if (saving) dialog->selectFile(path().isEmpty()
-        ? (editor_->model().isGeneric() ? "Manuscript.txt" : "Crumbs.txt")
-        : QFileInfo(path()).fileName());
-    connect(dialog, &QFileDialog::fileSelected, this, [this, saving](const QString &name) {
-        if (!saving) { if (openRequested) openRequested(name); return; }
-        if (pathAvailable && !pathAvailable(name)) {
-            store_->keepEditing();
-            showNotice("That manuscript is already open in another Crumb Writer window.");
-            return;
-        }
-        editor_->finishTyping();
-        store_->saveAs(name, prefs_.enabled("backup"));
-    });
-    if (saving) connect(dialog, &QDialog::rejected, store_, &DocumentStore::keepEditing);
-    dialog->show();
-    CommandIcons::setFileDialogIcons(dialog);
-}
-
-void MainWindow::save(bool asNew)
-{
-    editor_->finishTyping();
-    if (asNew || path().isEmpty()) { chooseFile(true); return; }
-    updateCompanions(CompanionAction::Flush);
-    store_->save();
-}
-
-void MainWindow::closeEvent(QCloseEvent *e)
-{
-    if (allowClose_) { e->accept(); return; }
-    editor_->finishTyping();
-    if (!store_->needsCloseConfirmation() && !companionsPending()) {
-        e->accept();
-        return;
+    const int index = tabs_->indexOf(session->editor_);
+    if (index < 0) return;
+    const bool pending = session->store_->isDirty() || session->companionsPending();
+    const QString label = (pending ? QStringLiteral("• ") : QString()) + session->label();
+    // Ampersands in filenames are literal, including in tab labels.
+    QString tabLabel = label;
+    tabs_->setTabText(index, tabLabel.replace(u'&', QStringLiteral("&&")));
+    tabs_->setTabToolTip(index, session->path().isEmpty() ? session->label() : session->path());
+    if (active_ == session) {
+        setWindowTitle(label + QStringLiteral(" — Crumb Writer"));
+        updateFooter();
     }
-    e->ignore();
-    if (closeDialog_) { closeDialog_->raise(); closeDialog_->activateWindow(); return; }
-    store_->beginCloseConfirmation();
-    showCloseDialog();
 }
 
-void MainWindow::showCloseDialog()
+void MainWindow::updateFooter()
 {
-    auto *box = new QMessageBox(QMessageBox::Question, "Unsaved Changes",
-        "Save the pending changes before closing this manuscript?", QMessageBox::NoButton, this);
-    closeDialog_ = box;
-    box->setObjectName("confirmClose");
-    box->setAttribute(Qt::WA_DeleteOnClose);
-    box->setWindowModality(Qt::NonModal);
-    auto *saveButton = box->addButton("Save and Close", QMessageBox::AcceptRole);
-    auto *discard = box->addButton("Discard Unsaved Changes", QMessageBox::DestructiveRole);
-    auto *keep = box->addButton("Keep Editing", QMessageBox::RejectRole);
-    box->setDefaultButton(saveButton);
-    box->setEscapeButton(keep);
-    connect(box, &QDialog::finished, this, [this, box, saveButton, discard](int) {
-        closeDialog_.clear();
-        if (box->clickedButton() == discard) {
-            discarding_ = true;
-            store_->discardAndClose();
-        } else if (box->clickedButton() == saveButton) {
-            if (!path().isEmpty() && !updateCompanions(CompanionAction::Flush)) {
-                store_->keepEditing();
-                return;
-            }
-            store_->saveAndClose();
-        } else {
-            store_->keepEditing();
-            editor_->setFocus();
-        }
-    });
-    box->show();
+    auto *s = active_;
+    if (!s) return;
+    const bool hint = !s->synonymHint_.isEmpty() && s->statusMessage_ == s->synonymHint_;
+    status_->setPalette(hint ? EditorColors::statusHintPalette(status_->parentWidget()->palette()) : QPalette());
+    status_->setText(s->statusMessage_);
+    const QString backup = s->store_->backupPath();
+    status_->setToolTip(backup.isEmpty() ? s->path() : s->path() + tr("\nStartup backup: ") + backup);
+    notice_->setText(s->noticeMessage_);
+    noticeBar_->setVisible(!s->noticeMessage_.isEmpty());
+    fitFooter();
 }

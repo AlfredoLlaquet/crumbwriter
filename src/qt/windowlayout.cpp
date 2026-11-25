@@ -108,6 +108,14 @@ void applyGeometry(QWidget *window, const QVariantMap &saved)
     }
 }
 
+bool belongsToLayout(QWidget *widget, QWidget *window)
+{
+    if (widget->window() != window) return false;
+    for (auto *p = widget->parentWidget(); p && p != window; p = p->parentWidget())
+        if (p->objectName() == QStringLiteral("inactiveTabPanels")) return false;
+    return true;
+}
+
 QString dialogKey(QWidget *window)
 {
     if (qobject_cast<QMessageBox *>(window)) return {}; // Platform-owned prompt geometry.
@@ -136,40 +144,7 @@ public:
                 if (!applying_) settings_.setValue(prefix_ + "viewMode", index);
             });
         }
-        for (auto *split : window->findChildren<QSplitter *>()) {
-            if (split->window() != window || split->objectName().isEmpty()) continue;
-            // Qt file dialogs also contain implementation-private splitters.
-            bool named = split->count() > 1 && !split->objectName().startsWith("qt_");
-            for (int i = 0; i < split->count(); ++i)
-                named &= !split->widget(i)->objectName().isEmpty() && !split->widget(i)->accessibleName().isEmpty();
-            if (named) parts_.append(panelLayout(split, this));
-        }
-        for (auto *view : window->findChildren<QAbstractItemView *>()) {
-            if (view->window() != window || view->objectName().isEmpty() || view->objectName().startsWith("qt_"))
-                continue;
-            QHeaderView *header = nullptr;
-            if (auto *tree = qobject_cast<QTreeView *>(view)) header = tree->header();
-            else if (auto *table = qobject_cast<QTableView *>(view)) header = table->horizontalHeader();
-            if (!header || header->count() < 2 || (header->isHidden() && view->objectName() != "genreList"))
-                continue;
-            parts_.append(columnLayout(view, header, this));
-            header->setContextMenuPolicy(Qt::CustomContextMenu);
-            connect(header, &QWidget::customContextMenuRequested, this, [this, header](const QPoint &point) {
-                auto *menu = new QMenu(header);
-                menu->setAttribute(Qt::WA_DeleteOnClose);
-                auto *open = menu->addAction(tr("Arrange Panels and Columns…"));
-                connect(open, &QAction::triggered, this, [this] { arrange(); });
-                menu->popup(header->mapToGlobal(point));
-            });
-        }
-        for (auto *part : parts_) {
-            part->changed = [this, part] {
-                if (!applying_ && window_ && window_->isVisible()) {
-                    dirtyParts_.insert(part);
-                    timer_.start();
-                }
-            };
-        }
+        bindParts();
         if (!parts_.isEmpty()) {
             auto *shortcut = new QShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+F10")), window);
 #ifdef Q_OS_MACOS
@@ -187,8 +162,61 @@ public:
         if (!manuscriptWindow(window) || (!anotherManuscriptIsVisible(window) &&
             saved.value("floating").toBool()))
             applyGeometry(window, saved);
-        restoreParts();
         lastGeometry_ = geometryOf(window);
+    }
+
+    void releaseParts()
+    {
+        flush();
+        // The modeless arranger stores pointers to the active panel and column
+        // controls. Close it before those controls go back to their document.
+        if (auto *dialog = window_->findChild<QDialog *>("layoutEditor", Qt::FindDirectChildrenOnly))
+            delete dialog;
+        parts_.clear();
+        delete partConnections_;
+        partConnections_ = nullptr;
+    }
+
+    void bindParts()
+    {
+        if (partConnections_) return;
+        QWidget *window = window_;
+        partConnections_ = new QObject(this);
+        for (auto *split : window->findChildren<QSplitter *>()) {
+            if (!belongsToLayout(split, window) || split->objectName().isEmpty()) continue;
+            // Qt file dialogs also contain implementation-private splitters.
+            bool named = split->count() > 1 && !split->objectName().startsWith("qt_");
+            for (int i = 0; i < split->count(); ++i)
+                named &= !split->widget(i)->objectName().isEmpty() && !split->widget(i)->accessibleName().isEmpty();
+            if (named) parts_.append(panelLayout(split, partConnections_));
+        }
+        for (auto *view : window->findChildren<QAbstractItemView *>()) {
+            if (!belongsToLayout(view, window) || view->objectName().isEmpty() || view->objectName().startsWith("qt_"))
+                continue;
+            QHeaderView *header = nullptr;
+            if (auto *tree = qobject_cast<QTreeView *>(view)) header = tree->header();
+            else if (auto *table = qobject_cast<QTableView *>(view)) header = table->horizontalHeader();
+            if (!header || header->count() < 2 || (header->isHidden() && view->objectName() != "genreList"))
+                continue;
+            parts_.append(columnLayout(view, header, partConnections_));
+            header->setContextMenuPolicy(Qt::CustomContextMenu);
+            connect(header, &QWidget::customContextMenuRequested, partConnections_, [this, header](const QPoint &point) {
+                auto *menu = new QMenu(header);
+                menu->setAttribute(Qt::WA_DeleteOnClose);
+                auto *open = menu->addAction(tr("Arrange Panels and Columns…"));
+                connect(open, &QAction::triggered, this, [this] { arrange(); });
+                menu->popup(header->mapToGlobal(point));
+            });
+        }
+        for (auto *part : parts_) {
+            part->changed = [this, part] {
+                if (!applying_ && window_ && window_->isVisible()) {
+                    dirtyParts_.insert(part);
+                    timer_.start();
+                }
+            };
+        }
+        restoreParts();
     }
 
     void openAgain()
@@ -282,6 +310,7 @@ private:
     const QSize defaultSize_;
     QTimer timer_;
     QPointer<QComboBox> viewMode_;
+    QObject *partConnections_ = nullptr;
     QList<LayoutPart *> parts_;
     QSet<LayoutPart *> dirtyParts_;
     QVariantMap lastGeometry_;
@@ -329,6 +358,34 @@ bool WindowLayouts::eventFilter(QObject *object, QEvent *event)
         break;
     }
     return false;
+}
+
+void WindowLayouts::releaseManuscriptPanels()
+{
+    if (auto *state = windows_.value(manuscript_)) state->releaseParts();
+}
+
+void WindowLayouts::bindManuscriptPanels()
+{
+    if (auto *state = windows_.value(manuscript_)) state->bindParts();
+}
+
+void WindowLayouts::transferDocumentTools(QWidget *editor, WindowLayouts *destination)
+{
+    // Retained modeless windows move with the document. Transfer their live
+    // layout observers and shortcuts instead of adding another set on Show.
+    for (auto *tool : windows_.keys()) {
+        for (auto *ancestor = tool->parentWidget(); ancestor; ancestor = ancestor->parentWidget()) {
+            if (ancestor != editor) continue;
+            auto *state = windows_.take(tool);
+            state->setParent(destination);
+            destination->windows_.insert(tool, state);
+            connect(tool, &QObject::destroyed, destination, [destination, tool] {
+                delete destination->windows_.take(tool);
+            });
+            break;
+        }
+    }
 }
 
 void WindowLayouts::arrange(QWidget *window)

@@ -1,5 +1,6 @@
 #include "spellwords.h"
 #include "manuscriptlinks.h"
+#include "manuscriptcase.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -155,7 +156,7 @@ AmericanDictionary &american() { return *loadedDictionary().get(); }
 
 QString SpellWords::key(QString word)
 {
-    return straight(std::move(word)).normalized(QString::NormalizationForm_C).toCaseFolded();
+    return ManuscriptCase::fold(straight(std::move(word)));
 }
 
 bool SpellWords::loading()
@@ -182,7 +183,19 @@ void SpellWords::setExceptions(const QStringList &aliases, const QStringList &di
             if (whole.capturedStart() == 0 && whole.capturedLength() == s.size()) {
                 accepted_.insert(key(s));
             } else {
-                phrases_[key(part.captured())].append({s, int(part.capturedStart())});
+                Phrase phrase;
+                phrase.prefix = s.left(part.capturedStart());
+                auto pieces = segmentPattern().globalMatch(s);
+                int previousEnd = 0;
+                while (pieces.hasNext()) {
+                    const auto piece = pieces.next();
+                    if (!phrase.words.isEmpty())
+                        phrase.following.append(s.mid(previousEnd, piece.capturedStart() - previousEnd));
+                    phrase.words.append(key(piece.captured()));
+                    previousEnd = int(piece.capturedEnd());
+                }
+                phrase.following.append(s.mid(previousEnd));
+                phrases_[phrase.words.first()].append(phrase);
             }
         }
     }
@@ -192,17 +205,37 @@ QVector<SpellingRange> SpellWords::phraseRanges(const QString &text, int start) 
 {
     QVector<SpellingRange> spans;
     if (phrases_.isEmpty()) return spans;
+    struct Token { int start, end; QString folded; };
+    QVector<Token> tokens;
     auto it = segmentPattern().globalMatch(text, start);
     while (it.hasNext()) {
         const auto part = it.next();
-        const auto candidates = phrases_.constFind(key(part.captured()));
+        tokens.append({int(part.capturedStart()), int(part.capturedEnd()), key(part.captured())});
+    }
+    const QStringView original(text);
+    for (int i = 0; i < tokens.size(); ++i) {
+        const auto candidates = phrases_.constFind(tokens.at(i).folded);
         if (candidates == phrases_.cend()) continue;
         for (const auto &p : candidates.value()) {
-            const int begin = int(part.capturedStart()) - p.firstWordOffset;
-            const int end = begin + int(p.text.size());
-            if (begin < start || end > text.size() || wordAt(text, begin - 1) || wordAt(text, end)) continue;
-            if (QStringView(text).mid(begin, p.text.size()).compare(p.text, Qt::CaseInsensitive) == 0)
-                spans.append({begin, end});
+            if (p.words.size() > tokens.size() - i) continue;
+            const int begin = tokens[i].start - int(p.prefix.size());
+            if (begin < start || wordAt(text, begin - 1) ||
+                original.mid(begin, p.prefix.size()) != p.prefix) continue;
+            // Compare folded words separately and return offsets in the original.
+            // E.g. STRASSE/ Straße differ in UTF-16 length but have the same key.
+            int end = begin;
+            bool matches = true;
+            for (int n = 0; n < p.words.size(); ++n) {
+                const auto &token = tokens.at(i + n);
+                const auto &separator = p.following.at(n);
+                if ((n && (token.start != end || token.folded != p.words.at(n))) ||
+                    original.mid(token.end, separator.size()) != separator) {
+                    matches = false;
+                    break;
+                }
+                end = token.end + int(separator.size());
+            }
+            if (matches && !wordAt(text, end)) spans.append({begin, end});
         }
     }
     // Preserve both names when two exempt phrases overlap.

@@ -75,7 +75,12 @@ void checkPalette(const QPalette &colors)
         check(contrast(colors.text().color(), surface) >= 4.5, "manuscript text is readable on all three backgrounds");
         check(contrast(EditorColors::warning(base), surface) >= 4.5, "warning ink is readable on the manuscript");
         check(contrast(EditorColors::synonymUnderline(colors), surface) >= 3.0, "synonym marks are visible");
-        check(contrast(EditorColors::completionHint(colors), surface) >= 3.0, "transient completion ink is distinct from the paper");
+        const auto ghost = EditorColors::completionHint(surface, colors.text().color());
+        const auto channel = [](int base, int ink) { return qRound(0.70 * base + 0.30 * ink); };
+        check(qAbs(ghost.red() - channel(surface.red(), colors.text().color().red())) <= 1 &&
+              qAbs(ghost.green() - channel(surface.green(), colors.text().color().green())) <= 1 &&
+              qAbs(ghost.blue() - channel(surface.blue(), colors.text().color().blue())) <= 1,
+              "the writing preview blends 30 percent ink with the actual paper");
     }
     check(contrast(colors.highlightedText().color(), colors.highlight().color()) >= 4.5, "selection colors");
     check(contrast(colors.toolTipText().color(), colors.toolTipBase().color()) >= 4.5, "tooltips");
@@ -320,8 +325,13 @@ int main(int argc, char **argv)
     check(bottom > top, "test crumb wraps");
     const auto activeFrame = editor->viewport()->grab().toImage();
     const auto band = marginAt(activeFrame, top), base = marginAt(activeFrame, neighbor);
-    check(base == dark.base().color() && editor->palette().color(EditorColors::accentRole) == rose &&
-          band == EditorColors::currentPaper(editor->palette()), "active band uses this desktop's rose accent");
+    if (base != dark.base().color() || editor->palette().color(EditorColors::accentRole) != rose ||
+        band != EditorColors::currentPaper(editor->palette())) {
+        qWarning() << "Base/expected" << base << dark.base().color() << "accent/expected"
+                   << editor->palette().color(EditorColors::accentRole) << rose << "band/expected"
+                   << band << EditorColors::currentPaper(editor->palette()) << "window active" << window.isActiveWindow();
+        check(false, "active band uses this desktop's rose accent");
+    }
     check(marginAt(activeFrame, bottom) == band && band.lightness() > base.lightness() && band.red() > band.blue(),
           "each wrapped row carries the same subtle accent tint");
 

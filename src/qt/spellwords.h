@@ -24,8 +24,9 @@ public:
 
 private:
     struct Phrase {
-        QString text;
-        int firstWordOffset;
+        QString prefix;
+        QStringList words;
+        QStringList following; // Literal separators; the final entry may be empty.
     };
     QVector<SpellingRange> phraseRanges(const QString &text, int start) const;
     QHash<QString, QVector<Phrase>> phrases_;

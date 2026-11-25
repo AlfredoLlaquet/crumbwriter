@@ -28,4 +28,5 @@ env -u DICPATH -u CRUMBWRITER_THESAURUS_DIR -u QT_PLUGIN_PATH -u DYLD_LIBRARY_PA
 if ((source_status != 0 || check_status != 0)); then exit 1; fi
 mkdir -p "$assets"
 COPYFILE_DISABLE=1 tar -czf "$assets/native-$cpu.tar.gz" -C "$build/installed" 'Crumb Writer.app'
-COPYFILE_DISABLE=1 tar -cf "$assets/CrumbWriter-macOS-$cpu-Sources.tar" -C "$build/runtime-sources" .
+version=$(python3 packaging/release/assets.py version)
+COPYFILE_DISABLE=1 tar -cf "$assets/CrumbWriter-$version-macOS-$cpu-Sources.tar" -C "$build/runtime-sources" .

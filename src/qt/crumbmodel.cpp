@@ -2,6 +2,7 @@
 #include "dailycount.h"
 #include "genericparagraph.h"
 #include "manuscripttext.h"
+#include "manuscriptcase.h"
 
 #include <QtCore/QDateTime>
 #include <QtCore/QPointer>
@@ -38,12 +39,7 @@ bool isDigit(QChar c)
 
 QString genreKey(const QString &name)
 {
-    // GLib's full case folding retains 1.x equivalences such as Straße/STRASSE.
-    const QByteArray utf8 = name.toUtf8();
-    char *folded = g_utf8_casefold(utf8.constData(), utf8.size());
-    QString key = QString::fromUtf8(folded).normalized(QString::NormalizationForm_C).simplified();
-    g_free(folded);
-    return key;
+    return ManuscriptCase::fold(name).simplified();
 }
 
 QString nameBeforeHash(const QString &title, int first, int hash)
@@ -124,7 +120,7 @@ CrumbRecord parseRecord(const QString &text, bool firstLine, const CrumbRecord *
     CrumbRecord record;
     record.text = text;
     record.blank = QStringView(text).trimmed().isEmpty();
-    record.onlyHyphens = GenericParagraph::onlyHyphens(text);
+    record.markerLevel = GenericParagraph::markerLevel(text);
     QByteArray bytes = text.toUtf8();
     CwCrumb parsed{};
     cw_crumb_parse(bytes.constData(), firstLine, &parsed);
@@ -197,6 +193,8 @@ struct CrumbModel::Data {
     qint64 fileWords = 0;
     int nonblankParagraphs = 0;
     int markerCount = 0;
+    bool generalTitleDisabled = false;
+    QTextBlock provisionalMarker;
     std::function<QDate()> localDate;
     DailyCount daily;
     int trimmedOnOpen = 0; // Only needed to recognize checkpoints made before EOF normalization.
@@ -225,18 +223,20 @@ struct CrumbModel::Data {
     {
         const auto &row = rows[line];
         if (row.blank) {
-            if (line == 1 && line < physicalLines() && !rows[0].blank && !rows[0].onlyHyphens)
+            if (!generalTitleDisabled && line == 1 && line < physicalLines() &&
+                !rows[0].blank && !rows[0].markerLevel)
                 return ParagraphRole::TitleSpacer;
             return ParagraphRole::Blank;
         }
-        if (row.onlyHyphens) {
-            if (line > 0 && !rows[line - 1].blank && !rows[line - 1].onlyHyphens)
+        const int pending = provisionalMarker.isValid() ? provisionalMarker.blockNumber() : -1;
+        if (row.markerLevel) {
+            if (line != pending && line > 0 && !rows[line - 1].blank && !rows[line - 1].markerLevel)
                 return ParagraphRole::TitleMarker;
             return ParagraphRole::Body;
         }
         const bool followedByBlank = line + 1 < physicalLines() && rows[line + 1].blank;
-        const bool hasMarker = line + 1 < int(rows.size()) && rows[line + 1].onlyHyphens;
-        if (line == 0) {
+        const bool hasMarker = line + 1 != pending && line + 1 < int(rows.size()) && rows[line + 1].markerLevel;
+        if (line == 0 && !generalTitleDisabled) {
             if (hasMarker || followedByBlank || !row.text.contains(u'.') ||
                 (row.text.isUpper() && !row.text.isLower()))
                 return ParagraphRole::DocumentTitle;
@@ -248,7 +248,7 @@ struct CrumbModel::Data {
 
     void setRole(CrumbRecord &row, ParagraphRole role)
     {
-        // A run of hyphens is a single literal word until it attaches to a
+        // A run of marks is a single literal word until it attaches to a
         // heading. Removing that heading restores the literal word again.
         const int delta = int(row.role == ParagraphRole::TitleMarker) - int(role == ParagraphRole::TitleMarker);
         markerCount -= delta;
@@ -262,7 +262,10 @@ struct CrumbModel::Data {
     {
         if (change.modeChanged) {
             titles.clear();
-            for (auto &row : rows) setRole(row, ParagraphRole::Body);
+            for (auto &row : rows) {
+                setRole(row, ParagraphRole::Body);
+                row.headingLevel = 0;
+            }
             change.firstLine = 0;
             change.lastLine = int(rows.size()) - 1;
             change.titlesChanged = true;
@@ -286,7 +289,10 @@ struct CrumbModel::Data {
         for (int i = first; i <= last; ++i) {
             auto &row = rows[i];
             const auto role = classify(i);
-            if (row.role != role) {
+            const int level = role == ParagraphRole::ChapterTitle ? rows[i + 1].markerLevel : 0;
+            if (row.role != role || row.headingLevel != level) {
+                if (row.headingLevel != level) change.titlesChanged = true;
+                row.headingLevel = level;
                 setRole(row, role);
                 if (i < change.firstLine || i > change.lastLine) change.otherLines.append(i);
                 change.firstLine = std::min(change.firstLine, i);
@@ -561,6 +567,9 @@ void CrumbModel::update(int position, int removed, int added)
     if (!d->recognized.empty())
         d->fallbackLabel = d->rows[*d->recognized.rbegin()].label;
     change.modeChanged = wasGeneric != d->generic();
+    if (d->provisionalMarker.isValid() &&
+        (!isGeneric() || !record(d->provisionalMarker.blockNumber()).markerLevel))
+        d->provisionalMarker = {};
     d->refreshTitles(change, oldEnd, delta);
     d->daily.setTotalWords(d->fileWords);
     notify(change);
@@ -590,6 +599,52 @@ int CrumbModel::paragraphCount() const { return d->nonblankParagraphs - d->marke
 ParagraphRole CrumbModel::paragraphRole(int line) const
 {
     return isGeneric() ? record(line).role : ParagraphRole::Body;
+}
+
+int CrumbModel::headingLevel(int line) const { return record(line).headingLevel; }
+
+void CrumbModel::setGeneralTitleDisabled(bool disabled)
+{
+    if (disabled == d->generalTitleDisabled) return;
+    d->generalTitleDisabled = disabled;
+    if (!isGeneric()) return;
+    CrumbChange change;
+    d->refreshTitles(change, 0, 0);
+    notify(change);
+}
+
+void CrumbModel::deferTypedMarker(const QTextBlock &block)
+{
+    if (!isGeneric() || !block.isValid() || block == d->provisionalMarker) return;
+    const QChar first = d->document->characterAt(block.position());
+    if (!GenericParagraph::markerLevel(QStringView(&first, 1))) return;
+    const int level = GenericParagraph::markerLevel(block.text());
+    if (!level) return;
+    const auto previous = block.previous();
+    if (!previous.isValid()) return;
+    if (!GenericParagraph::canHaveMarker(previous.text())) return;
+    const auto &before = record(block.blockNumber());
+    if (before.role != ParagraphRole::TitleMarker || before.markerLevel != level)
+        d->provisionalMarker = block;
+}
+
+int CrumbModel::provisionalMarkerLine() const
+{
+    return d->provisionalMarker.isValid() ? d->provisionalMarker.blockNumber() : -1;
+}
+
+void CrumbModel::confirmMarkerOutside(int caretLine)
+{
+    const int line = provisionalMarkerLine();
+    if (line < 0 || line == caretLine) return;
+    d->provisionalMarker = {};
+    if (!isGeneric() || !record(line).markerLevel) return;
+    CrumbChange change;
+    change.firstLine = change.lastLine = line;
+    d->refreshTitles(change, line, 0);
+    change.markerConfirmed = paragraphRole(line) == ParagraphRole::TitleMarker;
+    d->daily.setTotalWords(d->fileWords);
+    notify(change);
 }
 
 QVector<int> CrumbModel::titleLines() const
@@ -636,6 +691,13 @@ QString CrumbModel::setTodayCount(qint64 value)
 
 void CrumbModel::markOpened(int trimmedTrailingRows)
 {
+    const int pending = provisionalMarkerLine();
+    d->provisionalMarker = {};
+    if (pending >= 0) {
+        CrumbChange restored;
+        restored.firstLine = restored.lastLine = pending;
+        d->refreshTitles(restored, pending, 0);
+    }
     d->trimmedOnOpen = trimmedTrailingRows;
     d->openDaily({});
     d->fallbackLabel = d->recognized.empty() ? QStringLiteral("Crumb")

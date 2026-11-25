@@ -58,6 +58,227 @@ void type(ManuscriptEditor &ed, const QString &text)
 
 void settle() { for (int i = 0; i < 4; ++i) QApplication::processEvents(); }
 
+void guillemets()
+{
+    ManuscriptEditor ed;
+    const QString source = QStringLiteral("A report.\nBefore «two words» and «some more words»; a stray » and «open.\nOther paragraph.");
+    ed.resize(145, 365);
+    ed.show();
+    ed.loadText(source);
+    settle();
+    auto paragraph = ed.document()->firstBlock().next();
+    const auto first = int(paragraph.text().indexOf(u'«'));
+    const auto close = int(paragraph.text().indexOf(u'»'));
+    const auto second = int(paragraph.text().indexOf(u'«', close));
+    const auto format = [](QTextBlock block, int position) {
+        for (const auto &range : block.layout()->formats())
+            if (range.start <= position && position < range.start + range.length) return range.format;
+        return QTextCharFormat{};
+    };
+    const auto hidden = [&](QTextBlock block, int position) {
+        const auto brush = format(block, position).foreground();
+        return brush.style() != Qt::NoBrush && brush.color().alpha() == 0;
+    };
+    auto advance = [&](int position) {
+        const auto line = paragraph.layout()->lineForTextPosition(position);
+        return qAbs(line.cursorToX(position + 1) - line.cursorToX(position));
+    };
+    require(paragraph.layout()->lineCount() > 1 && hidden(paragraph, first) && hidden(paragraph, close) &&
+            advance(first) <= 1 && format(paragraph, first + 1).fontItalic() &&
+            format(paragraph, close - 1).fontItalic() && !format(paragraph, close + 2).fontItalic(),
+            "wrapped prose hides both markup signs without a gap and italicizes the whole phrase");
+    require(!hidden(paragraph, paragraph.text().lastIndexOf(u'»')) &&
+            !hidden(paragraph, paragraph.text().lastIndexOf(u'«')), "unmatched guillemets stay visible");
+    ed.jumpTo(paragraph.position() + first + 2, false);
+    require(!hidden(paragraph, first) && !hidden(paragraph, close) && advance(first) > 1 && hidden(paragraph, second),
+            "only the pair containing the caret reveals its two full-width signs");
+    ed.jumpTo(paragraph.position() + close + 1, false);
+    require(hidden(paragraph, first), "leaving a span on the same paragraph immediately hides its marks");
+    ed.setShowManuscriptMarkup(true);
+    require(!hidden(paragraph, first) && !hidden(paragraph, second) && format(paragraph, first + 2).fontItalic(),
+            "Show Manuscript Markup reveals all delimiters and retains italics");
+    ed.setShowManuscriptMarkup(false);
+    ed.setLiteralGuillemets(true);
+    require(!hidden(paragraph, first) && !format(paragraph, first + 2).fontItalic(),
+            "a manuscript can use ordinary, unstyled guillemets");
+    ed.setLiteralGuillemets(false);
+    const auto found = ed.document()->find(QStringLiteral("«two words»"));
+    require(!found.isNull() && found.selectionStart() == paragraph.position() + first,
+            "literal search offsets include the actual delimiters");
+    ed.selectMatch(found.selectionStart(), found.selectionEnd());
+    ed.copy();
+    require(QApplication::clipboard()->text() == QStringLiteral("«two words»") &&
+            !ed.document()->isModified() && !ed.document()->isUndoAvailable(),
+            "markup visibility, search and clipboard use literal source and leave undo clean");
+    expect(ed, source);
+
+    const QString prose = QStringLiteral("The first paragraph.\n\nA second paragraph.");
+    ed.loadText(prose);
+    ed.selectRange(prose.size() - 1, 4, false);
+    ed.setCopyDeletedText(true);
+    QApplication::clipboard()->setText(QStringLiteral("unchanged"));
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    const QString wrapped = QStringLiteral("The «first paragraph.»\n\n«A second paragraph».");
+    expect(ed, wrapped);
+    require(ed.textCursor().position() < ed.textCursor().anchor() &&
+            ed.textCursor().selectionStart() == 5 && QApplication::clipboard()->text() == "unchanged",
+            "wrapping preserves selection direction and the clipboard");
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    expect(ed, prose);
+    ed.undo();
+    expect(ed, wrapped);
+    ed.undo();
+    expect(ed, prose);
+    require(!ed.document()->isUndoAvailable(), "each multi-paragraph operation creates one undo step");
+    ed.redo();
+    expect(ed, wrapped);
+    QTemporaryDir directory;
+    QFile saved(directory.filePath(QStringLiteral("prose.txt")));
+    require(directory.isValid() && saved.open(QIODevice::WriteOnly) &&
+            saved.write(prose.toUtf8()) == prose.toUtf8().size(), "prepare the original manuscript");
+    saved.close();
+    gchar *original = nullptr;
+    GError *error = nullptr;
+    auto *file = cw_file_open(QFile::encodeName(saved.fileName()).constData(), false, &original, &error);
+    g_free(original);
+    require(file && !error && cw_file_save(file, ed.manuscriptText().toUtf8().constData(), &error) &&
+            saved.open(QIODevice::ReadOnly) && saved.readAll() == wrapped.toUtf8(),
+            "real storage writes both delimiters as literal UTF-8 without a BOM");
+    cw_file_free(file);
+
+    ed.loadText("A phrase. ");
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    type(ed, "word");
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    expect(ed, QStringLiteral("A phrase.«word»"));
+    ed.jumpTo(ed.manuscriptText().size() - 1, false);
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    require(ed.textCursor().atEnd() && ed.manuscriptText().endsWith(QStringLiteral("word»")),
+            "Ctrl+K steps over a closing mark already at the caret");
+    ed.loadText(QStringLiteral("Before «alpha beta gamma»."));
+    const int beta = int(ed.manuscriptText().indexOf("beta"));
+    ed.selectRange(beta, beta + 4, false);
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    expect(ed, QStringLiteral("Before «alpha »beta« gamma»."));
+    ed.undo();
+    expect(ed, QStringLiteral("Before «alpha beta gamma»."));
+    ed.selectRange(0, beta + 4, false);
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    expect(ed, QStringLiteral("«Before alpha beta gamma»."));
+    ed.loadText(QStringLiteral("«one»«two»"));
+    ed.selectAll();
+    press(ed, Qt::Key_K, Qt::ControlModifier);
+    expect(ed, QStringLiteral("onetwo"));
+
+    ed.loadText(QStringLiteral("A report.\n«unclosed\nnew» paragraph.\n«yes»."));
+    settle();
+    require(!hidden(ed.document()->findBlockByNumber(1), 0) &&
+            !format(ed.document()->findBlockByNumber(2), 1).fontItalic(),
+            "emphasis cannot leak into the next physical paragraph");
+    ed.replaceRangeLiteral(0, 0, "Book//Crumb 1: A: ");
+    settle();
+    require(!ed.model().isGeneric() && !hidden(ed.document()->lastBlock(), 0) &&
+            !format(ed.document()->lastBlock(), 1).fontItalic(), "Crumb mode treats guillemets as literal text");
+    ed.undo();
+    ed.jumpTo(0, false);
+    settle();
+    require(ed.model().isGeneric() && hidden(ed.document()->lastBlock(), 0) &&
+            format(ed.document()->lastBlock(), 1).fontItalic(), "undoing a mode change restores italics");
+    ed.loadText(QStringLiteral("Notes.\nA «quiet» chapter\n=\nRead «https://thecrumbs.org/» now."));
+    settle();
+    const auto heading = ed.document()->findBlockByNumber(1);
+    const auto address = ed.document()->lastBlock();
+    require(format(heading, 4).fontWeight() == QFont::Bold && format(heading, 4).fontItalic() &&
+            format(address, 9).fontUnderline() && format(address, 9).fontItalic(),
+            "inline italics coexist with heading typography and navigable URL underlines");
+}
+
+void genericLists(ManuscriptEditor &ed)
+{
+    using Sample = std::pair<QString, QString>;
+    const Sample samples[] = {
+        {"- Moon", "- "}, {"* Star", "* "}, {"(*) Planet", "(*) "},
+        {"9. Count", "10. "}, {"09) Padded", "10) "}, {"(8) Parentheses", "(9) "},
+        {"1.9. Outline", "1.10. "}, {"10.09 Subsection", "10.10 "},
+        {"999999999999999999999. Large", "1000000000000000000000. "},
+        {"A) First", "B) "}, {"a. First", "b. "}, {"Z. Last", "AA. "},
+        {"Z. Last\nAA. Next", "AB. "}, {"(III) Rome", "(IV) "},
+        {"(ix) Nine", "(x) "}, {"H One\nI Two", "J "}, {"I One\nII Two", "III "},
+        {"I asked the moon for help.", ""}, {"A visitor rang.", ""},
+        {"2 birds flew.", ""}, {"Dr. Smith left.", ""}, {"Monday. We slept.", ""},
+        {"I First\n\nII New start", ""}, {"(IIII) Noncanonical", ""}
+    };
+    for (const auto &[source, next] : samples) {
+        ed.loadText(source);
+        press(ed, Qt::Key_Return);
+        expect(ed, source + u'\n' + next);
+        ed.undo();
+        expect(ed, source);
+    }
+
+    ed.loadText("I One");
+    press(ed, Qt::Key_Return, Qt::ControlModifier | Qt::ShiftModifier);
+    expect(ed, "I One\nII ");
+    type(ed, "Two");
+    press(ed, Qt::Key_N, Qt::ControlModifier);
+    expect(ed, "I One\nII Two\nIII ");
+    ed.undo();
+    expect(ed, "I One\nII Two");
+    ed.redo();
+    press(ed, Qt::Key_Backspace);
+    expect(ed, "I One\nII Two\n");
+    type(ed, "Outside.");
+    expect(ed, "I One\nII Two\nOutside.");
+
+    ed.loadText("- First.");
+    press(ed, Qt::Key_Return);
+    expect(ed, "- First.\n- ");
+    require(ed.model().provisionalMarkerLine() == 1 && ed.model().paragraphRole(1) != ParagraphRole::TitleMarker,
+            "an unused generated bullet does not immediately turn an item into a heading");
+    press(ed, Qt::Key_Return);
+    expect(ed, "- First.\n");
+    type(ed, "Prose.");
+    expect(ed, "- First.\nProse.");
+
+    const QString existing = "4) First.\n\nEnd.";
+    ed.loadText(existing);
+    const int empty = ed.document()->findBlockByNumber(1).position();
+    ed.jumpTo(empty, false);
+    expect(ed, existing);
+    require(!ed.document()->isUndoAvailable(), "moving to an empty list destination does not edit");
+    ime(ed, QStringLiteral("Second."));
+    expect(ed, "4) First.\n5) Second.\nEnd.");
+    ed.undo();
+    expect(ed, existing);
+    ed.jumpTo(empty, false);
+    ed.insertLiteral("Literal.");
+    expect(ed, "4) First.\nLiteral.\nEnd.");
+    ed.loadText(existing);
+    ed.jumpTo(empty, false);
+    ed.continueList();
+    expect(ed, "4) First.\n5) \nEnd.");
+    press(ed, Qt::Key_Backspace);
+    expect(ed, existing);
+    ed.continueList();
+    expect(ed, "4) First.\n5) \nEnd.");
+
+    ed.loadText("1. First.");
+    press(ed, Qt::Key_Down);
+    require(ed.virtualRows() == 1, "a single virtual paragraph is available below an item");
+    expect(ed, "1. First.");
+    type(ed, "Next");
+    expect(ed, "1. First.\n2. Next");
+
+    ed.loadText("1. First.\n");
+    press(ed, Qt::Key_N, Qt::ControlModifier);
+    expect(ed, "1. First.\n2. \n");
+    ed.loadText("Work//Crumb 1: Test: Body\n1. Literal");
+    press(ed, Qt::Key_Return);
+    expect(ed, "Work//Crumb 1: Test: Body\n1. Literal\n");
+    ed.continueList();
+    expect(ed, "Work//Crumb 1: Test: Body\n1. Literal\n");
+}
+
 void punctuation(ManuscriptEditor &ed)
 {
     ed.loadText({});
@@ -80,6 +301,13 @@ void punctuation(ManuscriptEditor &ed)
     ed.loadText(QStringLiteral("Old.."));
     type(ed, QStringLiteral(". "));
     expect(ed, QStringLiteral("Old... ")); // The two original file periods remain literal.
+    ed.loadText({});
+    type(ed, QStringLiteral("... "));
+    expect(ed, QStringLiteral("… ")); // A first line cannot mark a preceding title.
+    ed.loadText(QStringLiteral("Prose.\n\n\nAfter."));
+    ed.jumpTo(ed.document()->findBlockByNumber(2).position(), false);
+    type(ed, QStringLiteral("-- "));
+    expect(ed, QStringLiteral("Prose.\n\n— \nAfter."));
     ed.loadText(QStringLiteral("Plain text"));
     ed.selectRange(6, 10, false);
     ime(ed, QStringLiteral("\"é😀--b...\" "));
@@ -632,7 +860,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     require(rect(0).height() > rect(2).height() && rect(2).height() > body &&
             bold(0) && bold(2) && !bold(4) && block(2).layout()->formats().front().format.fontUnderline() &&
             !block(0).layout()->formats().front().format.fontUnderline(), "document and chapter titles have distinct bold sizes");
-    require(rect(2).top() - rect(1).top() < body / 2 && rect(6).height() >= body - 1 &&
+    require(rect(2).top() - rect(1).top() < body && rect(6).height() >= body - 1 &&
             ed.cursorForPosition(rect(1).topLeft() + QPoint(1, 1)).blockNumber() == 1,
             "only the blank immediately after the document title is compact");
     require(!ed.document()->isModified() && !ed.document()->isUndoAvailable(),
@@ -643,7 +871,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     ed.setFont(enlarged);
     settle();
     require(rect(4).height() > body && rect(0).height() > rect(2).height() &&
-            rect(2).height() > rect(4).height() && rect(2).top() - rect(1).top() < rect(4).height() / 2,
+            rect(2).height() > rect(4).height() && rect(2).top() - rect(1).top() < rect(4).height(),
             "relative heading and separator sizes follow the writing font");
     ed.setFont(font);
 
@@ -720,10 +948,68 @@ void genericParagraphs(ManuscriptEditor &ed)
     type(ed, "---");
     ed.finishTyping();
     expect(ed, "A mixed title.\n---");
-    require(ed.model().paragraphRole(1) == ParagraphRole::TitleMarker, "smart punctuation preserves a marker");
+    require(ed.model().provisionalMarkerLine() == 1 && ed.model().titleLines().isEmpty(),
+            "finishing typing leaves the prospective marker open until the caret changes paragraphs");
     press(ed, Qt::Key_Return);
+    require(ed.model().paragraphRole(1) == ParagraphRole::TitleMarker,
+            "leaving a marker confirms it, even at the end of the manuscript");
     type(ed, "new--s");
     expect(ed, QStringLiteral("A mixed title.\n---\nnew—s"));
+    for (const QString &run : {QStringLiteral("- "), QStringLiteral("-- "), QStringLiteral("... ")}) {
+        ed.loadText("Prologue.\nHeading to be.\n");
+        ed.jumpTo(ed.manuscriptText().size(), false);
+        type(ed, run);
+        ed.finishTyping();
+        require(ed.model().provisionalMarkerLine() == 2 && ed.model().headingLevel(1) == 0,
+                "a fresh marker with a trailing separator keeps the previous paragraph as prose");
+        expect(ed, QStringLiteral("Prologue.\nHeading to be.\n") + run);
+        type(ed, "Buy coffee");
+        require(ed.model().provisionalMarkerLine() == -1 && ed.model().headingLevel(1) == 0,
+                "continuing a provisional marker as a list or prose never creates a heading");
+        expect(ed, QStringLiteral("Prologue.\nHeading to be.\n") + run + QStringLiteral("Buy coffee"));
+    }
+    ed.loadText("Prologue.\nA chapter.\n");
+    ed.jumpTo(ed.manuscriptText().size(), false);
+    type(ed, "-- ");
+    ed.jumpTo(0, false);
+    settle();
+    require(ed.model().provisionalMarkerLine() == -1 && ed.model().headingLevel(1) == 2,
+            "moving away confirms a manually typed double hyphen and separator");
+    require(rect(2).height() <= body / 3, "an inactive title marker has a hairline writing row");
+    ed.setShowManuscriptMarkup(true);
+    settle();
+    require(rect(2).height() >= body - 1 && ed.model().headingLevel(1) == 2,
+            "showing manuscript markup reveals original markers while preserving the outline");
+    ed.setShowManuscriptMarkup(false);
+    ed.loadText("Book\n");
+    ed.jumpTo(ed.manuscriptText().size(), false);
+    type(ed, "-- ");
+    ed.jumpTo(0, false);
+    settle();
+    require(ed.model().paragraphRole(0) == ParagraphRole::DocumentTitle && rect(1).height() <= body / 3,
+            "confirming a marker under an already inferred document title also compacts its row");
+    ed.loadText("Prologue.\nDivision\n=\nChapter\n-\nScene\n~\nNote\n.\nBody.");
+    ed.jumpTo(0, false);
+    settle();
+    auto typeSize = [&](int line) { return block(line).layout()->formats().front().format.font().pointSizeF(); };
+    require(typeSize(1) > typeSize(3) && typeSize(3) > typeSize(5) &&
+            typeSize(5) > typeSize(7) && typeSize(7) > typeSize(9),
+            "four title levels have descending writing sizes");
+    require(rect(1).top() - rect(0).bottom() > body * 0.45,
+            "section headings receive extra vertical separation without inserting blank file lines");
+    ed.loadText("Opening.\n~\nAnother paragraph.");
+    ed.jumpTo(0, false);
+    settle();
+    const auto generalSize = typeSize(0);
+    ed.model().setGeneralTitleDisabled(true);
+    settle();
+    require(ed.model().headingLevel(0) == 3 && typeSize(0) < generalSize &&
+            !ed.document()->isModified() && !ed.document()->isUndoAvailable(),
+            "disabling general-title detection restyles a marked first paragraph without editing its text");
+    ed.model().setGeneralTitleDisabled(false);
+    settle();
+    require(ed.model().headingLevel(0) == 0 && typeSize(0) == generalSize,
+            "enabling general-title detection restores the document title immediately");
     ed.loadText("One paragraph.");
     press(ed, Qt::Key_N, Qt::ControlModifier);
     type(ed, "Second.");
@@ -903,6 +1189,7 @@ void geometry(ManuscriptEditor &ed)
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    guillemets();
     ManuscriptEditor editor;
     punctuation(editor);
     spacing(editor);
@@ -918,6 +1205,7 @@ int main(int argc, char **argv)
     unicodeRoundTrip(editor);
     fieldsAndClipboard(editor);
     genericParagraphs(editor);
+    genericLists(editor);
     openingViewport();
     geometry(editor);
     std::puts("Qt editor input, clipboard, layout, virtual space and navigation passed.");

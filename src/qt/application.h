@@ -18,8 +18,7 @@ public:
     void activate(const QStringList &files);
 private:
     MainWindow *newWindow();
-    MainWindow *findWindow(const QString &path) const;
-    void openPath(const QString &path);
+    MainWindow *preferredWindow() const;
     void acceptRequests();
     Preferences preferences_;
     QList<QPointer<MainWindow>> windows_;

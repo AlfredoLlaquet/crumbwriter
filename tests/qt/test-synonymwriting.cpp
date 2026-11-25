@@ -1,4 +1,5 @@
 #include "manuscripteditor.h"
+#include "editorcolors.h"
 #include "synonymwriting.h"
 
 #include <QApplication>
@@ -58,6 +59,15 @@ int main(int argc, char **argv)
     type(editor, "s Fea");
     check(ghost->isVisible() && ghost->text() == "thered Excellency", "quiet inline preview of a multiword name");
     check(editor.manuscriptText() == "A sentence. His Fea", "a preview never enters the manuscript");
+    check(editor.paperAtCaret() == EditorColors::currentPaper(editor.palette()) &&
+          ghost->palette().windowText().color() == EditorColors::completionHint(editor.paperAtCaret(), editor.palette().text().color()),
+          "inline completion uses the active row's actual paper");
+    editor.setPaperActive(false);
+    settle();
+    check(editor.paperAtCaret() == editor.palette().base().color() &&
+          ghost->palette().windowText().color() == EditorColors::completionHint(editor.paperAtCaret(), editor.palette().text().color()),
+          "a deactivated paper changes the visible preview ink");
+    editor.setPaperActive(true);
     writing.complete();
     check(editor.manuscriptText() == "A sentence. His Feathered Excellency", "accept appends just the suffix");
     editor.undo();

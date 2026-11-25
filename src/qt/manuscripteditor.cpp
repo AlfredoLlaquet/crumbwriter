@@ -1,6 +1,8 @@
 #include "manuscripteditor.h"
+#include "genericlist.h"
 #include "committedpunctuation.h"
 #include "editorcolors.h"
+#include "guillemetmarkup.h"
 #include "manuscriptlinks.h"
 #include "manuscripttext.h"
 #include "manuscriptspacing.h"
@@ -14,6 +16,8 @@
 #include <QtGui/QSyntaxHighlighter>
 #include <QtGui/QTextBlock>
 #include <QtWidgets/QScrollBar>
+#include <array>
+#include <algorithm>
 
 namespace {
 class CrumbLayout final : public QPlainTextDocumentLayout {
@@ -22,6 +26,8 @@ public:
     bool compactSeparators = false;
     bool hasTitleSpacer = false;
     int activeLine = -1;
+    const CrumbModel *model = nullptr;
+    qreal sectionSpacing = 0;
 
     QRectF blockBoundingRect(const QTextBlock &block) const override
     {
@@ -29,12 +35,15 @@ public:
         // An empty block has no characters for the highlighter to style.
         // Only the spacer immediately after the document title needs a
         // shorter advance. Restore the native writing row while editing it.
+        const auto next = block.next();
+        const bool beforeHeading = compactSeparators && next.isValid() && model &&
+                                   model->headingLevel(next.blockNumber()) > 0;
+        const qreal headingGap = beforeHeading ? sectionSpacing : 0;
         if (hasTitleSpacer && block.blockNumber() == 1 && activeLine != 1 &&
             block.layout()->preeditAreaText().isEmpty()) {
-            bounds.setHeight(qMax<qreal>(1, bounds.height() / 3));
+            bounds.setHeight(qMax<qreal>(1, bounds.height() / 3) + headingGap);
             return bounds;
         }
-        const auto next = block.next();
         if (!bounds.isEmpty() && next.isValid() &&
             (!compactSeparators || (block.length() > 1 && next.length() > 1))) {
             const auto *lines = block.layout();
@@ -43,6 +52,7 @@ public:
             // hit testing, scrolling and caret geometry. Wrapped rows stay tight.
             bounds.setHeight(bounds.height() + qMax(1, qRound(row / 4)));
         }
+        bounds.setHeight(bounds.height() + headingGap);
         return bounds;
     }
 };
@@ -98,7 +108,7 @@ public:
             }
             if (change.modeChanged)
                 updateTypography();
-            else if (model_.isGeneric() && change.titlesChanged) {
+            else if (model_.isGeneric() && (change.titlesChanged || change.markerConfirmed)) {
                 // A neighboring marker can change an untouched paragraph into
                 // a heading. Qt already highlights the edited blocks.
                 pending_.insert(change.firstLine);
@@ -116,11 +126,17 @@ public:
         const auto font = editor_->font();
         body_.setFont(font);
         documentTitle_.setFont(scaledFont(font, 1.7));
-        chapterTitle_.setFont(scaledFont(font, 1.3));
         documentTitle_.setFontWeight(QFont::Bold);
-        chapterTitle_.setFontWeight(QFont::Bold);
-        chapterTitle_.setFontUnderline(true);
-        marker_.setFont(scaledFont(font, 0.33));
+        constexpr std::array<qreal, 4> sizes{1.48, 1.30, 1.16, 1.06};
+        constexpr std::array<QTextCharFormat::UnderlineStyle, 4> lines{
+            QTextCharFormat::SingleUnderline, QTextCharFormat::SingleUnderline,
+            QTextCharFormat::DashUnderline, QTextCharFormat::DotLine};
+        for (size_t i = 0; i < chapterTitles_.size(); ++i) {
+            chapterTitles_[i].setFont(scaledFont(font, sizes[i]));
+            chapterTitles_[i].setFontWeight(QFont::Bold);
+            chapterTitles_[i].setUnderlineStyle(lines[i]);
+        }
+        marker_.setFont(scaledFont(font, 0.14));
         marker_.setForeground(Qt::transparent);
         marker_.setFontLetterSpacingType(QFont::PercentageSpacing);
         marker_.setFontLetterSpacing(1);
@@ -128,6 +144,7 @@ public:
         const bool generic = model_.isGeneric();
         auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
         layout->compactSeparators = generic;
+        layout->sectionSpacing = qMax<qreal>(2, QFontMetricsF(font, layout->paintDevice()).height() * 0.45);
         layout->hasTitleSpacer = model_.paragraphRole(1) == ParagraphRole::TitleSpacer;
         if (document()->defaultFont() != font)
             document()->setDefaultFont(font);
@@ -161,10 +178,35 @@ public:
         if (!pending_.isEmpty()) timer_.start(0);
     }
 
-    const QTextCharFormat &writingFormat(ParagraphRole role) const
+    void updateGuillemetCaret()
+    {
+        const auto caret = editor_->textCursor();
+        const auto block = model_.isGeneric() && !editor_->literalGuillemets() &&
+                           !editor_->showManuscriptMarkup() && !editor_->virtualRows()
+                         ? caret.block() : QTextBlock();
+        const auto previous = guillemetBlock_;
+        const int previousOpen = revealedOpen_;
+        if (block != previous || (block.isValid() && block.revision() != guillemetRevision_)) {
+            guillemetBlock_ = block;
+            guillemetRevision_ = block.isValid() ? block.revision() : -1;
+            currentPairs_ = block.isValid() ? GuillemetMarkup::pairs(block.text())
+                                            : QList<GuillemetMarkup::Span>();
+        }
+        const int position = caret.positionInBlock();
+        const auto match = std::lower_bound(currentPairs_.cbegin(), currentPairs_.cend(), position,
+            [](const GuillemetMarkup::Span &span, int offset) { return span.close < offset; });
+        revealedOpen_ = match != currentPairs_.cend() && match->containsCaret(position) ? match->open : -1;
+        if (block == previous && revealedOpen_ == previousOpen) return;
+        if (previousOpen >= 0 && previous.isValid() && previous != block) rehighlightBlock(previous);
+        if (block.isValid() && (revealedOpen_ >= 0 || (block == previous && previousOpen >= 0)))
+            rehighlightBlock(block);
+    }
+
+    const QTextCharFormat &writingFormat(ParagraphRole role, int level) const
     {
         if (role == ParagraphRole::DocumentTitle) return documentTitle_;
-        if (role == ParagraphRole::ChapterTitle) return chapterTitle_;
+        if (role == ParagraphRole::ChapterTitle && level >= 1 && level <= 4)
+            return chapterTitles_[size_t(level - 1)];
         return body_;
     }
 
@@ -175,10 +217,13 @@ protected:
         // state changes. Changing mode on line one restyles the whole file.
         setCurrentBlockState(model_.isGeneric() ? 1 : 0);
         if (model_.isGeneric()) {
-            const auto role = model_.paragraphRole(currentBlock().blockNumber());
+            const int line = currentBlock().blockNumber();
+            const auto role = model_.paragraphRole(line);
             const auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
-            const bool hidden = role == ParagraphRole::TitleMarker && currentBlock().blockNumber() != layout->activeLine;
-            setFormat(0, text.size(), hidden ? marker_ : writingFormat(role));
+            const bool hidden = role == ParagraphRole::TitleMarker && line != layout->activeLine &&
+                                !editor_->showManuscriptMarkup();
+            setFormat(0, text.size(), hidden ? marker_ : writingFormat(role, model_.headingLevel(line)));
+            applyGuillemets(text);
             underlineWebLinks(text);
             return;
         }
@@ -197,6 +242,29 @@ protected:
     }
 
 private:
+    void applyGuillemets(const QString &text)
+    {
+        if (editor_->literalGuillemets()) return;
+        const auto caret = editor_->textCursor();
+        const int position = !editor_->virtualRows() && caret.block() == currentBlock()
+                           ? caret.positionInBlock() : -1;
+        for (const auto &span : GuillemetMarkup::pairs(text)) {
+            // The entire Generic paragraph has its writing/heading format at
+            // this stage. Preserve its size, weight and underline in italics.
+            auto italic = format(span.open);
+            italic.setFontItalic(true);
+            setFormat(span.open + 1, span.close - span.open - 1, italic);
+            if (editor_->showManuscriptMarkup() || span.containsCaret(position)) continue;
+            QTextCharFormat hidden;
+            hidden.setForeground(Qt::transparent);
+            hidden.setProperty(QTextFormat::FontPixelSize, 1);
+            hidden.setFontLetterSpacingType(QFont::PercentageSpacing);
+            hidden.setFontLetterSpacing(1);
+            setFormat(span.open, 1, hidden);
+            setFormat(span.close, 1, hidden);
+        }
+    }
+
     void underlineWebLinks(const QString &text)
     {
         for (const auto &link : ManuscriptLinks::findAll(text)) {
@@ -213,8 +281,13 @@ private:
     }
 
     ManuscriptEditor *editor_;
+    QTextBlock guillemetBlock_;
+    int guillemetRevision_ = -1;
+    int revealedOpen_ = -1;
+    QList<GuillemetMarkup::Span> currentPairs_;
     CrumbModel &model_;
-    QTextCharFormat header_, title_, body_, documentTitle_, chapterTitle_, marker_;
+    QTextCharFormat header_, title_, body_, documentTitle_, marker_;
+    std::array<QTextCharFormat, 4> chapterTitles_;
     QColor warningInk_;
     QSet<int> pending_;
     QTimer timer_;
@@ -232,6 +305,7 @@ ManuscriptEditor::ManuscriptEditor(QWidget *parent)
     manuscript->setDocumentLayout(layout);
     setDocument(manuscript);
     model_ = std::make_unique<CrumbModel>(manuscript);
+    layout->model = model_.get();
     setObjectName(QStringLiteral("manuscript"));
     setFont(QFont(QStringLiteral("Serif"), 14));
     setTabChangesFocus(false);
@@ -259,6 +333,7 @@ ManuscriptEditor::~ManuscriptEditor()
 {
     // Removing a syntax highlighter can emit document and cursor signals.
     disconnect(this, nullptr, this, nullptr);
+    static_cast<CrumbLayout *>(document()->documentLayout())->model = nullptr;
     delete highlighter_;
 }
 
@@ -290,11 +365,13 @@ QTextCursor ManuscriptEditor::writingEnd() const
 
 void ManuscriptEditor::loadText(const QString &text)
 {
+    QScopedValueRollback<bool> loading(loadingText_, true);
     QScopedValueRollback<bool> guard(editing_, true);
     editRun_ = EditRun::None;
     replayedAppend_ = nullptr;
     vi_->reset();
     pendingSpace_ = {};
+    declinedListParagraph_ = {};
     punctuation_->reset();
     clearVirtual();
     clearAlignment();
@@ -330,6 +407,27 @@ void ManuscriptEditor::setSmartPunctuation(bool enabled)
         punctuation_->reset();
 }
 
+void ManuscriptEditor::setShowManuscriptMarkup(bool show)
+{
+    if (showManuscriptMarkup_ == show) return;
+    showManuscriptMarkup_ = show;
+    if (model_->isGeneric()) {
+        highlighter_->updateGuillemetCaret();
+        highlighter_->rehighlight();
+    }
+}
+
+void ManuscriptEditor::setLiteralGuillemets(bool enabled)
+{
+    if (literalGuillemets_ == enabled) return;
+    literalGuillemets_ = enabled;
+    if (model_->isGeneric()) {
+        highlighter_->updateGuillemetCaret();
+        highlighter_->rehighlight();
+        if (onLiteralGuillemetsChanged) onLiteralGuillemetsChanged();
+    }
+}
+
 void ManuscriptEditor::finishTyping()
 {
     if (editing_) return;
@@ -360,6 +458,7 @@ void ManuscriptEditor::onCursorMoved()
             trimPending();
         clearVirtual();
     }
+    if (!editing_) model_->confirmMarkerOutside(rows_ ? -1 : textCursor().blockNumber());
     refreshBand();
 }
 
@@ -367,7 +466,10 @@ void ManuscriptEditor::refreshBand()
 {
     const int n = textCursor().blockNumber();
     const int line = !rows_ && (model_->isGeneric() || model_->record(n).valid) ? n : -1;
-    if (highlighter_) highlighter_->setActiveLine(line);
+    if (highlighter_) {
+        highlighter_->setActiveLine(line);
+        highlighter_->updateGuillemetCaret();
+    }
     if (activeLine_ != line) {
         activeLine_ = line;
         viewport()->update();
@@ -526,8 +628,11 @@ void ManuscriptEditor::appendCrumb(const QString &genre)
     if (generic) {
         // A final LF terminates the last physical paragraph. Keep it after
         // the appended paragraph, including when the last paragraph is blank.
-        if (!document()->isEmpty())
+        if (!document()->isEmpty()) {
+            const QString prefix = GenericList::nextPrefix(c.block());
             ManuscriptText::insert(c, QStringLiteral("\n"));
+            insertListPrefix(c, prefix);
+        }
     } else {
         while (c.atBlockStart() && c.blockNumber() > 0)
             c.movePosition(QTextCursor::PreviousCharacter);
@@ -717,7 +822,7 @@ QVariant ManuscriptEditor::inputMethodQuery(Qt::InputMethodQuery query) const
 {
     if (query == Qt::ImFont && highlighter_ && model_->isGeneric()) {
         const auto role = model_->paragraphRole(textCursor().blockNumber());
-        return highlighter_->writingFormat(role).font();
+        return highlighter_->writingFormat(role, model_->headingLevel(textCursor().blockNumber())).font();
     }
     return QPlainTextEdit::inputMethodQuery(query);
 }

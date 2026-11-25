@@ -2,21 +2,23 @@
 #include "manuscriptlinks.h"
 #include "textkeys.h"
 #include "committedpunctuation.h"
+#include "genericlist.h"
 #include "manuscripttext.h"
 #include "manuscriptspacing.h"
 #include "viselection.h"
+#include "wordselection.h"
 
 #include <algorithm>
 #include <climits>
 
 #include <QtCore/QMimeData>
-#include <QtCore/QRegularExpression>
 #include <QtCore/QScopedValueRollback>
 #include <QtGui/QClipboard>
 #include <QtGui/QContextMenuEvent>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QInputMethodEvent>
 #include <QtGui/QKeyEvent>
+#include <QtGui/QMouseEvent>
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextLayout>
 #include <QtWidgets/QMenu>
@@ -33,6 +35,7 @@ QString ManuscriptEditor::normalizeInsertion(QString text, bool keepFinalSpace)
 
 void ManuscriptEditor::trackSeparator(const QTextCursor &cursor)
 {
+    model_->confirmMarkerOutside(cursor.blockNumber());
     pendingSpace_ = {};
     if (!cursor.hasSelection() && cursor.atBlockEnd() && cursor.positionInBlock() > 0 &&
         document()->characterAt(cursor.position() - 1) == u' ') {
@@ -89,6 +92,8 @@ bool ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
     }
     if (kind == Input::Typed && smart_)
         punctuation_->feed(document(), first, text, model_->isGeneric());
+    if ((kind == Input::Typed && !text.endsWith(u'\n')) || kind == Input::Erase)
+        model_->deferTypedMarker(cursor.block());
     return true;
 }
 
@@ -129,6 +134,69 @@ void ManuscriptEditor::copyRemovedText(const QString &text)
 {
     if (copyDeleted_ && !text.isEmpty())
         QGuiApplication::clipboard()->setText(text);
+}
+
+void ManuscriptEditor::insertListPrefix(QTextCursor &cursor, const QString &prefix)
+{
+    if (prefix.isEmpty()) return;
+    GenericList::insertPrefix(cursor, prefix);
+    // A newly suggested "- " is still being written, just like a typed one.
+    model_->deferTypedMarker(cursor.block());
+}
+
+bool ManuscriptEditor::typeListItem(QTextCursor &cursor, const QString &text)
+{
+    if (!model_->isGeneric() || cursor.hasSelection() || text.isEmpty()) return false;
+    const bool lineBreak = text == QStringLiteral("\n");
+    if (lineBreak) {
+        if (GenericList::selectEmptyGeneratedPrefix(cursor)) {
+            cursor.removeSelectedText();
+            declinedListParagraph_ = cursor.block();
+            return true;
+        }
+        // An item only continues into a new, empty paragraph. Ordinary Enter
+        // in the middle of a sentence still splits the existing prose.
+        if (!cursor.atBlockEnd()) return false;
+        const QString prefix = GenericList::nextPrefix(cursor.block());
+        if (prefix.isEmpty()) return false;
+        replaceAt(cursor, text, Input::Typed);
+        insertListPrefix(cursor, prefix);
+        return true;
+    }
+    // First committed text in an existing blank (or materialized virtual)
+    // paragraph follows its neighbor. Visiting that paragraph never edits it.
+    if (!cursor.atBlockStart() || !cursor.atBlockEnd() || cursor.block() == declinedListParagraph_ ||
+        text.contains(u'\n') || text.contains(u'\r')) return false;
+    const QString prefix = GenericList::nextPrefix(cursor.block().previous());
+    if (prefix.isEmpty()) return false;
+    insertListPrefix(cursor, prefix);
+    replaceAt(cursor, text, Input::Typed);
+    return true;
+}
+
+void ManuscriptEditor::continueList()
+{
+    if (isReadOnly() || !model_->isGeneric() || textCursor().hasSelection() || rows_ > 1) return;
+    auto cursor = textCursor();
+    if (rows_) cursor.movePosition(QTextCursor::End);
+    const bool openParagraph = rows_ || !cursor.block().text().isEmpty();
+    const auto item = openParagraph ? cursor.block() : cursor.block().previous();
+    const QString prefix = GenericList::nextPrefix(item, true);
+    if (prefix.isEmpty()) return;
+
+    finishTyping();
+    QScopedValueRollback<bool> guard(editing_, true);
+    clearVirtual();
+    clearAlignment();
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    cursor.beginEditBlock();
+    if (openParagraph) replaceAt(cursor, QStringLiteral("\n"), Input::Typed);
+    insertListPrefix(cursor, prefix);
+    cursor.endEditBlock();
+    setTextCursor(cursor);
+    trackSeparator(cursor);
+    setFocus();
+    ensureCursorVisible();
 }
 
 void ManuscriptEditor::typeText(const QString &text, int replaceStart, int replaceLength)
@@ -174,7 +242,8 @@ void ManuscriptEditor::typeText(const QString &text, int replaceStart, int repla
         removed.insert(split, selectionRemovedByIme);
     }
     // A discarded duplicate space creates no undo command to join later.
-    const bool changed = replaceAt(c, text, Input::Typed);
+    const bool continued = !replaceStart && !replaceLength && typeListItem(c, text);
+    const bool changed = continued || replaceAt(c, text, Input::Typed);
     if (changed) editRun_ = run;
     else if (editRun_ != run) editRun_ = EditRun::None;
     recordEditForHash(c, text);
@@ -258,6 +327,11 @@ void ManuscriptEditor::redo() { replayEdit(true); }
 void ManuscriptEditor::removeByKey(bool backward, bool byWord)
 {
     auto c = textCursor();
+    if (backward && !byWord && model_->isGeneric() && GenericList::selectEmptyGeneratedPrefix(c)) {
+        declinedListParagraph_ = c.block();
+        eraseSelection(c, EditRun::Backspace);
+        return;
+    }
     if (!c.hasSelection()) {
         const auto op = backward ? (byWord ? QTextCursor::PreviousWord : QTextCursor::PreviousCharacter)
                                  : (byWord ? QTextCursor::NextWord : QTextCursor::NextCharacter);
@@ -274,24 +348,8 @@ void ManuscriptEditor::deleteWord()
         return;
     auto c = textCursor();
     if (!c.hasSelection()) {
-        // A punctuation mark or emoji outside a word is one grapheme. Internal
-        // apostrophes and hyphens are part of the word on either side of the caret.
-        static const QRegularExpression tokens(QStringLiteral(
-            R"([\p{L}\p{M}\p{N}_]+(?:['’ʼ‐‑-][\p{L}\p{M}\p{N}_]+)*|\h+|\X)"));
-        const auto text = ManuscriptText::blockText(c.block());
-        if (text.isEmpty())
-            return;
-        const int here = qMin(c.positionInBlock(), int(text.size()) - 1);
-        auto matches = tokens.globalMatch(text);
-        while (matches.hasNext()) {
-            const auto token = matches.next();
-            if (token.capturedEnd() <= here)
-                continue;
-            const int start = c.block().position();
-            c.setPosition(start + int(token.capturedStart()));
-            c.setPosition(start + int(token.capturedEnd()), QTextCursor::KeepAnchor);
-            break;
-        }
+        if (c.atBlockEnd() && !c.atBlockStart()) c.movePosition(QTextCursor::PreviousCharacter);
+        c = WordSelection::atCharacter(c);
     }
     eraseSelection(c);
 }
@@ -439,6 +497,7 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
 #endif
     if (enter && mods == Qt::ControlModifier) { centerCurrentLine(); return; }
     if (enter && mods == Qt::AltModifier) { topCurrentCrumb(); return; }
+    if (enter && mods == (Qt::ControlModifier | Qt::ShiftModifier)) { continueList(); return; }
     if ((mods == Qt::ControlModifier || mods == (Qt::ControlModifier | Qt::ShiftModifier)) &&
         moveByControlKey(key, mods.testFlag(Qt::ShiftModifier))) return;
     if (mods == Qt::ControlModifier) {
@@ -447,6 +506,9 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
         case Qt::Key_1: copyHeader(); return;
         case Qt::Key_Y: deleteCrumb(); return;
         case Qt::Key_W: deleteWord(); return;
+        case Qt::Key_K:
+            if (model_->isGeneric()) { toggleGuillemets(); return; }
+            break;
         case Qt::Key_N: appendCrumb(); return;
         case Qt::Key_Space: startViSelection(); return;
         default: break;
@@ -530,6 +592,19 @@ int ManuscriptEditor::characterUnderPointer(const QPoint &point) const
     const auto bounds = line.naturalTextRect();
     if (x < bounds.left() || x >= bounds.right()) return -1;
     return cursor.block().position() + line.xToCursor(x, QTextLine::CursorOnCharacter);
+}
+
+void ManuscriptEditor::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton && event->modifiers() == Qt::NoModifier && !rows_) {
+        const int position = characterUnderPointer(event->position().toPoint());
+        if (position >= 0) {
+            QPlainTextEdit::mouseDoubleClickEvent(event);
+            setTextCursor(WordSelection::atCharacter(at(position)));
+            return;
+        }
+    }
+    QPlainTextEdit::mouseDoubleClickEvent(event);
 }
 
 void ManuscriptEditor::contextMenuEvent(QContextMenuEvent *event)

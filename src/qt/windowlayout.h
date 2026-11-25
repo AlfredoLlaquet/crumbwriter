@@ -13,6 +13,9 @@ class WindowLayouts final : public QObject {
 public:
     WindowLayouts(QWidget *manuscript, QSettings &settings);
     ~WindowLayouts() override;
+    void releaseManuscriptPanels();
+    void bindManuscriptPanels();
+    void transferDocumentTools(QWidget *editor, WindowLayouts *destination);
     void arrange(QWidget *window);
     void restoreDefaults();
 protected:

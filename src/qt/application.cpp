@@ -19,13 +19,6 @@
 #endif
 
 namespace {
-QString resolvedPath(const QString &path)
-{
-    const QFileInfo file(path);
-    const QString canonical = file.canonicalFilePath();
-    return canonical.isEmpty() ? file.absoluteFilePath() : canonical;
-}
-
 struct ActivationPaths {
     QString lockFile;
     QString endpoint;
@@ -138,14 +131,14 @@ void WriterApplication::acceptRequests()
     }
 }
 
-MainWindow *WriterApplication::findWindow(const QString &path) const
+MainWindow *WriterApplication::preferredWindow() const
 {
-    const auto resolved = resolvedPath(path);
-    for (const auto &window : windows_) {
-        if (window && !window->path().isEmpty() &&
-            (window->path() == resolved || QFileInfo(window->path()) == QFileInfo(resolved)))
-            return window;
+    const QWidget *active = QApplication::activeWindow();
+    for (auto *owner = active; owner; owner = owner->parentWidget()) {
+        for (const auto &window : windows_) if (window && owner == window) return window;
     }
+    for (auto it = windows_.crbegin(); it != windows_.crend(); ++it)
+        if (*it && (*it)->isVisible()) return *it;
     return nullptr;
 }
 
@@ -156,51 +149,29 @@ MainWindow *WriterApplication::newWindow()
     connect(window, &QObject::destroyed, this, [this] {
         windows_.removeIf([](const QPointer<MainWindow> &p) { return p.isNull(); });
     });
-    window->openRequested = [this](const QString &file) { openPath(file); };
-    window->newRequested = [this] { newWindow()->activateManuscript(false); };
-    window->pathAvailable = [this, window](const QString &path) {
-        auto *existing = findWindow(path);
-        return !existing || existing == window;
-    };
+    window->makeWindow = [this] { return newWindow(); };
     return window;
-}
-
-void WriterApplication::openPath(const QString &path)
-{
-    if (auto *existing = findWindow(path)) {
-        existing->activateManuscript(true);
-    } else {
-        auto *window = newWindow();
-        window->loadDocument(path);
-        window->activateManuscript(false);
-    }
 }
 
 void WriterApplication::activate(const QStringList &files)
 {
     const bool coldStart = !recovered_;
+    const QString last = preferences_.lastDocument();
+    MainWindow *target = preferredWindow();
+    auto destination = [&]() {
+        if (!target) target = newWindow();
+        return target;
+    };
     if (coldStart) {
         recovered_ = true;
-        for (const QString &draft : DocumentStore::recoveryDrafts()) {
-            auto *window = newWindow();
-            window->loadDocument(draft, true);
-            window->activateManuscript(false);
-        }
+        for (const auto &draft : DocumentStore::recoveryDrafts())
+            destination()->openDocumentInTab(draft, true);
     }
     if (!files.isEmpty()) {
-        for (const QString &path : files) openPath(path);
-    } else if (coldStart && preferences_.enabled("reopen-last") && !preferences_.lastDocument().isEmpty()) {
-        openPath(preferences_.lastDocument());
+        for (const QString &path : files) destination()->openDocumentInTab(path);
+    } else if (coldStart && preferences_.enabled("reopen-last") && !last.isEmpty()) {
+        destination()->openDocumentInTab(last);
     } else {
-        QWidget *active = QApplication::activeWindow();
-        for (const auto &window : windows_) {
-            if (window && (window == active || (active && window->isAncestorOf(active)))) {
-                window->activateManuscript(false);
-                return;
-            }
-        }
-        if (auto *last = findWindow(preferences_.lastDocument())) last->activateManuscript(false);
-        else if (!windows_.isEmpty() && windows_.last()) windows_.last()->activateManuscript(false);
-        else newWindow()->activateManuscript(false);
+        destination()->activateManuscript(false);
     }
 }

@@ -14,15 +14,22 @@ trap cleanup EXIT
 
 case $(uname -s) in
     Linux)
-        release="$packages/CrumbWriter-Ubuntu-24.04-amd64.deb"
+        set -- "$packages"/crumbwriter_*_amd64.deb
+        test "$#" = 1
+        test -f "$1"
+        release=$1
         fixture="$packages/UpgradeFixture.deb"
         prefix=/usr
         expected=$(dpkg-deb -f "$release" Version)
+        product_version=${expected%-*}
+        distro=$(. /etc/os-release && printf '%s%s' "$ID" "$VERSION_ID")
+        test "$expected" = "$product_version-$distro"
+        test "$(basename "$release")" = "crumbwriter_${expected}_amd64.deb"
         install_package() { apt-get install -y --no-install-recommends "$1"; }
         installed_version() { dpkg-query -W -f='${Version}' crumbwriter; }
         remove_package() { apt-get purge -y crumbwriter; }
         verify_docs() {
-            # Ubuntu's minimal root image omits optional /usr/share/doc files.
+            # Minimal distribution images can omit optional /usr/share/doc files.
             # Check their presence in the download and the installed standard copyright file.
             dpkg-deb --fsys-tarfile "$release" | tar -tf - > "$work/contents"
             grep -Fx './usr/share/doc/crumbwriter/CrumbWriter.txt' "$work/contents"
@@ -32,10 +39,16 @@ case $(uname -s) in
         export LC_ALL=C.UTF-8
         ;;
     FreeBSD)
-        release="$packages/CrumbWriter-FreeBSD-15-amd64.pkg"
+        major=$(freebsd-version -u | cut -d . -f1)
+        set -- "$packages"/crumbwriter-*-FreeBSD-"$major"-amd64.pkg
+        test "$#" = 1
+        test -f "$1"
+        release=$1
         fixture="$packages/UpgradeFixture.pkg"
         prefix=/usr/local
         expected=$(pkg query -F "$release" '%v')
+        product_version=$expected
+        test "$(basename "$release")" = "crumbwriter-$expected-FreeBSD-$major-amd64.pkg"
         install_package() { pkg install -y "$1"; }
         installed_version() { pkg query '%v' crumbwriter; }
         remove_package() { pkg delete -y crumbwriter; }
@@ -58,6 +71,7 @@ printf '%s\n' '{"version":2,"bookmarks":[]}' > "$name.bookmarks"
 printf '%s\n' 'Núria, the inspector' > "$name.characters"
 printf '%s\n' 'Moon, Luna' > "$name.recurring"
 printf '%s\n' 'Lluna' > "$name.dictionary"
+printf '%s\n' 'literal-guillemets=true' > "$name.config"
 
 install_package "$fixture"
 test "$(installed_version)" = 0.0.1
@@ -96,7 +110,7 @@ cp "$settings" "$work/settings"
 
 install_package "$release"
 test "$(installed_version)" = "$expected"
-test "$(crumbwriter --version)" = "Crumb Writer $expected"
+test "$(crumbwriter --version)" = "Crumb Writer $product_version"
 test ! -e "$prefix/share/crumbwriter/upgrade-fixture"
 desktop="$prefix/share/applications/org.thecrumbs.CrumbWriter.desktop"
 grep -Fx 'Exec=crumbwriter %F' "$desktop"

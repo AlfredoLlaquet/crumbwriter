@@ -92,7 +92,8 @@ jobs:
           prefix=$(cygpath -m "$MINGW_PREFIX")
           python packaging/windows/deploy.py build/stage "$prefix"
           python packaging/shared/stage.py --destination build/stage --msys-root "$prefix" --sources build/runtime-sources
-          tar -C build -cf build/CrumbWriter-Windows-x64-Sources.tar runtime-sources
+          version=$(python packaging/release/assets.py version)
+          tar -C build -cf "build/CrumbWriter-$version-Windows-x64-Sources.tar" runtime-sources
       - name: Build the installer and an earlier-version upgrade fixture
         id: package
         if: ${{ !cancelled() && steps.runtime.outcome == 'success' && steps.wizard.outcome == 'success' }}
@@ -103,7 +104,7 @@ jobs:
         if: ${{ !cancelled() && steps.package.outcome == 'success' }}
         with:
           name: windows-installer
-          path: build/CrumbWriter-Windows-x64-Setup.exe
+          path: build/CrumbWriter-*-Windows-x64-Setup.exe
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
@@ -119,7 +120,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-runtime-sources
-          path: build/CrumbWriter-Windows-x64-Sources.tar
+          path: build/CrumbWriter-*-Windows-x64-Sources.tar
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
@@ -145,7 +146,7 @@ jobs:
           path: dist
       - name: Exercise the installer and the installed editor
         shell: pwsh
-        run: packaging/windows/test-install.ps1 -Setup dist/CrumbWriter-Windows-x64-Setup.exe -Baseline dist/CrumbWriter-UpgradeFixture.exe
+        run: packaging/windows/test-install.ps1 -Setup (Get-Item dist/CrumbWriter-*-Windows-x64-Setup.exe).FullName -Baseline dist/CrumbWriter-UpgradeFixture.exe
 
   windows11:
     name: Check the installed x64 editor on Windows 11 Arm
@@ -167,7 +168,7 @@ jobs:
           path: dist
       - name: Install and capture the editor on the Windows 11 desktop
         shell: pwsh
-        run: tests/gui-audit-windows11.ps1 -Setup dist/CrumbWriter-Windows-x64-Setup.exe -Driver dist/test-gui-audit.exe
+        run: tests/gui-audit-windows11.ps1 -Setup (Get-Item dist/CrumbWriter-*-Windows-x64-Setup.exe).FullName -Driver dist/test-gui-audit.exe
       - name: Preserve the Windows 11 appearance evidence
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

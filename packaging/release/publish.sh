@@ -3,8 +3,8 @@
 set -euo pipefail
 cd dist
 cp -- "$BUNDLE" CrumbWriter-build.sigstore.json
-installers=(CrumbWriter-Ubuntu-24.04-amd64.deb CrumbWriter-FreeBSD-15-amd64.pkg
-    CrumbWriter-Windows-x64-Setup.exe CrumbWriter-macOS-Universal.dmg)
+names=$(python3 ../packaging/release/assets.py all)
+mapfile -t installers <<< "$names"
 for asset in "${installers[@]}" SHA256SUMS; do
     gh attestation verify "$asset" --repo "$GH_REPO" --bundle CrumbWriter-build.sigstore.json
 done
@@ -14,7 +14,7 @@ release_info=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" |
     jq -cs --arg tag "$TAG" '[.[][] | select(.tag_name == $tag)][0] // empty')
 if [[ -z $release_info ]]; then
     notes=$(mktemp)
-    sed -e "s|@REPOSITORY@|$GH_REPO|g" -e "s|@TAG@|$TAG|g" ../packaging/release/notes.md > "$notes"
+    python3 ../packaging/release/assets.py notes "$GH_REPO" "$TAG" > "$notes"
     gh release create "$TAG" --draft --target "$commit" --title "Crumb Writer ${TAG#v}" --notes-file "$notes"
     release_info=$(gh release view "$TAG" --json databaseId,isDraft,targetCommitish |
         jq '{id:.databaseId, draft:.isDraft, target_commitish:.targetCommitish}')
@@ -49,5 +49,5 @@ if [[ $verified != true ]]; then
     echo "::error::The release was published but GitHub could not verify its immutable release record."
     exit 1
 fi
-for asset in "${installers[@]}"; do gh release verify-asset "$TAG" "$asset"; done
+for asset in *; do gh release verify-asset "$TAG" "$asset"; done
 gh release view "$TAG" --json url,isDraft,isImmutable

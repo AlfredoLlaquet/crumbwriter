@@ -1,13 +1,85 @@
 Crumb Writer
 ============
 
-Version 2.6. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 3.0. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+
+Version 3.0 source map and maintenance notes
+--------------------------------------------
+
+For manuscript syntax and examples see “Writing novels and other prose in
+Generic mode” below and README.md. The searchable F1 guide lists commands
+by task. File formats, dependencies, publication and desktop checks follow
+the writing reference. AGENTS.md contains the standing maintenance rule.
+
+* MainWindow and manuscripttabs.cpp manage windows, tab order, path reuse,
+  close confirmation and reopening. ManuscriptSession owns one editor, its
+  store and its search, navigation, spelling, bookmark and companion tools.
+  The window shows the active session’s controls. Move Tab to New Window
+  moves the live session. It preserves undo and outstanding background work.
+  Ctrl+T opens a blank tab, Ctrl+O opens a file, Ctrl+Tab and Ctrl+Shift+Tab
+  cycle in display order, Ctrl+F4 closes and Ctrl+Shift+T reopens. Ctrl+N
+  appends text, Ctrl+W erases a word and Alt+W closes a window.
+
+* manuscriptoptions.cpp shares TextCompanion’s lock, baseline check and
+  atomic write. A manuscript named Harbor.txt can use Harbor.txt.config,
+  a UTF-8 key=value file. disable-general-title=true and literal-guillemets=true
+  independently override the defaults (both false). Blank lines, comments
+  and unknown keys are preserved on ordinary edits. Opening defaults creates
+  no file. Save As and draft handling keep options beside the relevant text.
+  Changing options reinterprets the active editor and outline immediately.
+
+* genericparagraph.h and CrumbModel own marker recognition, heading levels,
+  provisional rows, counts and the outline. TitleOutline presents hierarchy
+  or alphabetical results. guillemetmarkup.h pairs marks within one physical
+  paragraph. guillemetediting.cpp implements Ctrl+K and exact wrap/unwrap.
+  ManuscriptEditor reveals the literal signs at the caret, preserves the raw
+  UTF-8 text in selections and saves, and keeps presentation out of undo.
+
+* genericlist.cpp recognizes editable prefixes when starting a new paragraph.
+  It preserves delimiters and case, advances decimal components separately,
+  and distinguishes Roman sequences from alphabetic ones using neighboring
+  items. Explicit Continue List (Ctrl+Shift+Enter) resolves an ambiguous
+  first item. An empty generated prefix can be removed with Backspace or
+  ended with Enter. Pasting and loading existing text preserve its numbering.
+  wordselection.cpp supplies shared boundaries for mouse and keyboard word
+  selection. In “notwithstanding—not” the em dash has its own selection.
+
+* CrumbTitleLabel reserves two wrapped rows in the current-crumb panel.
+  Enter on the focused label opens its full text. Navigation records new
+  writing as it is created and updates the displayed title as typing proceeds.
+  Generic mode puts its daily number immediately under the label. Crumb mode
+  leaves room after the daily count. SynonymWriting blends the preview at
+  30% normal foreground over the actual paragraph background. Genre names
+  participate in spelling exemptions as complete phrases in Crumb mode.
+
+* backupcomparison.cpp opens a read-only comparison of the active editor
+  with its DocumentStore startup backup. Unique matching paragraphs anchor
+  large passages. Short spans use an exact longest-common-subsequence match.
+  A very large repetitive rewrite can appear as one changed passage. The
+  before/after views read complete paragraphs. F3, Shift+F3, and F5 navigate
+  and refresh. The comparison never writes to either manuscript or backup.
+
+* The BSD first artwork comes from github.com/AlfredoLlaquet/bsd-first.
+  README.md uses the official SVG. The About dialog embeds an offline PNG
+  derived from the official image against a light background. Its button
+  supports Alt+B. The badge’s CC0 dedication is in data/bsd-first-LICENSE.
+  packaging/release/assets.py names the seven versioned downloads. Changing
+  a version requires updating the literal versioned links in README.md.
+
+For a change to a control or window, exercise its real keyboard and mouse
+entry points, inspect a light and a dark capture on the affected native
+platforms, correct defects and repeat the focused views. Shared controls
+also require cross-platform checks. Version 3.0 adds the tab strip, active
+panel switching, the full crumb title, Manuscript Settings, the backup
+comparison, About artwork and new markup views to this review. Exercise
+resize and scrolling on a 25,092-crumb file, reload older hyphen manuscripts
+and run the settings/backup tests before publishing.
 
 Build, update and launch
 ------------------------
 
-Crumb Writer is a C++17 and Qt 6 desktop editor for FreeBSD 15 or later
-with KDE Plasma 6, Ubuntu, Windows and macOS. A single source tree handles
+Crumb Writer is a C++17 and Qt 6 desktop editor for FreeBSD 15.x and 14.x,
+Linux, Windows and macOS. Qt uses the available graphical platform. A single source tree handles
 the manuscript, keyboard, search, spelling and windows on all four systems.
 Qt Widgets provides the writing interface. Qt Network handles local activation.
 The C parser and disk modules use GLib/GIO. GLib also provides the PCRE
@@ -16,22 +88,26 @@ program. The qt6-base package supplies Qt Widgets, Qt Network and the rcc
 tool that embeds the application icon. The Makefile locates them through
 pkg-config, supplied by pkgconf.
 
-Installing the Ubuntu and FreeBSD release packages
+Installing the FreeBSD and Linux release packages
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-CrumbWriter-Ubuntu-24.04-amd64.deb and CrumbWriter-FreeBSD-15-amd64.pkg
-are published under releases/latest/download with stable names. In the
-download directory use the corresponding platform package manager.
+Use the package for the target OS, release series and architecture. Every
+installer carries its version. The README links directly to the exact assets
+under releases/download/v3.0/. Release checks exercise FreeBSD 15.1, 14.4,
+and 14.5 (the latter two share one binary), Ubuntu 24.04 and 26.04, and
+Debian 13. The install commands below assume a local download for amd64.
 
-    Ubuntu 24.04 amd64   sudo apt install ./CrumbWriter-Ubuntu-24.04-amd64.deb
-    FreeBSD 15 amd64     pkg install ./CrumbWriter-FreeBSD-15-amd64.pkg  (as root)
+    FreeBSD 15.x   pkg install ./crumbwriter-3.0-FreeBSD-15-amd64.pkg
+    FreeBSD 14.x   pkg install ./crumbwriter-3.0-FreeBSD-14-amd64.pkg
+    Ubuntu 24.04   sudo apt install ./crumbwriter_3.0-ubuntu24.04_amd64.deb
+    Ubuntu 26.04   sudo apt install ./crumbwriter_3.0-ubuntu26.04_amd64.deb
+    Debian 13      sudo apt install ./crumbwriter_3.0-debian13_amd64.deb
 
-To update, close all Crumb Writer windows, download the newer asset and run
-the same command. Ubuntu installs under /usr and FreeBSD under /usr/local.
-Both register the crumbwriter package and the desktop launcher. apt remove
-crumbwriter or pkg delete crumbwriter removes the installed program.
-The manuscript, sidecars, settings and backups live outside the package.
-The README explains first installation and updates separately for readers.
+On FreeBSD run pkg as root. For an update, close the editor, download the
+new asset and repeat the install command with its filename. apt remove
+crumbwriter or pkg delete crumbwriter removes the editor. Documents, backups
+and companions remain in their original folders. See README.md for source
+installation, expected compatibility, and the system launcher.
 
 First installation on Windows and macOS
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -41,7 +117,7 @@ release, source, checksums and version-specific license are available at
 https://github.com/AlfredoLlaquet/crumbwriter/releases/latest
 
 Windows 10 version 1903 or later and Windows 11 use
-CrumbWriter-Windows-x64-Setup.exe on x64 computers. Run Setup as the
+CrumbWriter-3.0-Windows-x64-Setup.exe on x64 computers. Run Setup as the
 desktop account. View License opens the notice during installation.
 Start Crumb Writer from the Start menu or its optional desktop shortcut.
 Setup can also add Crumb Writer to Explorer's Open With for plain-text
@@ -52,7 +128,7 @@ program, use Settings > Apps > Installed apps (Apps & features on Windows
 10). Personal settings, manuscripts, backups and companion files survive
 an update or uninstall.
 
-macOS 15 or later uses CrumbWriter-macOS-Universal.dmg on both Apple
+macOS 15 or later uses CrumbWriter-3.0-macOS-Universal.dmg on both Apple
 silicon and Intel. Open the disk image, drag Crumb Writer to Applications,
 eject the image and open Crumb Writer from Applications. From the keyboard
 in Finder, select Crumb Writer, press Command+C, press Command+Shift+A to
@@ -67,18 +143,18 @@ Every public installer has a signed GitHub build record (an artifact
 attestation). In its download directory, a signed-in GitHub CLI can identify
 the workflow and source revision that produced this exact file.
 
-    gh attestation verify CrumbWriter-Ubuntu-24.04-amd64.deb --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter_3.0-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter-3.0-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.0-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.0-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
 
 Use the command for the file downloaded. For a SHA-256 check, compare
 the output of the corresponding command with SHA256SUMS on the same release.
 
-    Get-FileHash .\CrumbWriter-Windows-x64-Setup.exe -Algorithm SHA256
-    shasum -a 256 CrumbWriter-macOS-Universal.dmg
-    sha256sum CrumbWriter-Ubuntu-24.04-amd64.deb
-    sha256 -q CrumbWriter-FreeBSD-15-amd64.pkg
+    Get-FileHash .\CrumbWriter-3.0-Windows-x64-Setup.exe -Algorithm SHA256
+    shasum -a 256 CrumbWriter-3.0-macOS-Universal.dmg
+    sha256sum crumbwriter_3.0-ubuntu24.04_amd64.deb
+    sha256 -q crumbwriter-3.0-FreeBSD-15-amd64.pkg
 
 The Windows installer has no Windows publisher certificate. SmartScreen
 can display an unfamiliar-app or unknown-publisher warning. After verifying
@@ -117,7 +193,7 @@ running a locally built copy, since Qt embeds the original LICENSE text.
 First installation on FreeBSD
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-On a FreeBSD 15+ desktop with Plasma 6, install the packages as root.
+On a FreeBSD 14.x or 15.x desktop, install the packages as root.
 
     pkg install git pkgconf glib qt6-base hunspell en-hunspell en-mythes
 
@@ -171,7 +247,7 @@ desktop account.
 
 Repeat the original make install command with the same account and prefix.
 Launch from the desktop menu. F10, then A, opens About and shows the installed
-version. The command crumbwriter --version also prints "Crumb Writer 2.6".
+version. The command crumbwriter --version also prints "Crumb Writer 3.0".
 
 Opening a manuscript
 ~~~~~~~~~~~~~~~~~~~~
@@ -182,7 +258,7 @@ The default on the next launch is to reopen the last named manuscript. A
 first launch and Ctrl+Shift+N open an untitled document. Opening a file that
 is already open raises its existing window at its current writing position.
 An optional filename argument opens that manuscript in preference to the
-last document. Several filenames open separate windows.
+last document. Several filenames open tabs in the active window.
 
 Mode and manuscript structure
 -----------------------------
@@ -247,24 +323,31 @@ form the worked example in the reader guide.
     At dusk the harbor clerk signed for a tide that had arrived in six wooden crates.
     By dawn the water had learned the shape of the pier.
 
-The first physical line is a general title if nonblank and any one rule
-applies: it has no ASCII period, its cased letters are all uppercase, or
-the immediate next line is blank or a hyphen marker. Subsequent headings
-require a marker directly below the title. A marker consists of one or
-more ASCII hyphens beginning in column one and nothing else. A marker
-needs a preceding nonblank text line; a sequence of marker rows does not
-create nested headings. No migration of existing prose is attempted.
+The first nonblank paragraph on file line one becomes the general title if
+it has no ASCII period, if all its cased letters are uppercase, or if its
+next line is blank or is a confirmed heading marker. The per-manuscript
+option Disable general title detection lets line one open directly with prose.
+An explicit marker can then give that paragraph an ordinary heading level.
 
-General titles use the largest bold face. Chapter titles use the smaller
-bold, underlined heading face. Markers count as physical lines for
-bookmarks and line-number searches. An inactive marker paints as a short
-empty row. Moving the caret onto it reveals its editable hyphens in the
-body face. The first blank after a general title can be compact. Other
-interior blank rows keep normal body height, including repeated blanks.
-The marker's canonical length counts Unicode grapheme clusters in its
-title, including spaces. A title "I" takes one hyphen, "Act I" takes five.
-Typing -- in ordinary prose still produces an em dash; typing the marker
-below a heading preserves the structural ASCII hyphens.
+GenericParagraph recognizes a row of matching ASCII characters starting in
+column one. The characters =, -, ~ and . mean levels 1 through 4. One mark
+suffices. A new marker stays provisional while the writer is on its row,
+including during background saves. A following space permits a list item
+or prose to develop. When the caret leaves an otherwise marker-only row,
+the editor confirms it. DocumentStore normalizes a confirmed marker to the
+number of visible graphemes in its heading, including spaces; guillemet
+markup follows the manuscript's literal setting. Existing hyphen headings
+naturally enter level two. Each marker belongs to text immediately above.
+
+The general title uses the largest bold face. The four section levels have
+vertical breathing room, descending sizes and solid or dotted underlines.
+The inactive marker is a 2–3 logical-pixel spacer. The active row uses the
+body font. Ctrl+Shift+F9 shows all markup. The first blank directly after a
+general title may be compact. Other interior blanks retain their height.
+Ctrl+Shift+4 opens the Titles search. Document order shows an outline,
+alphabetical order disambiguates repeated names using their ancestors, and
+the general title opens at the top of the viewport. The active heading
+follows typing or navigation without taking keyboard focus.
 
 A publishing script can map the book title to h1, chapters to h2, and each
 ordinary line to a paragraph in HTML. In the example grep -nF 'six wooden
@@ -1139,11 +1222,11 @@ reparses that line, and a genre edit revisits affected successor warnings.
 A change to physical line numbering reuses the parsed records for unaffected
 text. Header lookups use duplicate-aware sorted positions, and genre
 completion finds the nearest earlier occurrence. In Generic mode, physical
-the next ASCII hyphen line marks a heading. The first line also uses the
+the next ASCII marker line sets the heading level. The first line also uses the
 general-title rules, including an immediately following blank. An ordinary edit can
 change the role of an adjacent paragraph. Changing the first-line mode
 reclassifies the manuscript and updates the outline, statistics, status bar,
-search labels, and editor formatting. Each window owns its mode.
+search labels, and editor formatting. Each manuscript session owns its mode.
 
 Visit and jump history follow live cursor positions. BookmarkAnchors adds
 undo destinations and a persistent line reference to each named bookmark.
@@ -1199,10 +1282,10 @@ default branch can also take its version from buildinfo.h.
 
 All required platform jobs must pass before publication. The publishing job
 collects their tested installers and matching source archives, computes
-SHA256SUMS, and obtains GitHub build attestations for all four platform packages and the
+SHA256SUMS, and obtains GitHub build attestations for all seven packages and the
 checksum list. It uploads everything to a draft, checks the uploaded file
 digests, and publishes the release. It then verifies GitHub’s immutable
-release record and all four downloadable packages with gh release verify and
+release record and all seven downloadable packages with gh release verify and
 gh release verify-asset. A correction to a published build uses a new version.
 The installed editor and ordinary downloads do not require GitHub CLI.
 
@@ -1395,5 +1478,5 @@ and the desktop-theme checks. The new views are offline-thesaurus and
 today-count. Also cover generic-manuscript with markers, the group editor
 with its exclusion checkbox, bold occurrence excerpts, and the footer at
 full and narrow widths. A fresh package installation must find both English
-dictionaries offline. Compare SHA256SUMS and the four subjects in the
+dictionaries offline. Compare SHA256SUMS and the installer subjects in the
 immutable release after the native package lifecycle tests pass.

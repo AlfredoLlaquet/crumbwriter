@@ -17,7 +17,9 @@ public:
     bool open(const QString &path, bool backup, QString *text, QString *error);
     bool openDraft(const QString &draftPath, QString *text, QString *error);
     static QStringList recoveryDrafts();
-    void setSnapshotProvider(std::function<QString()> provider);
+    void setSnapshotProvider(std::function<QString()> provider,
+                             std::function<int()> provisionalMarker = {},
+                             std::function<bool()> literalGuillemets = {});
     void markEdited();
     void configureLiveSave(bool live, int seconds);
 

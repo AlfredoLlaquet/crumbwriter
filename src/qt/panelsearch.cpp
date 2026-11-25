@@ -3,6 +3,38 @@
 
 #include <QAbstractItemView>
 #include <QKeyEvent>
+#include <QTreeView>
+
+namespace {
+QModelIndex lastDescendant(QModelIndex index)
+{
+    while (index.isValid()) {
+        const int children = index.model()->rowCount(index);
+        if (!children) break;
+        index = index.model()->index(children - 1, 0, index);
+    }
+    return index;
+}
+
+// Traverse the model in displayed order. Closed branches remain searchable.
+QModelIndex adjacent(const QAbstractItemModel *model, QModelIndex current, bool forward)
+{
+    if (forward) {
+        if (!current.isValid() || model->rowCount(current)) return model->index(0, 0, current);
+        while (current.isValid()) {
+            const auto sibling = current.siblingAtRow(current.row() + 1);
+            if (sibling.isValid()) return sibling;
+            current = current.parent();
+        }
+        return model->index(0, 0);
+    }
+    if (current.isValid()) {
+        if (current.row() > 0) return lastDescendant(current.siblingAtRow(current.row() - 1));
+        if (current.parent().isValid()) return current.parent();
+    }
+    return lastDescendant(model->index(model->rowCount() - 1, 0));
+}
+}
 
 PanelSearch::PanelSearch(QAbstractItemView *view, QWidget *parent, int role)
     : PromptLineEdit(parent), view_(view), role_(role)
@@ -38,19 +70,22 @@ void PanelSearch::seek(int step, bool fromCurrent)
 {
     const auto *model = view_->model();
     if (!model) return;
-    const int count = model->rowCount();
-    int row = step > 0 ? -1 : count;
-    if (fromCurrent && view_->currentIndex().isValid()) row = view_->currentIndex().row();
-    for (int checked = 0; checked < count; ++checked) {
-        row += step;
-        if (row >= count) row = 0;
-        if (row < 0) row = count - 1;
-        const QModelIndex index = model->index(row, 0);
-        if (!matches(index)) continue;
-        view_->setCurrentIndex(index);
-        view_->scrollTo(index);
-        setAccessibleDescription({});
-        return;
+    const auto first = adjacent(model, fromCurrent ? view_->currentIndex().siblingAtColumn(0)
+                                                   : QModelIndex(), step > 0);
+    auto index = first;
+    while (index.isValid()) {
+        if (matches(index)) {
+            if (auto *tree = qobject_cast<QTreeView *>(view_)) {
+                for (auto parent = index.parent(); parent.isValid(); parent = parent.parent())
+                    tree->expand(parent);
+            }
+            view_->setCurrentIndex(index);
+            view_->scrollTo(index);
+            setAccessibleDescription({});
+            return;
+        }
+        index = adjacent(model, index, step > 0);
+        if (index == first) break;
     }
     view_->selectionModel()->clear();
     setAccessibleDescription(text().isEmpty() ? QString() : tr("No matching item."));

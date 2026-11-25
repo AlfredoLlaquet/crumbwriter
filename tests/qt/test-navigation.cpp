@@ -10,6 +10,9 @@
 #include <QLineEdit>
 #include <QLocale>
 #include <QPersistentModelIndex>
+#include <QPlainTextEdit>
+#include <QScrollBar>
+#include <QTreeWidgetItemIterator>
 #include <QPushButton>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -28,6 +31,14 @@ QStringList displayedNames(QTreeWidget *list)
     QStringList names;
     for (int i = 0; i < list->topLevelItemCount(); ++i)
         names.append(list->topLevelItem(i)->text(0));
+    return names;
+}
+
+QStringList outlineNames(QTreeWidget *list)
+{
+    QStringList names;
+    for (QTreeWidgetItemIterator it(list); *it; ++it)
+        names.append((*it)->text(0).section(QStringLiteral("  ·  "), 0, 0));
     return names;
 }
 
@@ -123,6 +134,44 @@ int main(int argc, char **argv)
     check(editor.textCursor().blockNumber() == 2 && historySearch->text().isEmpty(),
           "second identically titled visit navigates to its own position");
 
+    // A cursor anchored at the previous crumb's end must not travel across
+    // the inserted newline, which used to turn two different visits into one.
+    editor.loadText("Book//Crumb 1: First: prose.");
+    panel.reset();
+    editor.appendCrumb();
+    check(displayedNames(history) == QStringList{"Untitled", "First"}, "a new untitled crumb joins the previous visit");
+    const QPersistentModelIndex newVisit(history->model()->index(0, 0));
+    editor.jumpTo(editor.document()->lastBlock().position() + editor.model().record(1).titleStart, false);
+    editor.insertLiteral("Second");
+    check(displayedNames(history) == QStringList{"Second", "First"} && newVisit.isValid(),
+          "the new crumb title updates the same history row");
+    auto *titleLabel = panel.findChild<QLabel *>("crumbTitle");
+    const int fixedTitleHeight = titleLabel->height();
+    const QString longTitle = QStringLiteral("A very long title ").repeated(24).trimmed();
+    editor.loadText("Book//Crumb 1: " + longTitle + ": prose.");
+    titleLabel->setFocus();
+    key(titleLabel, Qt::Key_Return);
+    auto *details = panel.findChild<QDialog *>("fullCrumbTitle");
+    check(details && !details->isModal() && details->findChild<QPlainTextEdit *>()->toPlainText() == longTitle &&
+          titleLabel->accessibleDescription().contains(longTitle) && titleLabel->height() == fixedTitleHeight,
+          "a long crumb title occupies two fixed lines and opens in full from the keyboard");
+    key(details, Qt::Key_Escape);
+    check(!details->isVisible(), "Escape closes the expanded crumb title");
+    editor.setFocus();
+    editor.loadText("A first paragraph.");
+    panel.reset();
+    editor.appendCrumb();
+    editor.insertLiteral("A second paragraph.");
+    editor.insertLiteral("\nA third paragraph.\nA fourth paragraph.");
+    check(displayedNames(history) == QStringList{"A fourth paragraph.", "A third paragraph.",
+                                                "A second paragraph.", "A first paragraph."},
+          "newly typed and pasted paragraphs retain their own visits");
+    editor.undo();
+    check(displayedNames(history) == QStringList{"A second paragraph.", "A first paragraph."},
+          "undo removes only the pasted visits");
+    editor.redo();
+    check(history->topLevelItemCount() == 4, "redo brings back the new visits");
+
     const QString longParagraph = QString(95, u'x') + QStringLiteral("🦋 the hidden word.");
     const QString novel = "Night Inventory\nA crow passed.\n\nWind\n----\n" + longParagraph +
                           "\nThe seat was empty.\n\nDawn\n----\nA visitor knocked.\nNo one answered.\n\nWind\n----\nThe bell rang.";
@@ -136,18 +185,19 @@ int main(int argc, char **argv)
           todayHeading->isVisible() && todayHeading->text() == "New words written today" &&
           today->text() == "0" && today->font().bold(), "generic daily words have their own figure and heading");
     const QStringList documentOrder{"Night Inventory", "Wind", "Dawn", "Wind", "End of document"};
-    check(order->isChecked() && displayedNames(list) == documentOrder && list->isColumnHidden(1),
+    check(order->isChecked() && outlineNames(list) == documentOrder && list->topLevelItem(0)->childCount() == 3 && list->isColumnHidden(1),
           "title list starts in document order with repeated titles retained");
     panel.focusGenres();
     genreSearch->setText("in");
     check(list->currentItem()->text(0) == "Night Inventory", "typing focuses the first matching heading");
     key(genreSearch, Qt::Key_Up);
-    check(list->currentItem() == list->topLevelItem(3), "up wraps through heading matches");
+    check(list->currentItem() == list->topLevelItem(0)->child(2), "up wraps through heading matches");
     key(genreSearch, Qt::Key_Return, Qt::ControlModifier);
     check(editor.textCursor().blockNumber() == 13 && genreSearch->text().isEmpty() && editor.manuscriptText() == novel,
           "activating the later Wind moves to the heading");
     panel.toggleGenreOrder();
-    check(displayedNames(list) == QStringList{"Dawn", "Night Inventory", "Wind", "Wind", "End of document"} &&
+    check(outlineNames(list) == QStringList{"Dawn", "Night Inventory", "Wind", "Wind", "End of document"} &&
+          list->currentItem()->text(0).contains("Night Inventory") &&
           list->currentItem() == list->topLevelItem(3), "alphabetical sorting keeps the selected duplicate heading");
     const QPersistentModelIndex heading(list->currentIndex());
     QTextCursor body(block(11));
@@ -217,12 +267,56 @@ int main(int argc, char **argv)
           genreSearch->placeholderText() == "Search genres", "a live mode switch restores the independent genre order");
     prefix.setPosition(0, QTextCursor::KeepAnchor);
     prefix.removeSelectedText();
-    check(!order->isChecked() && displayedNames(list).first() == "Dawn" &&
+    check(!order->isChecked() && outlineNames(list).first() == "Dawn" &&
           genreSearch->placeholderText() == "Search titles", "returning to generic mode restores the title order");
 
     app.processEvents();
     check(today->parentWidget()->height() < crumbInformationHeight,
           "Generic mode gives the freed information-panel space to its navigation lists");
+
+    editor.loadText("The book\nPreface.\nPart A\n======\nChapter A\n---------\nSection A\n~~~~~~~~~\n"
+                    "Detail A\n........\nSome text.\nPart B\n======\nChapter A\n---------\nLast.");
+    if (!order->isChecked()) panel.toggleGenreOrder();
+    auto *book = list->topLevelItem(0);
+    auto *part = book->child(0);
+    auto *chapter = part->child(0);
+    auto *section = chapter->child(0);
+    auto *detail = section->child(0);
+    check(book->childCount() == 2 && detail->text(0) == "Detail A" && list->topLevelItemCount() == 2,
+          "the four real heading levels nest below the general title and the end command stays last");
+    window.activateWindow();
+    app.processEvents();
+    editor.setFocus();
+    editor.jumpTo(block(9).position(), false);
+    check(editor.hasFocus() && list->currentItem() == detail, "a marker line selects its section without taking focus");
+    editor.jumpTo(block(10).position(), false);
+    check(editor.hasFocus() && list->currentItem() == detail, "body paragraphs follow their nearest heading");
+    part->setExpanded(false);
+    panel.focusGenres();
+    genreSearch->setText("Detail");
+    check(part->isExpanded() && list->currentItem() == detail && editor.textCursor().blockNumber() == 10,
+          "a title search reveals a match inside a closed branch without moving the manuscript caret");
+    key(genreSearch, Qt::Key_Escape);
+    panel.toggleGenreOrder();
+    check(list->currentItem()->text(0).contains("Detail A  ·  The book › Part A › Chapter A › Section A"),
+          "alphabetical view supplies visible parent context");
+    panel.focusGenres();
+    genreSearch->setText("The book");
+    check(list->currentItem()->text(0) == "The book", "a parent context does not mask a title match");
+    key(genreSearch, Qt::Key_Return);
+    check(editor.textCursor().position() == 0 && editor.verticalScrollBar()->value() == 0 &&
+          editor.cursorRect().top() < editor.fontMetrics().height(),
+          "activating the general title places it at the top of the viewport");
+
+    editor.loadText("The «Moon»\nThe «sound» of snow\n=====\nA final «line».");
+    check(list->findItems("The Moon", Qt::MatchExactly).size() == 1 &&
+          history->topLevelItem(0)->text(0) == "A final line.",
+          "paired emphasis marks disappear from the title index and paragraph visits");
+    editor.setLiteralGuillemets(true);
+    check(list->findItems("The «Moon»", Qt::MatchExactly).size() == 1 &&
+          history->topLevelItem(0)->text(0) == "A final «line».",
+          "literal guillemets immediately appear in the outline and existing visits");
+    editor.setLiteralGuillemets(false);
 
     QLocale::setDefault(QLocale(QLocale::Spanish, QLocale::Spain));
     editor.loadText(QStringLiteral("Book\n") + QStringLiteral("word ").repeated(1233) + "word");

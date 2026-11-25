@@ -68,6 +68,7 @@ $contents = @{
     '.characters' = 'Núria, the writer'
     '.recurring' = 'Cafè, coffee'
     '.dictionary' = 'Crònica'
+    '.config' = 'disable-general-title=true'
     '.bak' = 'An existing backup'
 }
 $preserved = @{}

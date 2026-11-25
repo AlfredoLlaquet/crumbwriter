@@ -87,7 +87,7 @@ if(BUILD_TESTING)
         add_test(NAME ${suite} COMMAND test-${suite})
     endforeach()
     foreach(suite IN ITEMS model documentstore bookmarks editor search navigation synonyms spelling window vi resize
-                           symbols synonymwriting appearance layout wordtools)
+                           symbols synonymwriting appearance layout wordtools manuscriptoptions)
         add_executable(test-${suite} tests/qt/test-${suite}.cpp)
         target_link_libraries(test-${suite} PRIVATE crumbgui)
         add_test(NAME ${suite} COMMAND test-${suite})

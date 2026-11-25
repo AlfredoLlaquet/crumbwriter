@@ -239,6 +239,14 @@ void auditInformation(GuiAudit &audit, MainWindow &window)
     dismiss(license);
     dismiss(about);
 
+    auto *title = visible<QLabel>(window, "crumbTitle");
+    title->setFocus();
+    key(title, Qt::Key_Return);
+    auto *fullTitle = visible<QDialog>(window, "fullCrumbTitle");
+    visible<QPlainTextEdit>(*fullTitle);
+    audit.capture("full-crumb-title", fullTitle);
+    dismiss(fullTitle);
+
     key(window.editor(), Qt::Key_I, Qt::ControlModifier | Qt::ShiftModifier);
     auto *stats = visible<QDialog>(window, "statisticsDialog");
     audit.capture("statistics", stats);
@@ -408,6 +416,18 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
 void auditWritingAids(GuiAudit &audit, MainWindow &window)
 {
     auto *editor = window.editor();
+    if (audit.wantsView("manuscript-settings")) {
+        action(documentMenu(window), "Manuscript settings…")->trigger();
+        auto *dialog = visible<QDialog>(window, "manuscriptSettingsDialog");
+        audit.capture("manuscript-settings", dialog);
+        dismiss(dialog);
+    }
+    if (audit.wantsView("startup-backup")) {
+        action(documentMenu(window), "Compare with startup backup…")->trigger();
+        auto *dialog = visible<QDialog>(window, "backupComparisonDialog");
+        audit.capture("startup-backup", dialog);
+        dismiss(dialog);
+    }
     if (audit.wantsView("offline-thesaurus")) {
         key(editor, Qt::Key_F7);
         auto *dialog = visible<QDialog>(window, "offlineThesaurus");
@@ -548,8 +568,9 @@ void auditGeneric(GuiAudit &audit, MainWindow &window)
     QTemporaryDir temp;
     QFile file(temp.filePath("The Observatory.txt"));
     if (!file.open(QIODevice::WriteOnly)
-        || file.write("The Observatory\n\nA clear night\n-------------\nThe telescope waited for the first star.\n"
-                      "Ada Finch adjusted the focus.\n\nDaybreak\n--------\nA kettle began to whistle.") < 0)
+        || file.write("The Observatory\n\nNight watch\n==========\nA clear night\n-------------\n"
+                      "Ada Finch adjusted the focus.\nAt the eyepiece\n~~~~~~~~~~~~~~~\n"
+                      "The first star\n..............\nShe wrote «Vega» in the log.") < 0)
         throw std::runtime_error("Could not write the generic manuscript fixture");
     file.close();
     audit.require(!window.loadDocument(temp.filePath("Missing.txt")),
@@ -559,6 +580,10 @@ void auditGeneric(GuiAudit &audit, MainWindow &window)
     editorFocus(window);
     audit.require(!notice->isVisible() && notice->text().isEmpty(),
                   "Opening a different manuscript clears the preceding document's notice");
+    const auto &model = window.editor()->model();
+    audit.require(model.headingLevel(2) == 1 && model.headingLevel(4) == 2 &&
+                  model.headingLevel(7) == 3 && model.headingLevel(9) == 4,
+                  "All four heading levels are present in the generic manuscript view");
     audit.capture("generic-manuscript", &window);
     key(window.editor(), Qt::Key_I, Qt::ControlModifier | Qt::ShiftModifier);
     auto *stats = visible<QDialog>(window, "statisticsDialog");
@@ -643,7 +668,7 @@ void auditWindows(GuiAudit &audit, MainWindow &window)
         inspect(views, [&] { auditSynonyms(audit, window, name); });
     }
     inspect({"spelling", "dictionary", "editor-context-menu", "spelling-menu"}, [&] { auditSpelling(audit, window); });
-    inspect({"offline-thesaurus", "today-count"}, [&] { auditWritingAids(audit, window); });
+    inspect({"offline-thesaurus", "today-count", "manuscript-settings", "startup-backup"}, [&] { auditWritingAids(audit, window); });
     inspect({"symbols"}, [&] { auditSymbols(audit, window); });
     inspect({"name-completion"}, [&] { auditNameCompletion(audit, window); });
     inspect({"file-open", "file-save-as"}, [&] { auditFiles(audit, window); });

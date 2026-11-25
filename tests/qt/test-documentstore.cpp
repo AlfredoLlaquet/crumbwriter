@@ -73,7 +73,7 @@ struct Fixture {
             CHECK(QThread::currentThread() == QCoreApplication::instance()->thread());
             ++snapshots;
             return text;
-        });
+        }, [this] { return provisionalMarker; }, [this] { return literalGuillemets; });
         store.captureMetadata = [this] { return text.toUtf8(); };
         store.onPublished = [this](const QString &name, const QByteArray &metadata) {
             CHECK(QThread::currentThread() == QCoreApplication::instance()->thread());
@@ -87,6 +87,8 @@ struct Fixture {
     void edit(const QString &value) { text = value; store.markEdited(); }
 
     QString path, text, error;
+    int provisionalMarker = -1;
+    bool literalGuillemets = false;
     int snapshots = 0, closures = 0;
     QList<std::pair<QString, QByteArray>> published;
     DocumentStore store;
@@ -330,6 +332,24 @@ void manuscriptOutput(const QString &path)
     save("Heading\n  -\nBody.\n\t\n", "Heading\n -\nBody.\n");
     save("\n-\n-\nLast", "\n-\n-\nLast\n");
     save(" \t \n\n", {});
+    const QString styled = QStringLiteral("A «café»\n=\nThree\n~\n👩‍🚀 e\u0301\n.\n");
+    save(styled, QStringLiteral("A «café»\n======\nThree\n~~~~~\n👩‍🚀 e\u0301\n...\n").toUtf8());
+    f.literalGuillemets = true;
+    save(styled, QStringLiteral("A «café»\n========\nThree\n~~~~~\n👩‍🚀 e\u0301\n...\n").toUtf8());
+    save("One\n~.\nTwo\n =\n", "One\n~.\nTwo\n =\n");
+
+    // Exercise the live-save timer, then publish its subsequent confirmation
+    // with exactly the same editor text, just as a caret movement does.
+    f.provisionalMarker = 1;
+    f.store.configureLiveSave(true, 1);
+    f.edit("Heading\n-- \nChildren\n~\n");
+    WAIT_FOR(f.store, f.error, !f.store.isDirty() && !f.store.isSaving());
+    CHECK(contents(path) == "Heading\n--\nChildren\n~~~~~~~~\n");
+    f.provisionalMarker = -1;
+    f.store.markEdited();
+    WAIT_FOR(f.store, f.error, !f.store.isDirty() && !f.store.isSaving());
+    CHECK(contents(path) == "Heading\n-------\nChildren\n~~~~~~~~\n");
+    CHECK(f.text == "Heading\n-- \nChildren\n~\n");
 }
 
 void rejectUnrepresentableSnapshot(const QString &path)

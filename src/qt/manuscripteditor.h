@@ -2,6 +2,7 @@
 #define CRUMBWRITER_MANUSCRIPTEDITOR_H
 
 #include "crumbmodel.h"
+#include <QtGui/QTextBlock>
 #include <QtWidgets/QPlainTextEdit>
 #include <functional>
 #include <memory>
@@ -20,11 +21,19 @@ public:
 
     CrumbModel &model() const { return *model_; }
     QString manuscriptText() const;
+    bool isLoadingText() const { return loadingText_; }
+    QColor paperAtCaret() const;
     void loadText(const QString &text);
     void openAtEnd();
+    void setShowManuscriptMarkup(bool show);
+    bool showManuscriptMarkup() const { return showManuscriptMarkup_; }
     void setPaperPalette(const QPalette &palette);
     void setPaperActive(bool active);
     void setSmartPunctuation(bool enabled);
+    void setLiteralGuillemets(bool enabled);
+    bool literalGuillemets() const { return literalGuillemets_; }
+    std::function<void()> onLiteralGuillemetsChanged;
+    void toggleGuillemets();
     void setCopyDeletedText(bool enabled);
     bool copiesDeletedText() const { return copyDeleted_; }
     void copyRemovedText(const QString &text);
@@ -47,6 +56,7 @@ public:
     void centerCurrentLine();
     void topCurrentCrumb();
     void appendCrumb(const QString &genre = {});
+    void continueList();
     void copyCrumb();
     void copyHeader();
     void deleteCrumb();
@@ -74,6 +84,7 @@ protected:
     QMimeData *createMimeDataFromSelection() const override;
     void focusOutEvent(QFocusEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
+    void mouseDoubleClickEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
@@ -100,6 +111,8 @@ private:
     void replayEdit(bool forward);
     void trackSeparator(const QTextCursor &cursor);
     void typeText(const QString &text, int replaceStart = 0, int replaceLength = 0);
+    bool typeListItem(QTextCursor &cursor, const QString &text);
+    void insertListPrefix(QTextCursor &cursor, const QString &prefix);
     void showPreedit(QInputMethodEvent *event);
     void removeByKey(bool backward, bool byWord);
     void beginInputBlock(QTextCursor &cursor, EditRun run);
@@ -129,13 +142,17 @@ private:
     AppendUndoItem *replayedAppend_ = nullptr;
     QPalette paper_;
     bool activePaper_ = true;
+    bool loadingText_ = false;
     bool smart_ = true;
+    bool showManuscriptMarkup_ = false;
+    bool literalGuillemets_ = false;
     bool copyDeleted_ = false;
     bool editing_ = false;
     bool aligning_ = false;
     bool replaying_ = false;
     int activeLine_ = -1;
     QTextCursor pendingSpace_;
+    QTextBlock declinedListParagraph_;
     int rows_ = 0;
     int virtualTop_ = 0;
     int topInset_ = 0;

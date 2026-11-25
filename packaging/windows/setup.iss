@@ -1,4 +1,4 @@
-; ISCC /DAppVersion=2.5 /DPayloadDir=... /DOutputFolder=... setup.iss
+; Pass AppVersion, PayloadDir and OutputFolder from the staged build.
 #ifndef AppVersion
   #error AppVersion is required
 #endif
@@ -9,7 +9,7 @@
   #error OutputFolder is required
 #endif
 #ifndef InstallerName
-  #define InstallerName "CrumbWriter-Windows-x64-Setup"
+  #define InstallerName "CrumbWriter-" + AppVersion + "-Windows-x64-Setup"
 #endif
 
 [Setup]

@@ -23,7 +23,7 @@ namespace {
 
 // Work on the worker's snapshot. A new blank writing row, its caret, undo
 // history and live paragraph marks must survive even frequent autosaves.
-QByteArray manuscriptBytes(const QString &snapshot)
+QByteArray manuscriptBytes(const QString &snapshot, int provisionalMarker, bool literalGuillemets)
 {
     QString manuscript = ManuscriptSpacing::normalizeInsertion(snapshot, false);
     qsizetype signatures = 0;
@@ -31,28 +31,28 @@ QByteArray manuscriptBytes(const QString &snapshot)
         ++signatures;
     if (signatures) manuscript.remove(0, signatures);
     ManuscriptSpacing::trimBlankEnd(manuscript, true);
-    if (!manuscript.contains(QStringLiteral("\n-"))) return manuscript.toUtf8();
-
-    const auto firstLine = QStringView(manuscript).left(manuscript.indexOf(u'\n')).toUtf8();
-    CwCrumb first{};
-    cw_crumb_parse(firstLine.constData(), true, &first);
-    const bool generic = first.record_start == 0;
-    cw_crumb_clear(&first);
-    if (!generic) return manuscript.toUtf8();
-
     const QStringView text(manuscript);
+    const auto firstLine = text.left(text.indexOf(u'\n'));
+    if (firstLine.contains(QStringLiteral("//"))) {
+        CwCrumb first{};
+        cw_crumb_parse(firstLine.toUtf8().constData(), true, &first);
+        const bool generic = first.record_start == 0;
+        cw_crumb_clear(&first);
+        if (!generic) return manuscript.toUtf8();
+    }
     QString output;
     qsizetype copied = 0;
     QStringView previous;
-    for (qsizetype start = 0; start < text.size();) {
+    int lineNumber = 0;
+    for (qsizetype start = 0; start < text.size(); ++lineNumber) {
         const auto end = text.indexOf(u'\n', start);
         const auto line = text.mid(start, end - start);
-        if (GenericParagraph::onlyHyphens(line) && !previous.trimmed().isEmpty() &&
-            !GenericParagraph::onlyHyphens(previous)) {
-            const auto length = GenericParagraph::markerLength(previous);
+        if (lineNumber != provisionalMarker && GenericParagraph::markerLevel(line) &&
+            GenericParagraph::canHaveMarker(previous)) {
+            const auto length = GenericParagraph::markerLength(previous, literalGuillemets);
             if (length != line.size()) {
                 output += text.mid(copied, start - copied);
-                output += QString(length, u'-');
+                output += QString(length, line.front());
                 copied = end;
             }
         }
@@ -126,7 +126,8 @@ public:
     CwFile *file = nullptr;
     char *draft = nullptr;
 
-    Result perform(const Request &request, const QString &snapshot, bool needRecovery,
+    Result perform(const Request &request, const QString &snapshot, int provisionalMarker,
+                   bool literalGuillemets, bool needRecovery,
                    CwWriteGate *gate)
     {
         Result result;
@@ -141,7 +142,7 @@ public:
         } else if (snapshot.contains(QChar::Null) || !snapshot.isValidUtf16()) {
             result.error = QStringLiteral("The manuscript contains a NUL or an invalid Unicode character.");
         } else {
-            const QByteArray utf8 = manuscriptBytes(snapshot);
+            const QByteArray utf8 = manuscriptBytes(snapshot, provisionalMarker, literalGuillemets);
             switch (request.operation) {
             case Operation::Save:
                 result.ok = cw_file_save_guarded(file, utf8.constData(), gate, &error);
@@ -220,6 +221,8 @@ public:
     DiskDocument disk;
     std::shared_ptr<CwWriteGate> gate;
     std::function<QString()> snapshotProvider;
+    std::function<int()> provisionalMarker;
+    std::function<bool()> literalGuillemets;
     QString name, backup, draft, message;
     quint64 revision = 0;
     quint64 savedRevision = 0;
@@ -308,6 +311,8 @@ public:
         // Qt's implicitly shared string can be read by the worker. Its UTF-8
         // conversion, normalization, conflict check, fsync and rename all run there.
         const QString snapshot = writing ? snapshotProvider() : QString();
+        const int pendingMarker = writing && provisionalMarker ? provisionalMarker() : -1;
+        const bool literalQuotes = writing && literalGuillemets && literalGuillemets();
         const QByteArray metadata = writing && owner->captureMetadata ? owner->captureMetadata() : QByteArray();
         const bool needRecovery = dirty() || request.operation == Operation::Save;
         auto writingGate = std::make_shared<CwWriteGate>();
@@ -316,8 +321,8 @@ public:
         message = request.operation == Operation::Discard ? QStringLiteral("Discarding unsaved changes") :
                   request.operation == Operation::Draft ? QStringLiteral("Saving recovery draft") :
                                                          QStringLiteral("Saving");
-        workers.start([this, request, snapshot, captured, metadata, writingGate, needRecovery] {
-            Result result = disk.perform(request, snapshot, needRecovery, writingGate.get());
+        workers.start([this, request, snapshot, pendingMarker, literalQuotes, captured, metadata, writingGate, needRecovery] {
+            Result result = disk.perform(request, snapshot, pendingMarker, literalQuotes, needRecovery, writingGate.get());
             QMetaObject::invokeMethod(owner, [this, request, captured, metadata, result = std::move(result)] {
                 completed(request, captured, result, metadata);
             }, Qt::QueuedConnection);
@@ -479,9 +484,13 @@ QStringList DocumentStore::recoveryDrafts()
     return result;
 }
 
-void DocumentStore::setSnapshotProvider(std::function<QString()> provider)
+void DocumentStore::setSnapshotProvider(std::function<QString()> provider,
+                                        std::function<int()> provisionalMarker,
+                                        std::function<bool()> literalGuillemets)
 {
     state->snapshotProvider = std::move(provider);
+    state->provisionalMarker = std::move(provisionalMarker);
+    state->literalGuillemets = std::move(literalGuillemets);
 }
 
 void DocumentStore::markEdited()

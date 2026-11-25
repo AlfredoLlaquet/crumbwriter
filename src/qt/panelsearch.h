@@ -6,7 +6,7 @@
 class QAbstractItemView;
 class QModelIndex;
 
-// Search a flat panel list in place. The view keeps its original model and order.
+// Search a panel list or tree in place. The view keeps its original model and order.
 class PanelSearch final : public PromptLineEdit {
 public:
     PanelSearch(QAbstractItemView *view, QWidget *parent, int role = Qt::DisplayRole);

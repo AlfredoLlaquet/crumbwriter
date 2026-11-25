@@ -93,6 +93,11 @@ void dictionaryAndPhrases()
     require(errors(words, "Megaqzorb Blepik and Qzorb Blepikon").contains("Blepik"),
             "no partial word at the start/end of an alias");
 
+    words.setExceptions({QStringLiteral("Qzäß Blepik"), QStringLiteral("Çzorb Àblepik")}, {});
+    require(errors(words, QStringLiteral("QZÄSS blepik; C\u0327zorb A\u0300blepik. Blepik.")).size() == 1 &&
+            errors(words, QStringLiteral("QZÄSS blepik. Blepik.")) == QStringList{"Blepik"},
+            "whole multiword names use full Unicode case folding and canonical spelling at original offsets");
+
     words.setExceptions({"Qzorb Blepik"}, {"HeDbErG", "O’Zob", "Frozzpne-Vryzow"});
     require(errors(words, QStringLiteral("Hedberg’s HEDBERG'S o'Zob’s Qzorb Blepik’s Frozzpne-Vryzow’s I’m.")).isEmpty(),
             "personal words and complete names accept singular possessives, including mixed-case and curly forms");

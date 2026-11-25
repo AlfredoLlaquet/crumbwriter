@@ -7,6 +7,8 @@
 #include <QEvent>
 #include <QFile>
 #include <QLabel>
+#include <QHBoxLayout>
+#include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScreen>
@@ -85,7 +87,23 @@ void MainWindow::showAbout()
         font.setBold(true);
         font.setPointSizeF(title->fontInfo().pointSizeF() * 1.3);
         title->setFont(font);
-        layout->addWidget(title);
+        auto *heading = new QHBoxLayout;
+        heading->addWidget(title);
+        heading->addStretch();
+        auto *badge = new QPushButton(dialog);
+        badge->setObjectName("bsdFirstBadge");
+        badge->setAccessibleName(tr("BSD first — open the badge project"));
+        badge->setToolTip(tr("BSD first — open the badge project (Alt+B)"));
+        badge->setShortcut(QKeySequence(QStringLiteral("Alt+B")));
+        badge->setIcon(QIcon(QStringLiteral(":/bsd-first/badge.png")));
+        badge->setIconSize(QSize(72, 72));
+        badge->setFlat(true);
+        badge->setAutoDefault(false);
+        connect(badge, &QPushButton::clicked, dialog, [] {
+            QDesktopServices::openUrl(QUrl(QStringLiteral("https://github.com/AlfredoLlaquet/bsd-first")));
+        });
+        heading->addWidget(badge);
+        layout->addLayout(heading);
         layout->addWidget(new QLabel(tr("Programmed by ChatGPT for Alfredo Llaquet-Alsina."), dialog));
         layout->addWidget(new QLabel(tr("Qt %1").arg(qVersion()), dialog));
         auto *notice = new QLabel(tr("The Unlicense dedicates Crumb Writer’s original code to the "

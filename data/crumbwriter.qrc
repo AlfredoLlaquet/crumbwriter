@@ -11,6 +11,10 @@
   <qresource prefix="/symbols">
     <file alias="catalog.tsv">symbols.tsv</file>
   </qresource>
+  <qresource prefix="/bsd-first">
+    <file alias="badge.png">bsd-first-about.png</file>
+    <file alias="CC0">bsd-first-LICENSE</file>
+  </qresource>
   <qresource prefix="/license">
     <file alias="LICENSE">../LICENSE</file>
   </qresource>

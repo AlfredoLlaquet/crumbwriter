@@ -35,6 +35,7 @@ printf '%s\n' '{"version":2,"bookmarks":[]}' > "$manuscript.bookmarks"
 printf '%s\n' 'Goose, Inspector' > "$manuscript.characters"
 printf '%s\n' 'Moon, Luna' > "$manuscript.recurring"
 printf '%s\n' 'Cranolo' > "$manuscript.dictionary"
+printf '%s\n' 'literal-guillemets=true' > "$manuscript.config"
 open -n -a "$installed" "$manuscript"
 for ((attempt=0; attempt<100; ++attempt)); do
     backups=("$manuscript".*.bak)

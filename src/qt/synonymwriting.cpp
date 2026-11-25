@@ -290,7 +290,7 @@ void SynonymWriting::placeHint()
     }
     setStatusHint({});
     auto palette = editor_->palette();
-    palette.setColor(QPalette::WindowText, EditorColors::completionHint(palette));
+    palette.setColor(QPalette::WindowText, EditorColors::completionHint(editor_->paperAtCaret(), palette.text().color()));
     ghost_->setPalette(palette);
     ghost_->setText(suggestion_->suffix);
     ghost_->setAlignment((rtl ? Qt::AlignRight : Qt::AlignLeft) | Qt::AlignVCenter);

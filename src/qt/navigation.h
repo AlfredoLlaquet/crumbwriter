@@ -1,6 +1,7 @@
 #ifndef CRUMBWRITER_NAVIGATION_H
 #define CRUMBWRITER_NAVIGATION_H
 
+#include "titleoutline.h"
 #include <QHash>
 #include <QPointer>
 #include <QTextCursor>
@@ -8,6 +9,7 @@
 #include <functional>
 
 class QAction;
+class CrumbTitleLabel;
 class QDialog;
 class QLabel;
 class QSettings;
@@ -44,6 +46,9 @@ protected:
 private:
     void updateMode();
     void updateToday();
+    void sizeInformation();
+    void rememberVisit(QTextCursor caret);
+    void trackInsertedLines(int position, int added);
     void updateModel(const CrumbChange &change);
     bool isVisitLine(int row) const;
     void updateVisit(QTreeWidgetItem *item);
@@ -53,7 +58,7 @@ private:
     ManuscriptEditor *editor_;
     QSettings *settings_;
     QLabel *number_;
-    QLabel *title_;
+    CrumbTitleLabel *title_;
     QLabel *words_;
     QLabel *todayHeading_;
     QLabel *today_;
@@ -66,6 +71,8 @@ private:
     PanelSearch *historySearch_;
     PanelSearch *genresSearch_;
     QHash<int, QTreeWidgetItem *> visitedLines_;
+    TitleOutline outline_;
+    int previousBlockCount_ = 1;
 };
 
 #endif

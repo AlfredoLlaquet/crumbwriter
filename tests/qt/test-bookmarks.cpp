@@ -224,6 +224,15 @@ void externalEdits(const QString &directory)
     novel.setPlainText("Q\n-\nBody.\nA longer title\n--------------\nLast.\n");
     check(marks.openManuscript(marked) && marks.entries().first().line == 5,
           "canonicalizing the marker does not move the bookmark to a shorter heading");
+    for (const QChar sign : QStringLiteral("=~.")) {
+        const QString path = directory + QStringLiteral("/level-%1.txt").arg(sign.unicode());
+        const QString heading = QStringLiteral("Prose.\nPart «e\u0301»\n");
+        novel.setPlainText(heading + sign + QStringLiteral("\nText."));
+        check(marks.openManuscript(path) && marks.add("Scene", "Mark", 3), "bookmark another marker level");
+        novel.setPlainText(QStringLiteral("Preface.\n") + heading + QString(6, sign) + QStringLiteral("\nText."));
+        check(marks.openManuscript(path) && marks.entries().first().line == 4,
+              "a resized marker at the same level retains its bookmark after external insertions");
+    }
 
     const QString path = directory + "/reopen.txt";
     const QString sidecar = path + ".bookmarks";

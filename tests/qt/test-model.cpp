@@ -328,6 +328,22 @@ static void paragraphStructure()
     CHECK(model.titleLines() == QVector<int>{0});
     doc.setPlainText(QStringLiteral("\n\n"));
     CHECK(model.documentEndPosition() == 0);
+
+    doc.setPlainText(QStringLiteral("First chapter.\n===\nSecond\n-\nThird\n~~ \nFourth\n.\n"
+                                    "Mixed\n-~\nIndented\n .\n"));
+    CHECK(model.paragraphRole(0) == Role::DocumentTitle && model.headingLevel(0) == 0);
+    CHECK(model.headingLevel(2) == 2 && model.headingLevel(4) == 3 && model.headingLevel(6) == 4);
+    CHECK(model.paragraphRole(8) == Role::Body && model.paragraphRole(10) == Role::Body);
+    const auto originalWords = model.totalWords();
+    model.setGeneralTitleDisabled(true);
+    CHECK(model.paragraphRole(0) == Role::ChapterTitle && model.headingLevel(0) == 1);
+    CHECK(last.titlesChanged && !last.textChanged && model.totalWords() == originalWords);
+    replace(doc, doc.findBlockByNumber(5).position(), 3, QStringLiteral(".."));
+    CHECK(model.headingLevel(4) == 4 && last.titlesChanged);
+    doc.setPlainText(QStringLiteral("Original title\n\nProse."));
+    CHECK(model.paragraphRole(0) == Role::Body && model.paragraphRole(1) == Role::Blank);
+    model.setGeneralTitleDisabled(false);
+    CHECK(model.paragraphRole(0) == Role::DocumentTitle && model.paragraphRole(1) == Role::TitleSpacer);
 }
 
 static void firstLineMode()

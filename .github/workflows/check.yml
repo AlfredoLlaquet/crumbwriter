@@ -12,9 +12,15 @@ permissions:
 
 jobs:
   freebsd:
-    name: FreeBSD 15.1 with Plasma 6 and Krohnkite
+    name: Build and test on FreeBSD ${{ matrix.release }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { release: '15.1', major: '15' }
+          - { release: '14.4', major: '14' }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -23,7 +29,7 @@ jobs:
         run: sh tests/build-krohnkite.sh .ci-krohnkite
       - uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
         with:
-          release: '15.1'
+          release: ${{ matrix.release }}
           copyback: false
           prepare: |
             pkg install -y qt6-base qt6-wayland glib pkgconf hunspell en-hunspell en-mythes python3 xorg-vfbserver dejavu
@@ -72,50 +78,58 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: gui-audit-freebsd
+          name: gui-audit-freebsd-${{ matrix.release }}
           path: ${{ runner.temp }}/gui-audit
           if-no-files-found: warn
           retention-days: 14
       - name: Retrieve the native FreeBSD packages
         run: |
           mkdir -p "$RUNNER_TEMP/packages"
-          scp freebsd:/tmp/crumbwriter-packages/CrumbWriter-FreeBSD-15-amd64.pkg "$RUNNER_TEMP/packages/"
+          name=$(python3 packaging/release/assets.py freebsd${{ matrix.major }})
+          scp "freebsd:/tmp/crumbwriter-packages/$name" "$RUNNER_TEMP/packages/"
           scp freebsd:/tmp/crumbwriter-packages/UpgradeFixture.pkg "$RUNNER_TEMP/packages/"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: freebsd-installer
-          path: ${{ runner.temp }}/packages/CrumbWriter-FreeBSD-15-amd64.pkg
+          name: freebsd${{ matrix.major }}-installer
+          path: ${{ runner.temp }}/packages/crumbwriter-*-FreeBSD-${{ matrix.major }}-amd64.pkg
           if-no-files-found: error
           compression-level: 0
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: freebsd-upgrade-fixture
+          name: freebsd${{ matrix.major }}-upgrade-fixture
           path: ${{ runner.temp }}/packages/UpgradeFixture.pkg
           if-no-files-found: error
           compression-level: 0
           retention-days: 2
 
   freebsd-install:
-    name: Install, upgrade and remove on clean FreeBSD 15
+    name: Install, upgrade and remove on clean FreeBSD ${{ matrix.release }}
     needs: freebsd
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { release: '15.1', major: '15' }
+          - { release: '14.4', major: '14' }
+          - { release: '14.5', major: '14' }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: freebsd-installer
+          name: freebsd${{ matrix.major }}-installer
           path: packages
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: freebsd-upgrade-fixture
+          name: freebsd${{ matrix.major }}-upgrade-fixture
           path: packages
       - uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
         with:
-          release: '15.1'
+          release: ${{ matrix.release }}
           copyback: false
           prepare: pkg install -y xorg-vfbserver dejavu
           run: sh packaging/unix/test-install.sh packages
@@ -128,6 +142,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check versioned download links and release staging
+        run: python3 tests/test-release-assets.py
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
@@ -136,23 +152,6 @@ jobs:
       - name: Build
         id: build
         run: make -j2 crumbwriter tests/qt/test-gui-audit
-      - name: Build the Ubuntu package and earlier upgrade fixture
-        run: python3 packaging/unix/build.py --upgrade-fixture "$RUNNER_TEMP/packages"
-      - name: Install, upgrade and remove in clean Ubuntu 24.04
-        run: |
-          docker run --rm -v "$RUNNER_TEMP/packages:/packages:ro" \
-            -v "$PWD/packaging/unix/test-install.sh:/test-install.sh:ro" ubuntu:24.04 sh -ec '
-              export DEBIAN_FRONTEND=noninteractive
-              apt-get update
-              apt-get install -y --no-install-recommends xvfb fonts-dejavu-core
-              sh /test-install.sh /packages'
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: ubuntu-installer
-          path: ${{ runner.temp }}/packages/CrumbWriter-Ubuntu-24.04-amd64.deb
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 7
       - name: Test on X11
         env:
           QT_QPA_PLATFORM: xcb
@@ -186,6 +185,52 @@ jobs:
           done
           export PATH="$install_root/bin:$PATH" XDG_DATA_DIRS="$install_root/share:/usr/local/share:/usr/share"
           xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- python3 tests/check-wayland.py "$install_root/bin/crumbwriter"
+
+  deb-package:
+    name: Build and install on ${{ matrix.distribution }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distribution: 'Ubuntu 24.04', target: ubuntu24.04, image: 'ubuntu:24.04' }
+          - { distribution: 'Ubuntu 26.04', target: ubuntu26.04, image: 'ubuntu:26.04' }
+          - { distribution: 'Debian 13', target: debian13, image: 'debian:trixie-slim' }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build a native distribution package and earlier upgrade fixture
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/packages"
+          docker run --rm -e DEBIAN_FRONTEND=noninteractive -v "$PWD:/source:ro" \
+            -v "$RUNNER_TEMP/packages:/packages" "$IMAGE" sh -ec '
+              apt-get update
+              apt-get install -y --no-install-recommends build-essential pkgconf qt6-base-dev \
+                libglib2.0-dev libhunspell-dev dpkg-dev python3
+              cp -a /source /build
+              cd /build
+              make -j2
+              python3 packaging/unix/build.py --upgrade-fixture /packages'
+      - name: Install, launch, upgrade and remove in a fresh copy of the target distribution
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          docker run --rm -e DEBIAN_FRONTEND=noninteractive -v "$RUNNER_TEMP/packages:/packages:ro" \
+            -v "$PWD/packaging/unix/test-install.sh:/test-install.sh:ro" "$IMAGE" sh -ec '
+              apt-get update
+              apt-get install -y --no-install-recommends xvfb fonts-dejavu-core
+              sh /test-install.sh /packages'
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target }}-installer
+          path: ${{ runner.temp }}/packages/crumbwriter_*-${{ matrix.target }}_amd64.deb
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
 
   plasma:
     name: Plasma 6 with Krohnkite

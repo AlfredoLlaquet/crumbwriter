@@ -1,17 +1,20 @@
-"""Package the normal make install tree with the native Ubuntu or FreeBSD tools."""
+"""Package the normal make install tree with native FreeBSD, Ubuntu or Debian tools."""
 
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import platform
-import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPOSITORY / "packaging/release"))
+from assets import installers, project_version
+
 WEBSITE = "https://github.com/AlfredoLlaquet/crumbwriter"
 CONTACT = "AlfredoLlaquet@users.noreply.github.com"
 SUMMARY = "Keyboard-driven editor for plain-text manuscripts"
@@ -29,7 +32,7 @@ def installed_files(root):
 
 def build_deb(stage, work, destination, version):
     # dpkg-shlibdeps reads the actual ELF symbol requirements against the host's
-    # Ubuntu package database. It expects a debian/control in the working tree.
+    # package database. It expects a debian/control in the working tree.
     debian = work / "debian"
     debian.mkdir(exist_ok=True)
     (debian / "control").write_text(
@@ -83,12 +86,17 @@ def build_pkg(stage, work, destination, version):
 
 
 def native_target():
-    if platform.system() == "FreeBSD" and output("pkg", "config", "ABI").lower() == "freebsd:15:amd64":
-        return build_pkg, "/usr/local", "CrumbWriter-FreeBSD-15-amd64.pkg"
-    if platform.system() == "Linux" and platform.freedesktop_os_release().get("ID") == "ubuntu":
-        if platform.freedesktop_os_release()["VERSION_ID"] == "24.04" and output("dpkg", "--print-architecture") == "amd64":
-            return build_deb, "/usr", "CrumbWriter-Ubuntu-24.04-amd64.deb"
-    raise SystemExit("Build on Ubuntu 24.04 amd64 or FreeBSD 15 amd64 to produce a release package.")
+    if platform.system() == "FreeBSD":
+        abi = output("pkg", "config", "ABI").lower()
+        for major in ("14", "15"):
+            if abi == f"freebsd:{major}:amd64":
+                return build_pkg, "/usr/local", f"freebsd{major}"
+    if platform.system() == "Linux" and output("dpkg", "--print-architecture") == "amd64":
+        distro = platform.freedesktop_os_release()
+        target = distro["ID"] + distro["VERSION_ID"]
+        if target in ("ubuntu24.04", "ubuntu26.04", "debian13"):
+            return build_deb, "/usr", target
+    raise SystemExit("Release builds require amd64 FreeBSD 14.x/15.x, Ubuntu 24.04/26.04 or Debian 13.")
 
 
 def main():
@@ -96,9 +104,10 @@ def main():
     parser.add_argument("destination", type=Path)
     parser.add_argument("--upgrade-fixture", action="store_true", help="also build a CI-only, earlier package")
     args = parser.parse_args()
-    build, prefix, filename = native_target()
-    version = re.search(r'^inline constexpr char version\[\] = "(\d+\.\d+(?:\.\d+)?)";$',
-                        (REPOSITORY / "src/qt/buildinfo.h").read_text(), re.MULTILINE).group(1)
+    build, prefix, target = native_target()
+    version = project_version()
+    filename = installers(version)[target]
+    package_version = f"{version}-{target}" if build is build_deb else version
     args.destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temp:
         work = Path(temp)
@@ -114,7 +123,7 @@ def main():
             # Include the complete set of bundled source notices in Debian's standard location.
             notices = [docs / "LICENSE", docs / "COPYING-MyThes"]
             (docs / "copyright").write_bytes(b"\n".join(path.read_bytes() for path in notices))
-        build(stage, work, args.destination / filename, version)
+        build(stage, work, args.destination / filename, package_version)
         if args.upgrade_fixture:
             marker = payload / "share/crumbwriter/upgrade-fixture"
             marker.parent.mkdir(exist_ok=True)

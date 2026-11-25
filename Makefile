@@ -20,7 +20,7 @@ CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/storage-posix.o src/d
 CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/storage-platform.h src/draft.h
 MODEL_OBJECTS = src/qt/crumbmodel.o src/qt/dailycount.o src/qt/manuscripttext.o
 EDITOR_OBJECTS = $(MODEL_OBJECTS) src/qt/manuscripteditor.o src/qt/editorinput.o \
-                 src/qt/editorviewport.o src/qt/manuscriptlinks.o src/qt/committedpunctuation.o src/qt/vimotion.o src/qt/viselection.o
+                 src/qt/editorviewport.o src/qt/manuscriptlinks.o src/qt/committedpunctuation.o src/qt/genericlist.o src/qt/guillemetediting.o src/qt/wordselection.o src/qt/vimotion.o src/qt/viselection.o
 SEARCH_OBJECTS = $(EDITOR_OBJECTS) src/qt/searchpanel.o src/qt/searchengine.o src/qt/searchhistory.o
 BOOKMARK_OBJECTS = src/qt/bookmarks.o src/qt/bookmarkfile.o src/qt/bookmarkanchors.o src/qt/manuscripttext.o src/qt/commandicons.o src/qt/promptlineedit.o
 SYNONYM_OBJECTS = src/qt/textcompanion.o src/qt/synonymfile.o src/qt/synonympanel.o src/qt/synonymresults.o src/qt/synonymmatch.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o
@@ -36,7 +36,7 @@ APP_OBJECTS = $(MYTHES_OBJECT) $(QT_OBJECTS) $(CORE_OBJECTS) $(RESOURCE)
 QT_TESTS = tests/qt/test-model tests/qt/test-documentstore tests/qt/test-bookmarks \
            tests/qt/test-editor tests/qt/test-search tests/qt/test-navigation tests/qt/test-synonyms tests/qt/test-spelling \
            tests/qt/test-window tests/qt/test-vi tests/qt/test-resize tests/qt/test-symbols \
-           tests/qt/test-synonymwriting tests/qt/test-appearance tests/qt/test-layout tests/qt/test-wordtools
+           tests/qt/test-synonymwriting tests/qt/test-appearance tests/qt/test-layout tests/qt/test-wordtools tests/qt/test-manuscriptoptions
 
 all: crumbwriter
 
@@ -56,7 +56,7 @@ src/qt/thesaurus.o: third_party/mythes/mythes.hxx
 $(CORE_OBJECTS): $(CORE_HEADERS)
 src/qt/main.o $(QT_OBJECTS): $(QT_HEADERS) $(CORE_HEADERS)
 
-data/qt-icons.cpp: data/crumbwriter.qrc data/symbols.tsv $(ICON_FILES) LICENSE
+data/qt-icons.cpp: data/crumbwriter.qrc data/symbols.tsv data/bsd-first-about.png data/bsd-first-LICENSE $(ICON_FILES) LICENSE
 	$(RCC) --name crumbwriter -o $@ data/crumbwriter.qrc
 
 tests/test-crumb: tests/test-crumb.c src/crumb.o
@@ -84,8 +84,8 @@ tests/qt/test-vi: tests/qt/test-vi.cpp $(EDITOR_OBJECTS) $(CORE_OBJECTS)
 tests/qt/test-search: tests/qt/test-search.cpp $(SEARCH_OBJECTS) $(CORE_OBJECTS)
 	$(TEST_LINK) $(SEARCH_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
-tests/qt/test-navigation: tests/qt/test-navigation.cpp src/qt/navigation.o src/qt/todaycountdialog.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o $(EDITOR_OBJECTS) $(CORE_OBJECTS)
-	$(TEST_LINK) src/qt/navigation.o src/qt/todaycountdialog.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o $(EDITOR_OBJECTS) $(CORE_OBJECTS) $(LIBS)
+tests/qt/test-navigation: tests/qt/test-navigation.cpp src/qt/navigation.o src/qt/titleoutline.o src/qt/crumbtitlelabel.o src/qt/todaycountdialog.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o $(EDITOR_OBJECTS) $(CORE_OBJECTS)
+	$(TEST_LINK) src/qt/navigation.o src/qt/titleoutline.o src/qt/crumbtitlelabel.o src/qt/todaycountdialog.o src/qt/panelsearch.o src/qt/commandicons.o src/qt/promptlineedit.o $(EDITOR_OBJECTS) $(CORE_OBJECTS) $(LIBS)
 
 tests/qt/test-synonyms: tests/qt/test-synonyms.cpp $(SYNONYM_OBJECTS) src/qt/manuscripttext.o
 	$(TEST_LINK) $(SYNONYM_OBJECTS) src/qt/manuscripttext.o $(LIBS)
@@ -102,6 +102,9 @@ tests/qt/test-resize: tests/qt/test-resize.cpp $(APP_OBJECTS)
 WORD_TOOL_OBJECTS = src/qt/wordtools.o src/qt/thesaurus.o $(MYTHES_OBJECT) $(EDITOR_OBJECTS) $(CORE_OBJECTS)
 tests/qt/test-wordtools: tests/qt/test-wordtools.cpp $(WORD_TOOL_OBJECTS)
 	$(TEST_LINK) $(WORD_TOOL_OBJECTS) $(LIBS)
+
+tests/qt/test-manuscriptoptions: tests/qt/test-manuscriptoptions.cpp $(APP_OBJECTS)
+	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
 
 tests/qt/test-symbols: tests/qt/test-symbols.cpp
 tests/qt/test-synonymwriting: tests/qt/test-synonymwriting.cpp
