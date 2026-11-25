@@ -1,6 +1,15 @@
-# Crumb Writer
+<table>
+  <tr>
+    <td width="128" valign="middle">
+      <a href="https://github.com/AlfredoLlaquet/bsd-first">
+        <img src="data/bsd-first.svg" alt="BSD first" width="128">
+      </a>
+    </td>
+    <td valign="middle">This application was built and tested on BSD first to make it run well on as many operating systems as possible.</td>
+  </tr>
+</table>
 
-<a href="https://github.com/AlfredoLlaquet/bsd-first"><img src="data/bsd-first.svg" width="100" alt="BSD first"></a>
+# Crumb Writer
 
 **Crumb Writer lets you write with the ease of a word processor and saves your work directly as a plain text file.** If you’re at home in Microsoft Word, LibreOffice Writer, Google Docs, or Apple Pages, the experience will feel familiar. Choose a typeface you enjoy reading. Your headings stand out, your italics show, and your lists continue as you type. Open the same `.txt` file in any text editor and your whole document is there.
 
