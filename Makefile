@@ -140,6 +140,7 @@ install: crumbwriter
 	touch "$(DESTDIR)$(PREFIX)/share/icons/hicolor"
 	install -m 644 CrumbWriter.txt LICENSE "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 	install -m 644 third_party/mythes/COPYING "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/COPYING-MyThes"
+	install -m 644 data/bsd-first-LICENSE "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/COPYING-BSD-first"
 
 clean:
 	rm -f $(APP_OBJECTS) src/qt/main.o data/qt-icons.cpp crumbwriter tests/test-crumb tests/test-storage $(QT_TESTS) tests/qt/test-gui-audit

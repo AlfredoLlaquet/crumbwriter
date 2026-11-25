@@ -19,6 +19,8 @@ def check(app, run):
         env["XDG_" + name.upper() + ("_DIR" if name == "runtime" else "_HOME")] = str(folder)
 
     manuscript = run / "Typing.txt"
+    notes = run / "Reading notes.txt"
+    notes.write_text("A second manuscript in the same Wayland window.\n", encoding="utf-8")
     first = "Notes//Crumb 1: First: Original.\n"
     second = "Crumb 2: Second:"
     manuscript.write_bytes((first + second).encode())
@@ -48,14 +50,18 @@ def check(app, run):
         # No --window here: xdotool sends XTEST input to the focused compositor.
         subprocess.run(["xdotool", *args], check=True, timeout=8)
 
+    def active_toplevel(file):
+        log = client_log.read_text(errors="replace")
+        titles = re.findall(r'\b(xdg_toplevel[^\s(]*)\.set_title\("([^"]*)"\)', log)
+        if titles and titles[-1][1] == file.name + " — Crumb Writer":
+            return titles[-1][0]
+        return None
+
     def save_and_check(expected):
         expected += "\n"
         keyboard("key", "--clearmodifiers", "ctrl+s")
         wait_for(f"saved UTF-8 bytes {expected!r}", lambda: manuscript.read_bytes() == expected.encode("utf-8"))
-        def save_reported():
-            titles = re.findall(r'xdg_toplevel[^\s(]*\.set_title\("([^"]*)"\)', client_log.read_text(errors="replace"))
-            return titles and titles[-1] == "Typing.txt — Crumb Writer"
-        wait_for("the window to acknowledge the completed save", save_reported)
+        wait_for("the window to acknowledge the completed save", lambda: active_toplevel(manuscript))
 
     try:
         # Give the compositor and this one client a private Wayland connection.
@@ -77,7 +83,7 @@ def check(app, run):
                           WAYLAND_DEBUG="client")
         client_env.pop("DISPLAY", None)
         with client_log.open("w") as log:
-            editor = subprocess.Popen([app, manuscript], env=client_env, pass_fds=(client_fd.fileno(),),
+            editor = subprocess.Popen([app, notes, manuscript], env=client_env, pass_fds=(client_fd.fileno(),),
                                       stdout=log, stderr=subprocess.STDOUT)
         processes.append(editor)
         client_fd.close()
@@ -89,6 +95,12 @@ def check(app, run):
         keyboard("mousemove", "--window", window, "520", "240", "click", "1")
         wait_for("Wayland keyboard focus", lambda: re.search(r"\bwl_keyboard[^\s(]*\.enter\(",
                                                             client_log.read_text(errors="replace")))
+        writer = wait_for("the last file from the command line", lambda: active_toplevel(manuscript))
+        keyboard("key", "--clearmodifiers", "ctrl+shift+Tab")
+        wait_for("the other startup tab in the same native window", lambda: active_toplevel(notes) == writer)
+        keyboard("key", "--clearmodifiers", "ctrl+Tab")
+        wait_for("the writing tab in the original Wayland window", lambda: active_toplevel(manuscript) == writer)
+        print("Both startup manuscripts use the same Wayland toplevel.", flush=True)
 
         keyboard("key", "--clearmodifiers", "ctrl+Next")
         keyboard("type", "--clearmodifiers", "--delay", "14", "  I'd say  \"Pepe,\" new--s ... next.  ")

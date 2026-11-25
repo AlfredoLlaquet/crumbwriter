@@ -13,10 +13,12 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QMenu>
+#include <QMessageBox>
 #include <QScreen>
 #include <QSplitter>
 #include <QTabBar>
 #include <QTabWidget>
+#include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QUrl>
@@ -82,6 +84,9 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     tabs_->tabBar()->setAccessibleName(tr("Open manuscripts"));
     tabs_->tabBar()->setExpanding(false);
     tabs_->setElideMode(Qt::ElideMiddle);
+    connect(tabs_->tabBar(), &QTabBar::tabBarClicked, this, [this](int index) {
+        if (auto *page = tabs_->widget(index)) page->setFocus(Qt::MouseFocusReason);
+    });
     rightPane_ = new QWidget(split_);
     rightPane_->setObjectName("sidebar");
     rightPane_->setAccessibleName(tr("Navigation"));
@@ -158,11 +163,13 @@ bool MainWindow::loadDocument(const QString &path, bool recovery)
 
 void MainWindow::activateManuscript(bool goToEnd)
 {
-    if (goToEnd) editor()->openAtEnd();
     if (isMinimized()) setWindowState(windowState() & ~Qt::WindowMinimized);
     show();
     raise();
     activateWindow();
+    if (goToEnd || (active_->openingCaret_ == editor()->textCursor().position() && !editor()->textCursor().hasSelection()))
+        editor()->openAtEnd();
+    active_->openingCaret_ = -1;
     editor()->setFocus();
     prefs_.remember(path());
 }
@@ -182,6 +189,21 @@ void MainWindow::changeEvent(QEvent *e)
         editor()->setPaperActive(isActiveWindow());
         if (isActiveWindow() && !active_->loading_) prefs_.remember(path());
     }
+}
+
+void MainWindow::showEvent(QShowEvent *event)
+{
+    QWidget::showEvent(event);
+    allowClose_ = false;
+    if (!active_ || active_->openingCaret_ < 0) return;
+    // A tab page can receive its first Show before its QTabWidget gets the
+    // final content rectangle. Clamp the EOF viewport after the window maps.
+    QTimer::singleShot(0, this, [this, opened = QPointer<ManuscriptSession>(active_)] {
+        if (!opened || opened != active_ || opened->openingCaret_ < 0) return;
+        if (editor()->textCursor().position() == opened->openingCaret_ && !editor()->textCursor().hasSelection())
+            editor()->openAtEnd();
+        opened->openingCaret_ = -1;
+    });
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
@@ -219,6 +241,7 @@ void MainWindow::sessionChanged(ManuscriptSession *session)
     const int index = tabs_->indexOf(session->editor_);
     if (index < 0) return;
     const bool pending = session->store_->isDirty() || session->companionsPending();
+    if (closeDialog_ && closeTargets_.contains(session)) refreshCloseDialog();
     const QString label = (pending ? QStringLiteral("• ") : QString()) + session->label();
     // Ampersands in filenames are literal, including in tab labels.
     QString tabLabel = label;

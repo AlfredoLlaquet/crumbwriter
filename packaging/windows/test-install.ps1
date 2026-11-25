@@ -54,6 +54,40 @@ function Assert-Preserved($files) {
         if ((Get-FileHash -LiteralPath $path).Hash -ne $files[$path]) { throw "Modified: $path" }
     }
 }
+function Wait-ForTab([Diagnostics.Process]$Process, [string]$Path) {
+    $title = [IO.Path]::GetFileName($Path) + ' — Crumb Writer'
+    $deadline = [DateTime]::UtcNow.AddSeconds(45)
+    do {
+        $Process.Refresh()
+        if ($Process.HasExited) { throw "Editor exited before showing $title (exit $($Process.ExitCode))" }
+        if ($Process.MainWindowTitle -eq $title) { return $Process.MainWindowHandle }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Expected $title, found $($Process.MainWindowTitle)"
+}
+
+# Exercise the native frame Windows and its tiling tools actually manage.
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class InstalledWriterWindow {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct Frame { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out Frame frame);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr window, IntPtr after,
+        int x, int y, int width, int height, uint flags);
+    public static Frame Read(IntPtr window) {
+        Frame frame;
+        if (!GetWindowRect(window, out frame)) throw new InvalidOperationException("Cannot read the editor frame.");
+        return frame;
+    }
+    public static void MoveAndResize(IntPtr window, Frame frame) {
+        if (!SetWindowPos(window, IntPtr.Zero, frame.Left + 19, frame.Top + 11,
+                frame.Right - frame.Left - 23, frame.Bottom - frame.Top - 17, 0x14))
+            throw new InvalidOperationException("Cannot move the editor frame.");
+    }
+}
+'@
 $txtDefault = Registered 'HKCU:\Software\Classes\.txt' ''
 $choiceKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.txt\UserChoice'
 $txtChoice = Registered $choiceKey 'ProgId'
@@ -91,21 +125,32 @@ if ((Get-ItemProperty $uninstallKey).DisplayVersion -ne (Get-Item $exe).VersionI
 if (!(Test-Path $desktopLink) -or !(Test-Path $startLink)) { throw 'Upgrade did not install selected shortcuts' }
 if (!(Get-Item $openWithKey).GetValueNames().Contains('CrumbWriter.Text')) { throw 'Missing Open with registration' }
 if ((Registered $choiceKey 'ProgId') -ne $txtChoice -or (Registered 'HKCU:\Software\Classes\.txt' '') -ne $txtDefault) { throw 'Default text editor was changed' }
-foreach ($item in 'LICENSE','CrumbWriter.txt','dictionaries/en_US.aff','dictionaries/en_US.dic','thesaurus/th_en_US_new.dat','thesaurus/th_en_US_new.idx','third-party/MyThes/WordNet_license.txt','third-party/InnoSetup/LICENSE.txt','plugins/platforms/qwindows.dll','qt.conf') {
+foreach ($item in 'LICENSE','CrumbWriter.txt','dictionaries/en_US.aff','dictionaries/en_US.dic','thesaurus/th_en_US_new.dat','thesaurus/th_en_US_new.idx','third-party/MyThes/WordNet_license.txt','third-party/InnoSetup/LICENSE.txt','third-party/BSD-first/LICENSE','plugins/platforms/qwindows.dll','qt.conf') {
     if (!(Test-Path -LiteralPath (Join-Path $installDir $item))) { throw "Missing installed component: $item" }
 }
 Assert-Preserved $preserved
 Run-Checked $exe @('--smoke-test')
-$gui = Start-Program $exe @('--', $manuscript)
+$notes = Join-Path $work.FullName 'Reading notes.txt'
+$external = Join-Path $work.FullName 'New notes from Explorer.txt'
+foreach ($file in $notes, $external) {
+    [IO.File]::WriteAllText($file, "A separate plain-text manuscript.`n", $utf8)
+    $preserved[$file] = (Get-FileHash -LiteralPath $file).Hash
+}
+$gui = Start-Program $exe @('--', $notes, $manuscript)
 try {
-    $deadline = [DateTime]::UtcNow.AddSeconds(45)
-    do {
-        Start-Sleep -Milliseconds 200
-        $gui.Refresh()
-        if ($gui.HasExited) { throw "Editor exited before opening the manuscript: $($gui.ExitCode)" }
-    } while ($gui.MainWindowTitle -notlike 'Crònica 東京.txt*' -and [DateTime]::UtcNow -lt $deadline)
-    if ($gui.MainWindowTitle -notlike 'Crònica 東京.txt*') { throw "Unexpected manuscript window: $($gui.MainWindowTitle)" }
-    Run-Checked $exe @('--', $manuscript)
+    $window = Wait-ForTab $gui $manuscript
+    $original = [InstalledWriterWindow]::Read($window)
+    [InstalledWriterWindow]::MoveAndResize($window, $original)
+    $userFrame = [InstalledWriterWindow]::Read($window)
+    if ($userFrame.Equals($original)) { throw 'Windows did not apply the requested window geometry' }
+    foreach ($file in $notes, $external, $manuscript) {
+        Run-Checked $exe @('--', $file)
+        if ((Wait-ForTab $gui $file) -ne $window) { throw "A new native window appeared for $file" }
+        $currentFrame = [InstalledWriterWindow]::Read($window)
+        if (!$currentFrame.Equals($userFrame)) { throw "Opening $file moved or resized the window" }
+    }
+    Run-Checked $exe @('--', $manuscript, $notes)
+    if ((Wait-ForTab $gui $notes) -ne $window) { throw 'Multi-file activation did not reuse the tabbed window' }
     if (!$gui.CloseMainWindow() -or !$gui.WaitForExit(20000) -or $gui.ExitCode -ne 0) { throw 'Editor did not close normally' }
 } finally {
     if (!$gui.HasExited) { $gui.Kill($true) }

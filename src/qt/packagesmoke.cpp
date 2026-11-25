@@ -54,6 +54,9 @@ int runPackageSmokeTest()
         return fail("The Qt manuscript window could not be displayed.");
     if (QIcon(":/icons/crumbwriter.png").pixmap(32, 32).isNull())
         return fail("The manuscript icon could not be decoded.");
+    if (QIcon(":/bsd-first/badge.png").pixmap(72, 72).isNull() ||
+        !readBytes(":/bsd-first/CC0").contains("CC0 1.0 Universal"))
+        return fail("The BSD first artwork or its dedication is missing.");
     if (!readBytes(":/license/LICENSE").contains("WITHOUT WARRANTY"))
         return fail("The offline software license is missing.");
     const auto &symbols = SymbolCatalog::instance();

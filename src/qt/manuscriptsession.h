@@ -72,7 +72,9 @@ private:
     JumpHistory trail_;
     QString statusMessage_, noticeMessage_, synonymHint_, pendingSavePath_;
     QString configDraft_; // Private draft whose .config travels to the eventual named manuscript.
+    bool configPromotionFailed_ = false;
     bool loading_ = false;
     bool webLookupPending_ = false;
     bool searchOpen_ = false;
+    int openingCaret_ = -1;
 };

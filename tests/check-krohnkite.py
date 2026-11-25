@@ -42,6 +42,10 @@ def windows():
     return result
 
 
+def writer_windows():
+    return {title: window for title, window in windows().items() if title.endswith(' — Crumb Writer')}
+
+
 def kwin_running():
     manager = output('xprop', '-root', '_NET_SUPPORTING_WM_CHECK')
     window = re.search(r'0x[0-9a-fA-F]+', manager)
@@ -130,9 +134,12 @@ def session(app, run):
             Path(str(second) + '.recurring').write_text(
                 'Comets, Shooting Stars\nPlanet Pebble, Pebblepost\n', encoding='utf-8')
             screen = tuple(map(int, output('xdotool', 'getdisplaygeometry').split()))
-            first_process = launch(app, first)
+            notes = run / 'Reading notes.txt'
+            notes.write_text('Notes from another tab.\n', encoding='utf-8')
+            first_process = launch(app, notes, first)
             first_title = 'Alpha.txt — Crumb Writer'
-            alpha = wait_for('first document', lambda: windows().get(first_title))
+            alpha = wait_for('last requested startup tab is active', lambda: writer_windows().get(first_title))
+            assert set(writer_windows().values()) == {alpha}, 'multi-file startup created extra native windows'
             peer_process = launch('xterm', '-title', 'Tile peer', '-e', 'sleep', '240')
             peer = wait_for('second application', lambda: windows().get('Tile peer'))
             hints = output('xprop', '-id', peer, 'WM_NORMAL_HINTS')
@@ -152,6 +159,15 @@ def session(app, run):
                         assert abs(old[2]-new[2]) < cell_width and abs(old[3]-new[3]) < cell_height, (old, new)
                     else:
                         assert old == new, f'manuscript tile changed: {old} -> {new}'
+
+            key(alpha, 'ctrl+shift+Tab')
+            wait_for('the other startup file uses the same tile',
+                     lambda: writer_windows().get('Reading notes.txt — Crumb Writer') == alpha)
+            unchanged()
+            key(alpha, 'ctrl+Tab')
+            wait_for('return to the first manuscript in its original tile',
+                     lambda: writer_windows().get(first_title) == alpha)
+            unchanged()
 
             key(alpha, 'Escape')
             normal_paper = wait_for('active manuscript paper', lambda: stable_paper(alpha))
@@ -189,8 +205,8 @@ def session(app, run):
                 wait_for(f'{name} closed', lambda: dialog not in windows().values())
 
             expected = windows()
-            subprocess.run([app, first], check=True, timeout=8)
-            assert windows() == expected, 'reopening the same file created another window'
+            subprocess.run([app, notes, first], check=True, timeout=8)
+            wait_for('reopening existing files selects the last tab', lambda: windows() == expected)
             unchanged()
 
             key(alpha, 'ctrl+Prior')
@@ -231,8 +247,24 @@ def session(app, run):
             key(alpha, 'ctrl+s')
             wait_for('saved bytes after paste', lambda: first.read_bytes() == original.replace(middle, pasted).encode())
 
+            second_title = 'Beta.txt — Crumb Writer'
             subprocess.run([app, second], check=True, timeout=8)
-            beta = wait_for('additional document', lambda: windows().get('Beta.txt — Crumb Writer'))
+            wait_for('a new file opened externally becomes a tab in the active tile',
+                     lambda: writer_windows() == {second_title: alpha})
+            unchanged()
+            key(alpha, 'ctrl+F4')
+            wait_for('closing the tab keeps the native window', lambda: writer_windows() == {first_title: alpha})
+            unchanged()
+
+            # A separate native client must be explicitly requested before
+            # Krohnkite can tile two manuscripts alongside the terminal.
+            key(alpha, 'ctrl+shift+n')
+            beta = wait_for('New Window created a distinct native client',
+                            lambda: next((w for w in writer_windows().values() if w != alpha), None))
+            output('xdotool', 'windowactivate', '--sync', beta)
+            subprocess.run([app, second], check=True, timeout=8)
+            wait_for('the requested file uses the new window',
+                     lambda: writer_windows() == {first_title: alpha, second_title: beta})
             clients.append(beta)
             initial = wait_for('three adjacent tiles fill the screen', lambda: tiles(clients, screen))
             print('KWin + Krohnkite, three clients:', initial, flush=True)
@@ -241,6 +273,18 @@ def session(app, run):
                 expect_paper(active, normal_paper, 'active manuscript')
                 expect_paper(inactive, away_paper, 'neighboring manuscript')
             print('Rendered manuscript colors: active', normal_paper, 'inactive', away_paper, flush=True)
+            # Model a file-manager launch after the older writer window lost
+            # focus to a different application.
+            external = run / 'External notes.txt'
+            external.write_text('A note for the most recently used writer window.\n', encoding='utf-8')
+            output('xdotool', 'windowactivate', '--sync', peer)
+            subprocess.run([app, external], check=True, timeout=8)
+            wait_for('external activation reuses the last active writer window',
+                     lambda: writer_windows() == {'External notes.txt — Crumb Writer': alpha, second_title: beta})
+            unchanged()
+            key(alpha, 'ctrl+F4')
+            wait_for('closing the externally opened tab restores Alpha',
+                     lambda: writer_windows() == {first_title: alpha, second_title: beta})
             short = min((alpha, beta), key=lambda win: rectangle(win)[3])
             assert rectangle(short)[3] < screen[1] * .7, 'the layout must exercise a short editor tile'
             for chord in ('ctrl+f', 'Escape', 'ctrl+h', 'Escape'):

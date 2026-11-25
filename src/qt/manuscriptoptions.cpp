@@ -41,7 +41,7 @@ QByteArray setFlag(const QByteArray &original, const QByteArray &key, bool value
 {
     if (enabled(original, key) == value) return original;
     auto lines = original.split('\n');
-    while (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
+    if (original.isEmpty()) lines.clear();
     const QByteArray entry = key + '=' + (value ? "true" : "false");
     bool found = false;
     for (auto &line : lines) {
@@ -49,8 +49,14 @@ QByteArray setFlag(const QByteArray &original, const QByteArray &key, bool value
         line = entry;
         found = true;
     }
-    if (!found) lines.append(entry);
-    return lines.join('\n') + '\n';
+    if (!found) {
+        qsizetype pos = lines.size();
+        while (pos && lines[pos - 1].isEmpty()) --pos;
+        lines.insert(pos, entry);
+    }
+    auto bytes = lines.join('\n');
+    if (!bytes.endsWith('\n')) bytes += '\n';
+    return bytes;
 }
 }
 
@@ -84,6 +90,14 @@ bool ManuscriptOptions::carryToPath(const QString &path, QString *error)
 }
 
 bool ManuscriptOptions::flush(QString *error) { return config_.flush(error); }
+
+bool ManuscriptOptions::copyToDraft(const QString &draft, QString *error)
+{
+    if (draft.isEmpty()) return false;
+    if (recoveryConfig_.manuscriptPath() != draft && !recoveryConfig_.openManuscript(draft, error))
+        return false;
+    return recoveryConfig_.bytes() == config_.bytes() || recoveryConfig_.write(config_.bytes(), error);
+}
 
 void ManuscriptOptions::showSettings()
 {

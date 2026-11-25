@@ -281,6 +281,7 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
 void NavigationPanel::reset()
 {
     if (todayDialog_) todayDialog_->reject();
+    title_->closeFullTitle();
     historySearch_->clear();
     genresSearch_->clear();
     visitedLines_.clear();
@@ -462,6 +463,7 @@ void NavigationPanel::updateModel(const CrumbChange &change)
 {
     if (change.modeChanged) {
         if (todayDialog_) todayDialog_->reject();
+        title_->closeFullTitle();
         genresSearch_->clear();
         updateMode();
     }

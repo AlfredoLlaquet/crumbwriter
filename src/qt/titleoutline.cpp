@@ -27,7 +27,8 @@ void TitleOutline::rebuild(QTreeWidget *tree, const CrumbModel &model, const QTe
     struct Ancestor { QTreeWidgetItem *item = nullptr; QString name; };
     std::array<Ancestor, 5> hierarchy{}; // General title, then levels 1–4.
     const auto lines = model.titleLines();
-    QList<int> sorted = lines;
+    QList<QTreeWidgetItem *> flat;
+    if (!hierarchical) flat.reserve(lines.size());
     for (const int line : lines) {
         const auto &source = model.record(line).text;
         const auto name = !literalGuillemets && source.contains(u'«')
@@ -57,7 +58,7 @@ void TitleOutline::rebuild(QTreeWidget *tree, const CrumbModel &model, const QTe
         if (hierarchical) {
             if (parent) parent->addChild(item);
             else tree->addTopLevelItem(item);
-        }
+        } else flat.append(item);
     }
     if (hierarchical) {
         for (auto it = items_.cbegin(); it != items_.cend(); ++it)
@@ -65,11 +66,10 @@ void TitleOutline::rebuild(QTreeWidget *tree, const CrumbModel &model, const QTe
     } else {
         QCollator collator;
         collator.setCaseSensitivity(Qt::CaseInsensitive);
-        std::stable_sort(sorted.begin(), sorted.end(), [&](int a, int b) {
-            return collator.compare(items_.value(a)->data(0, searchRole).toString(),
-                                    items_.value(b)->data(0, searchRole).toString()) < 0;
+        std::stable_sort(flat.begin(), flat.end(), [&](const auto *a, const auto *b) {
+            return collator.compare(a->data(0, searchRole).toString(), b->data(0, searchRole).toString()) < 0;
         });
-        for (int line : sorted) tree->addTopLevelItem(items_.value(line));
+        tree->addTopLevelItems(flat);
     }
     auto *end = new QTreeWidgetItem(tree, {QObject::tr("End of document")});
     end->setToolTip(0, QObject::tr("Go to the end of the last paragraph."));

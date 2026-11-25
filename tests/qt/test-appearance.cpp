@@ -313,6 +313,11 @@ int main(int argc, char **argv)
     window.activateManuscript(false);
     auto *editor = window.editor();
     until([&] { return editor->hasFocus(); }, "focused manuscript");
+    const auto *panelCaption = window.findChild<QLabel *>("genreHeading");
+    const auto *panelField = window.findChild<QLineEdit *>("genresSearch");
+    check(panelCaption && panelField && panelCaption->font().family() == panelField->font().family() &&
+          qAbs(QFontMetrics(panelCaption->font()).height() - QFontMetrics(panelField->font()).height()) <= 2,
+          "navigation captions use the interface font after a tab leaves its parking container");
     editor->jumpTo(0, false);
     until([&] { return firstWarning(*editor) == EditorColors::warning(dark.base().color()); }, "dark number warning");
     const auto first = editor->document()->firstBlock();

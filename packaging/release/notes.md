@@ -1,3 +1,5 @@
+@CHANGES@
+
 ## Downloads
 
 - [FreeBSD 15.x package for amd64](https://github.com/@REPOSITORY@/releases/download/@TAG@/@freebsd15@)

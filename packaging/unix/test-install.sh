@@ -1,8 +1,10 @@
 #!/bin/sh
 # Run as root on a fresh target with Xvfb and a font installed. Dependencies
-# of the editor itself must come from the two downloaded package files.
+# of the editor itself must come from the two downloaded package files. An
+# optional second argument selects an existing display for the GUI checks.
 set -eu
 packages=$(cd "$1" && pwd)
+external_display=${2:-}
 work=$(mktemp -d)
 editor_pid= server_pid=
 cleanup() {
@@ -34,6 +36,7 @@ case $(uname -s) in
             dpkg-deb --fsys-tarfile "$release" | tar -tf - > "$work/contents"
             grep -Fx './usr/share/doc/crumbwriter/CrumbWriter.txt' "$work/contents"
             grep -Fx './usr/share/doc/crumbwriter/COPYING-MyThes' "$work/contents"
+            grep -Fx './usr/share/doc/crumbwriter/COPYING-BSD-first' "$work/contents"
             test -s /usr/share/doc/crumbwriter/copyright
         }
         export LC_ALL=C.UTF-8
@@ -55,6 +58,7 @@ case $(uname -s) in
         verify_docs() {
             test -s "$prefix/share/doc/crumbwriter/CrumbWriter.txt"
             test -s "$prefix/share/doc/crumbwriter/COPYING-MyThes"
+            test -s "$prefix/share/doc/crumbwriter/COPYING-BSD-first"
         }
         export LC_ALL=en_US.UTF-8
         ;;
@@ -76,16 +80,21 @@ printf '%s\n' 'literal-guillemets=true' > "$name.config"
 install_package "$fixture"
 test "$(installed_version)" = 0.0.1
 test -f "$prefix/share/crumbwriter/upgrade-fixture"
-Xvfb -screen 0 1280x800x24 -nolisten tcp -displayfd 1 > "$work/display" &
-server_pid=$!
-attempt=0
-while [ ! -s "$work/display" ]; do
-    test "$attempt" -lt 60
-    kill -0 "$server_pid"
-    attempt=$((attempt + 1))
-    sleep 1
-done
-export DISPLAY=":$(cat "$work/display")" QT_QPA_PLATFORM=xcb
+if [ -n "$external_display" ]; then
+    DISPLAY=$external_display
+else
+    Xvfb -screen 0 1280x800x24 -nolisten tcp -displayfd 1 > "$work/display" &
+    server_pid=$!
+    attempt=0
+    while [ ! -s "$work/display" ]; do
+        test "$attempt" -lt 60
+        kill -0 "$server_pid"
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+    DISPLAY=":$(cat "$work/display")"
+fi
+export DISPLAY QT_QPA_PLATFORM=xcb
 crumbwriter -- "$PWD/$name" &
 editor_pid=$!
 attempt=0

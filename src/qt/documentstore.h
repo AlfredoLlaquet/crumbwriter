@@ -28,6 +28,7 @@ public:
     QString draftPath() const;
     QString status() const;
     bool isDirty() const;
+    quint64 editRevision() const;
     bool isSaving() const;
     bool needsCloseConfirmation() const;
 

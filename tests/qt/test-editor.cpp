@@ -993,8 +993,17 @@ void genericParagraphs(ManuscriptEditor &ed)
     settle();
     auto typeSize = [&](int line) { return block(line).layout()->formats().front().format.font().pointSizeF(); };
     require(typeSize(1) > typeSize(3) && typeSize(3) > typeSize(5) &&
-            typeSize(5) > typeSize(7) && typeSize(7) > typeSize(9),
-            "four title levels have descending writing sizes");
+            typeSize(5) > typeSize(7) && typeSize(7) == typeSize(9) && bold(7),
+            "heading sizes descend through level four, which uses the bold writing size");
+    auto underlineStyle = [&](int line) { return block(line).layout()->formats().front().format.underlineStyle(); };
+    require(underlineStyle(1) == QTextCharFormat::SingleUnderline &&
+            underlineStyle(3) == QTextCharFormat::SingleUnderline &&
+            underlineStyle(5) == QTextCharFormat::DotLine && underlineStyle(7) == QTextCharFormat::DotLine,
+            "the top two heading levels use solid underlines and the lower two dotted underlines");
+    const int markerAdvance = rect(9).top() - rect(8).top();
+    require(markerAdvance >= 2 && markerAdvance <= 3,
+            "inactive markup between a heading and ordinary prose occupies two or three logical pixels");
+    std::printf("At %.0f pt an inactive title marker occupies %d logical pixels.\n", ed.font().pointSizeF(), markerAdvance);
     require(rect(1).top() - rect(0).bottom() > body * 0.45,
             "section headings receive extra vertical separation without inserting blank file lines");
     ed.loadText("Opening.\n~\nAnother paragraph.");

@@ -20,6 +20,7 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QListView>
+#include <QListWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -155,7 +156,8 @@ void auditMenus(GuiAudit &audit, MainWindow &window)
     waitFor([menu] { return menu->isVisible(); }, "F10 did not show the Document menu");
     audit.capture("document-menu", menu);
     menu->hide();
-    for (const QString &name : {QStringLiteral("Edit"), QStringLiteral("Navigate"), QStringLiteral("View")})
+    for (const QString &name : {QStringLiteral("Edit"), QStringLiteral("Navigate"),
+                                QStringLiteral("View"), QStringLiteral("Tabs")})
         inspectMenu(audit, action(menu, name)->menu(), &window, "document-menu-" + name.toLower());
 #ifdef Q_OS_MACOS
     auto *bar = window.findChild<QMenuBar *>();
@@ -423,12 +425,27 @@ void auditWritingAids(GuiAudit &audit, MainWindow &window)
         dismiss(dialog);
     }
     if (audit.wantsView("startup-backup")) {
+        const auto original = editor->textCursor();
+        const int anchor = original.anchor(), caret = original.position();
+        editor->jumpTo(0, false);
+        auto passage = editor->textCursor();
+        passage.movePosition(QTextCursor::EndOfBlock);
+        editor->setTextCursor(passage);
+        editor->insertLiteral(QStringLiteral(" The dome closes at midnight."));
+        const auto restore = qScopeGuard([&] {
+            editor->undo();
+            editor->selectRange(anchor, caret, false);
+        });
         action(documentMenu(window), "Compare with startup backup…")->trigger();
         auto *dialog = visible<QDialog>(window, "backupComparisonDialog");
+        auto *changes = visible<QListWidget>(*dialog, "backupChanges");
+        audit.require(changes->count() > 0 && changes->currentRow() >= 0,
+                      "The startup comparison displays an actual changed passage");
         audit.capture("startup-backup", dialog);
         dismiss(dialog);
     }
     if (audit.wantsView("offline-thesaurus")) {
+        editorFocus(window);
         key(editor, Qt::Key_F7);
         auto *dialog = visible<QDialog>(window, "offlineThesaurus");
         auto *query = visible<QLineEdit>(*dialog, "thesaurusQuery");
@@ -573,13 +590,15 @@ void auditGeneric(GuiAudit &audit, MainWindow &window)
                       "The first star\n..............\nShe wrote «Vega» in the log.") < 0)
         throw std::runtime_error("Could not write the generic manuscript fixture");
     file.close();
-    audit.require(!window.loadDocument(temp.filePath("Missing.txt")),
+    audit.require(!window.openDocumentInTab(temp.filePath("Missing.txt")),
                   "An unreadable manuscript raises a notice");
     auto *notice = visible<QLabel>(window, "notice");
-    if (!window.loadDocument(file.fileName())) throw std::runtime_error("Could not open the generic manuscript");
+    if (!window.openDocumentInTab(file.fileName())) throw std::runtime_error("Could not open the generic manuscript");
     editorFocus(window);
     audit.require(!notice->isVisible() && notice->text().isEmpty(),
                   "Opening a different manuscript clears the preceding document's notice");
+    audit.require(window.tabCount() >= 2 && visible<QTabWidget>(window, "manuscript")->currentWidget() == window.editor(),
+                  "A newly opened manuscript occupies its own editor tab");
     const auto &model = window.editor()->model();
     audit.require(model.headingLevel(2) == 1 && model.headingLevel(4) == 2 &&
                   model.headingLevel(7) == 3 && model.headingLevel(9) == 4,
@@ -589,16 +608,20 @@ void auditGeneric(GuiAudit &audit, MainWindow &window)
     auto *stats = visible<QDialog>(window, "statisticsDialog");
     audit.capture("generic-statistics", stats);
     dismiss(stats);
-    QFile malformed(file.fileName() + ".characters");
+    // Opening the same path selects the existing tab. Exercise a real open
+    // on a second manuscript whose companion already contains the error.
+    const QString damaged = temp.filePath("Other Observatory.txt");
+    if (!file.copy(damaged)) throw std::runtime_error("Could not copy the companion-error fixture");
+    QFile malformed(damaged + ".characters");
     if (!malformed.open(QIODevice::WriteOnly) || malformed.write("\"Unclosed synonym\n") < 0)
         throw std::runtime_error("Could not write the malformed companion fixture");
     malformed.close();
-    if (!window.loadDocument(file.fileName())) throw std::runtime_error("Could not load the companion-error fixture");
+    if (!window.openDocumentInTab(damaged)) throw std::runtime_error("Could not load the companion-error fixture");
     editorFocus(window);
     audit.require(notice->isVisible() && notice->text().contains("closing double quote"),
                   "A warning raised by the newly opened manuscript remains visible");
     audit.capture("manuscript-notice", &window);
-    if (!window.loadDocument(crumbFile)) throw std::runtime_error("Could not reload the original manuscript");
+    if (!window.openDocumentInTab(crumbFile)) throw std::runtime_error("Could not return to the original manuscript tab");
 }
 
 void auditUnsaved(GuiAudit &audit, MainWindow &window)
@@ -653,11 +676,11 @@ void auditWindows(GuiAudit &audit, MainWindow &window)
         for (auto *dialog : dialogs) if (dialog->isVisible()) dialog->reject();
         settle();
     };
-    inspect({"document-menu", "document-menu-edit", "document-menu-navigate", "document-menu-view", "macos-menu-bar"},
+    inspect({"document-menu", "document-menu-edit", "document-menu-navigate", "document-menu-view", "document-menu-tabs", "macos-menu-bar"},
             [&] { auditMenus(audit, window); });
     inspect({"search-and-replace", "search-modes", "recent-searches"}, [&] { auditSearch(audit, window); });
     inspect({"settings-writing", "settings-names", "underline-color"}, [&] { auditSettings(audit, window); });
-    inspect({"keyboard-shortcuts", "about", "license", "statistics", "arrange-panels"},
+    inspect({"keyboard-shortcuts", "about", "license", "full-crumb-title", "statistics", "arrange-panels"},
             [&] { auditInformation(audit, window); });
     inspect({"bookmark-add", "bookmarks-tree", "bookmark-rename-category", "bookmarks-list", "bookmark-edit",
              "bookmark-delete", "column-menu"}, [&] { auditBookmarks(audit, window); });

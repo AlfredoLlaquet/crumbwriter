@@ -73,7 +73,7 @@ void MainWindow::buildToolbar(QVBoxLayout *layout)
         connect(action, &QAction::triggered, this, fn);
         return action;
     };
-    tool("Open", Symbol::Open, "Open a manuscript (Ctrl+O)",
+    tool("Open", Symbol::Open, "Open manuscripts in tabs (Ctrl+O)",
          [this] { active_->chooseFile(false); });
     appendTool_ = tool("New Crumb", Symbol::Add, "Append a crumb (Ctrl+N)",
                        [this] { active_->appendCrumb(); });

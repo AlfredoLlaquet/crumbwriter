@@ -22,6 +22,7 @@ private:
     void acceptRequests();
     Preferences preferences_;
     QList<QPointer<MainWindow>> windows_;
+    QPointer<MainWindow> lastActive_;
     bool recovered_ = false;
     QLocalServer server_;
     std::unique_ptr<QLockFile> instanceLock_;

@@ -31,6 +31,7 @@ QByteArray manuscriptBytes(const QString &snapshot, int provisionalMarker, bool 
         ++signatures;
     if (signatures) manuscript.remove(0, signatures);
     ManuscriptSpacing::trimBlankEnd(manuscript, true);
+    if (manuscript.isEmpty()) return {};
     const QStringView text(manuscript);
     const auto firstLine = text.left(text.indexOf(u'\n'));
     if (firstLine.contains(QStringLiteral("//"))) {
@@ -522,6 +523,7 @@ QString DocumentStore::backupPath() const { return state->backup; }
 QString DocumentStore::draftPath() const { return state->draft; }
 QString DocumentStore::status() const { return state->message; }
 bool DocumentStore::isDirty() const { return state->dirty(); }
+quint64 DocumentStore::editRevision() const { return state->revision; }
 bool DocumentStore::isSaving() const { return state->busy(); }
 bool DocumentStore::needsCloseConfirmation() const
 {

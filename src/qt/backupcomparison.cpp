@@ -138,8 +138,11 @@ BackupComparison::BackupComparison(ManuscriptEditor *editor, DocumentStore *stor
     changes_->setObjectName("backupChanges");
     layout->addWidget(changes_, 1);
     auto *columns = new QSplitter(this);
-    auto column = [&](const QString &name) {
+    columns->setObjectName("comparisonColumns");
+    auto column = [&](const QString &name, const QString &id) {
         auto *widget = new QWidget(columns);
+        widget->setObjectName(id);
+        widget->setAccessibleName(QString(name).remove(u'&'));
         auto *box = new QVBoxLayout(widget);
         box->setContentsMargins(0, 0, 0, 0);
         auto *label = new QLabel(name, widget);
@@ -153,8 +156,8 @@ BackupComparison::BackupComparison(ManuscriptEditor *editor, DocumentStore *stor
         columns->addWidget(widget);
         return view;
     };
-    beforeView_ = column(tr("Startup &backup"));
-    afterView_ = column(tr("Current &manuscript"));
+    beforeView_ = column(tr("Startup &backup"), QStringLiteral("startupBackup"));
+    afterView_ = column(tr("Current &manuscript"), QStringLiteral("currentManuscript"));
     layout->addWidget(columns, 2);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
     previous_ = buttons->addButton(tr("&Previous"), QDialogButtonBox::ActionRole);
@@ -204,7 +207,8 @@ void BackupComparison::refresh()
         after_ = paragraphs(editor_->manuscriptText());
         ranges_ = BackupDiff::compare(before_, after_);
         summary_->setText(ranges_.isEmpty() ? tr("No paragraph changes since %1.").arg(QFileInfo(path).fileName())
-                                             : tr("%1 changed passage(s) since %2.").arg(ranges_.size()).arg(QFileInfo(path).fileName()));
+                                             : (ranges_.size() == 1 ? tr("One changed passage since %1.").arg(QFileInfo(path).fileName())
+                                                : tr("%1 changed passages since %2.").arg(ranges_.size()).arg(QFileInfo(path).fileName())));
         for (const auto &r : ranges_) {
             if (!r.oldCount) changes_->addItem(tr("Added at manuscript line %1").arg(location(r.newStart, r.newCount)));
             else if (!r.newCount) changes_->addItem(tr("Removed from backup line %1").arg(location(r.oldStart, r.oldCount)));

@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "documentstore.h"
 #include "buildinfo.h"
 #include "manuscripteditor.h"
 #include "preferences.h"
@@ -24,6 +25,7 @@
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollBar>
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QTextBlock>
@@ -59,16 +61,18 @@ bool until(const std::function<bool()> &done)
     return false;
 }
 
-void key(int code, Qt::KeyboardModifiers mods = {}, const QString &text = {})
+void sendKey(int sourceLine, int code, Qt::KeyboardModifiers mods = {}, const QString &text = {})
 {
+    require(until([] { return QApplication::focusWidget() != nullptr; }), "a widget has keyboard focus", sourceLine);
     auto *target = QApplication::focusWidget();
-    CHECK(target);
     QKeyEvent press(QEvent::KeyPress, code, mods, text);
     QApplication::sendEvent(target, &press);
     QKeyEvent release(QEvent::KeyRelease, code, mods, text);
     QApplication::sendEvent(target, &release);
     QApplication::processEvents();
 }
+
+#define key(...) sendKey(__LINE__, __VA_ARGS__)
 
 void write(const QString &path, const QByteArray &bytes)
 {
@@ -99,12 +103,99 @@ void pressChoice(MainWindow &window, const QString &choice)
     CHECK(false);
 }
 
+void testTabsSurviveFailedSave(const QTemporaryDir &tmp)
+{
+    const QString firstPath = tmp.filePath("First pending.txt");
+    const QString changedPath = tmp.filePath("Second pending.txt");
+    const QString rescuePath = tmp.filePath("Saved version.txt");
+    const QByteArray config("literal-guillemets=true\nprivate-key=preserved\n");
+    write(firstPath, "First pending text.");
+    write(changedPath, "Second pending text.");
+    write(changedPath + ".config", config);
+    Preferences prefs(tmp.filePath("failed-close.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    prefs.settings().setValue("editor/backup", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.openDocumentInTab(firstPath));
+    window.editor()->insertLiteral(" Local first.");
+    CHECK(window.openDocumentInTab(changedPath));
+    auto *second = window.editor();
+    second->insertLiteral(" Local second.");
+    write(changedPath, "An external revision.");
+    const auto earlierDrafts = DocumentStore::recoveryDrafts();
+    CHECK(!window.close());
+    pressChoice(window, "Save and Close");
+    QString draft;
+    CHECK(until([&] {
+        for (const auto &candidate : DocumentStore::recoveryDrafts()) {
+            if (earlierDrafts.contains(candidate) || !QFile::exists(candidate + ".config")) continue;
+            if (read(candidate).contains("Local second.")) { draft = candidate; return true; }
+        }
+        return false;
+    }));
+    CHECK(read(draft + ".config") == config && read(changedPath + ".config") == config);
+    CHECK(window.isVisible() && window.tabCount() == 2 && window.editor() == second);
+    CHECK(read(firstPath).contains("Local first.") && read(changedPath) == "An external revision.");
+    CHECK(second->manuscriptText().contains("Local second."));
+    window.activateManuscript(false);
+    CHECK(until([&] { return second->hasFocus(); }));
+    key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *chooser = second->findChild<QFileDialog *>();
+    CHECK(chooser);
+    chooser->hide();
+    chooser->selectFile(rescuePath);
+    chooser->show();
+    static_cast<QDialog *>(chooser)->accept();
+    CHECK(until([&] { return window.path() == rescuePath && !QFile::exists(draft + ".config"); }));
+    CHECK(!QFile::exists(draft) && read(rescuePath + ".config") == config && read(rescuePath).contains("Local second."));
+    CHECK(window.close());
+}
+
+void testRecoveredTabSettings(const QTemporaryDir &tmp)
+{
+    const QByteArray settings = "disable-general-title=true\nliteral-guillemets=true\nextra-key=retained\n";
+    const QString draft = tmp.filePath("Recovered tab.txt");
+    const QString promoted = tmp.filePath("Recovered novel.txt");
+    write(draft, "Novel\nThe text.\n");
+    write(draft + ".config", settings);
+    Preferences prefs(tmp.filePath("recovery-tabs.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    prefs.settings().setValue("editor/backup", false);
+    MainWindow window(prefs);
+    window.setAttribute(Qt::WA_DeleteOnClose, false);
+    CHECK(window.openDocumentInTab(draft, true));
+    auto *editor = window.editor();
+    CHECK(window.path().isEmpty() && editor->literalGuillemets());
+    CHECK(editor->model().paragraphRole(0) == ParagraphRole::Body);
+    CHECK(until([&] { return editor->hasFocus(); }));
+    key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);
+    auto *chooser = editor->findChild<QFileDialog *>();
+    CHECK(chooser);
+    chooser->selectFile(promoted);
+    QMetaObject::invokeMethod(chooser, "accept");
+    CHECK(until([&] { return window.path() == promoted && !QFileInfo::exists(draft + ".config"); }));
+    CHECK(read(promoted + ".config") == settings);
+    const QString discarded = tmp.filePath("Discarded recovery.txt");
+    write(discarded, "Another draft.\n");
+    write(discarded + ".config", settings);
+    CHECK(window.openDocumentInTab(discarded, true));
+    CHECK(window.editor()->literalGuillemets());
+    window.closeCurrentTab();
+    pressChoice(window, "Discard Unsaved Changes");
+    CHECK(until([&] { return window.tabCount() == 1; }));
+    CHECK(!QFileInfo::exists(discarded) && !QFileInfo::exists(discarded + ".config"));
+    CHECK(window.close());
+}
+
 void testManuscriptTabs(const QTemporaryDir &tmp)
 {
     const QString crumbs = tmp.filePath("Tab Crumbs.txt"), novel = tmp.filePath("Tab Novel.txt");
     const QString renamed = tmp.filePath("Tab Renamed.txt");
     write(crumbs, "Project//Note 1: First: red goose.\nNote 2: Last: blue goose.\n");
-    write(novel, "The Novel\nA red bicycle.\nFinal line.\n");
+    QByteArray longNovel = "The Novel\nA red bicycle.\n";
+    for (int row = 0; row < 100; ++row) longNovel += "A paragraph near the river.\n";
+    write(novel, longNovel + "Final line.\n");
     write(crumbs + ".characters", "Ferdinand, Fred\n");
     Preferences prefs(tmp.filePath("tabs.ini"));
     prefs.settings().setValue("editor/live-save", false);
@@ -125,12 +216,18 @@ void testManuscriptTabs(const QTemporaryDir &tmp)
     auto *second = window.editor();
     CHECK(window.tabCount() == 2 && first != second && second->model().isGeneric());
     CHECK(!query->isVisible());
+    const auto passage = second->document()->findBlockByNumber(28);
+    second->selectRange(passage.position(), passage.position() + 3, false);
+    second->verticalScrollBar()->setValue(23);
+    const int novelScroll = second->verticalScrollBar()->value();
+    CHECK(novelScroll > 0);
     key(Qt::Key_Tab, Qt::ControlModifier | Qt::ShiftModifier);
     CHECK(window.editor() == first && !first->model().isGeneric() && query->isVisible());
     CHECK(first->textCursor().anchor() == start.anchor() && first->textCursor().position() == start.position());
     CHECK(!window.findChild<QLabel *>("documentMode")->text().contains("Generic"));
     key(Qt::Key_Tab, Qt::ControlModifier);
     CHECK(window.editor() == second);
+    CHECK(second->verticalScrollBar()->value() == novelScroll && second->textCursor().selectedText() == "A p");
     second->openAtEnd();
     second->insertLiteral(" EDIT");
     CHECK(!window.openDocumentInTab(tmp.filePath("No such tab")));
@@ -982,12 +1079,15 @@ int main(int argc, char **argv)
 #ifdef Q_OS_MACOS
     QApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
 #endif
-    QApplication app(argc, argv);
-    QApplication::setQuitOnLastWindowClosed(false);
     QTemporaryDir tmp;
     CHECK(tmp.isValid());
+    qputenv("XDG_DATA_HOME", QFile::encodeName(tmp.filePath("application-data")));
+    QApplication app(argc, argv);
+    QApplication::setQuitOnLastWindowClosed(false);
     testWindow(tmp);
     testManuscriptTabs(tmp);
+    testRecoveredTabSettings(tmp);
+    testTabsSurviveFailedSave(tmp);
     testDuplicateHistory(tmp);
     testMentionCommands(tmp);
     testGenreSpelling(tmp);

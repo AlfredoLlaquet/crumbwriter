@@ -16,6 +16,7 @@ public:
     bool resetForPath(const QString &path, QString *error = nullptr);
     bool carryToPath(const QString &path, QString *error = nullptr);
     bool flush(QString *error = nullptr);
+    bool copyToDraft(const QString &draft, QString *error = nullptr);
     std::function<void()> onChanged;
     bool pending() const { return config_.hasPending(); }
     void showSettings();
@@ -26,5 +27,6 @@ private:
     ManuscriptEditor *editor_;
     DocumentStore *store_;
     TextCompanion config_{QStringLiteral(".config")};
+    TextCompanion recoveryConfig_{QStringLiteral(".config")};
     QPointer<QDialog> settings_, comparison_;
 };

@@ -405,8 +405,8 @@ public:
         if (found == entries.cend()) return;
         const int line = found->line;
         manager->hide();
-        owner->raise();
-        owner->activateWindow();
+        owner->window()->raise();
+        owner->window()->activateWindow();
         jumpToLine(line);
     }
 
@@ -478,7 +478,7 @@ public:
         nameLabel->setVisible(!grouped);
         updateTargetCaption(grouped ? 0 : line);
         message(formError, {});
-        const int available = qMin(owner->width(), owner->screen()->availableGeometry().width() * 9 / 10);
+        const int available = qMin(owner->window()->width(), owner->screen()->availableGeometry().width() * 9 / 10);
         if (firstUse || form->width() > available) {
             const int preferred = qMax(640, 68 * categoryField->fontMetrics().averageCharWidth());
             form->resize(qMin(preferred, available), form->sizeHint().height());
@@ -544,8 +544,8 @@ public:
             manager->activateWindow();
             items->setFocus();
         } else if (owner) {
-            owner->raise();
-            owner->activateWindow();
+            owner->window()->raise();
+            owner->window()->activateWindow();
         }
         changed();
     }

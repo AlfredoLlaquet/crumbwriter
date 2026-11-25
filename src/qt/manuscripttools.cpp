@@ -93,11 +93,15 @@ bool ManuscriptSession::updateCompanions(CompanionAction action, const QString &
     update(spelling_);
     if (action == CompanionAction::SaveAs) {
         QString error;
-        if (!options_->carryToPath(manuscript, &error) || !removeDraftConfig(&error)) errors.append(error);
+        configPromotionFailed_ = !options_->carryToPath(manuscript, &error);
+        if (configPromotionFailed_ || !removeDraftConfig(&error)) errors.append(error);
     } else if (action == CompanionAction::Flush && options_->pending()) {
         QString error;
-        if (!options_->flush(&error) || (!path().isEmpty() && !removeDraftConfig(&error)))
-            errors.append(error);
+        if (!options_->flush(&error)) errors.append(error);
+        else if (!path().isEmpty()) {
+            configPromotionFailed_ = false;
+            if (!removeDraftConfig(&error)) errors.append(error);
+        }
     }
     if (!errors.isEmpty()) showNotice(errors.join(u'\n'));
     return errors.isEmpty();

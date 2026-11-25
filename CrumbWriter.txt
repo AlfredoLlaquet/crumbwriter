@@ -58,6 +58,11 @@ the writing reference. AGENTS.md contains the standing maintenance rule.
   A very large repetitive rewrite can appear as one changed passage. The
   before/after views read complete paragraphs. F3, Shift+F3, and F5 navigate
   and refresh. The comparison never writes to either manuscript or backup.
+  Its two labeled columns participate in the shared layout manager. Settings
+  travel with private recovery drafts, including checkpoints of failed named
+  saves. Successful promotion or deliberate discard cleans up the private copy.
+  The package smoke check decodes the actual bundled badge and reads its CC0
+  dedication. Native packages also ship a separate human-readable notice.
 
 * The BSD first artwork comes from github.com/AlfredoLlaquet/bsd-first.
   README.md uses the official SVG. The About dialog embeds an offline PNG
@@ -65,6 +70,11 @@ the writing reference. AGENTS.md contains the standing maintenance rule.
   supports Alt+B. The badge’s CC0 dedication is in data/bsd-first-LICENSE.
   packaging/release/assets.py names the seven versioned downloads. Changing
   a version requires updating the literal versioned links in README.md.
+  A version-specific changelog in packaging/release/changes supplies the
+  reader-facing release summary. The Krohnkite check opens a second window
+  explicitly before measuring tiles; opening additional files exercises
+  tabs in the same native window. The Windows and macOS install tests
+  check OS window identity and frame through subsequent file-open events.
 
 For a change to a control or window, exercise its real keyboard and mouse
 entry points, inspect a light and a dark capture on the affected native
@@ -340,7 +350,8 @@ markup follows the manuscript's literal setting. Existing hyphen headings
 naturally enter level two. Each marker belongs to text immediately above.
 
 The general title uses the largest bold face. The four section levels have
-vertical breathing room, descending sizes and solid or dotted underlines.
+vertical spacing and descending sizes. Levels 1 and 2 use solid underlines;
+levels 3 and 4 are dotted. Level 4 uses body-sized bold type.
 The inactive marker is a 2–3 logical-pixel spacer. The active row uses the
 body font. Ctrl+Shift+F9 shows all markup. The first blank directly after a
 general title may be compact. Other interior blanks retain their height.

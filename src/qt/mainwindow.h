@@ -7,7 +7,6 @@
 #include <functional>
 
 class QAction;
-class MainWindow;
 class ManuscriptEditor;
 class ManuscriptSession;
 class Preferences;
@@ -46,6 +45,7 @@ public:
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
     void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 private:
@@ -67,7 +67,8 @@ private:
     void sessionChanged(ManuscriptSession *session);
     void updateFooter();
     void requestClose(const QList<ManuscriptSession *> &sessions, bool wholeWindow);
-    void showCloseDialog(const QStringList &pendingNames);
+    void showCloseDialog();
+    void refreshCloseDialog();
     void continueClose();
     void closeReady(ManuscriptSession *session);
     void cancelClose();
@@ -103,7 +104,7 @@ private:
     QPointer<QDialog> about_;
     QList<ManuscriptSession *> closeTargets_, closeQueue_;
     quint64 closeAttempt_ = 0;
-    QHash<ManuscriptSession *, int> discardRevisions_;
+    QHash<ManuscriptSession *, quint64> discardRevisions_;
     ManuscriptSession *closingSession_ = nullptr;
     bool closingWindow_ = false, discarding_ = false, allowClose_ = false;
     int sidebarWidth_ = 230, synonymWidth_ = 190;

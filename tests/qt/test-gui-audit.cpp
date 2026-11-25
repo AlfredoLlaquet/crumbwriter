@@ -309,6 +309,13 @@ void GuiAudit::capture(const QString &id, QWidget *widget)
     };
     if (qobject_cast<QDialog *>(widget) && widget->width() > 30)
         checkSurface(QRect(12, 3, widget->width() - 24, 3));
+    if (id == "main" || id == "generic-manuscript") {
+        auto *viewport = static_cast<MainWindow *>(widget)->editor()->viewport();
+        // The editor owns a separate paper palette. Sample its painted pixels
+        // as well as the controls, including on a newly activated tab.
+        checkSurface(QRect(viewport->mapTo(widget, QPoint(3, viewport->height() / 2)),
+                           QSize(viewport->width() - 6, 5)));
+    }
     // Child windows can still belong to the main window's QObject tree. Only
     // test text actually painted inside this picture, including its clip area.
     auto inspect = [&](QWidget *child, const QRect &text, const QString &name, double minimum = 4.5) {
@@ -882,7 +889,7 @@ int main(int argc, char **argv)
         GuiAudit audit(QDir(output.filePath(theme)), theme, parser.value("view"));
         Preferences preferences(files.filePath("settings.ini"));
         preferences.settings().setValue("editor/theme", theme);
-        preferences.settings().setValue("editor/backup", false);
+        preferences.settings().setValue("editor/backup", true);
         preferences.settings().setValue("editor/live-save", false);
         MainWindow window(preferences);
         window.setAttribute(Qt::WA_DeleteOnClose, false);

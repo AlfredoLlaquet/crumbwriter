@@ -82,6 +82,9 @@ int main(int argc, char **argv)
     QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     check(editor.literalGuillemets(), "saving immediately applies literal interpretation");
     check(read(path + ".config").contains("future-setting=keep\n"), "unknown settings survive");
+    const QString draft = directory.filePath("recovery.txt");
+    check(options.copyToDraft(draft, &error) && read(draft + ".config") == read(path + ".config"),
+          "a failed named save checkpoints interpretation alongside its recovery text");
     const QString copy = directory.filePath("Novel copy.txt");
     check(options.carryToPath(copy, &error), "save settings beside a new manuscript name");
     check(read(copy + ".config") == read(path + ".config"), "Save As preserves source settings and copies bytes");

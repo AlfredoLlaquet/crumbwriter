@@ -78,7 +78,7 @@ void CrumbTitleLabel::resizeEvent(QResizeEvent *event)
 void CrumbTitleLabel::keyPressEvent(QKeyEvent *event)
 {
     if ((event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) &&
-        event->modifiers() == Qt::NoModifier) {
+        (event->modifiers() & ~Qt::KeypadModifier) == Qt::NoModifier) {
         showFullTitle();
         event->accept();
         return;
@@ -92,6 +92,11 @@ void CrumbTitleLabel::mouseDoubleClickEvent(QMouseEvent *event)
     QLabel::mouseDoubleClickEvent(event);
 }
 
+void CrumbTitleLabel::closeFullTitle()
+{
+    if (details_) details_->close();
+}
+
 void CrumbTitleLabel::showFullTitle()
 {
     if (!details_) {
@@ -103,6 +108,7 @@ void CrumbTitleLabel::showFullTitle()
         reader_ = new QPlainTextEdit(details_);
         reader_->setAccessibleName(tr("Full crumb title"));
         reader_->setReadOnly(true);
+        reader_->setTabChangesFocus(true);
         reader_->setPlainText(full_);
         layout->addWidget(reader_);
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, details_);

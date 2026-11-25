@@ -59,6 +59,12 @@ WriterApplication::WriterApplication(QObject *parent) : QObject(parent)
     preferences_.changed = [this] {
         for (const auto &window : windows_) if (window) window->applyPreferences();
     };
+    connect(qApp, &QApplication::focusChanged, this, [this](QWidget *, QWidget *focused) {
+        for (auto *owner = focused; owner; owner = owner->parentWidget()) {
+            auto *window = dynamic_cast<MainWindow *>(owner);
+            if (window && windows_.contains(window)) { lastActive_ = window; break; }
+        }
+    });
     connect(&server_, &QLocalServer::newConnection, this, &WriterApplication::acceptRequests);
 }
 
@@ -137,6 +143,7 @@ MainWindow *WriterApplication::preferredWindow() const
     for (auto *owner = active; owner; owner = owner->parentWidget()) {
         for (const auto &window : windows_) if (window && owner == window) return window;
     }
+    if (lastActive_ && lastActive_->isVisible()) return lastActive_;
     for (auto it = windows_.crbegin(); it != windows_.crend(); ++it)
         if (*it && (*it)->isVisible()) return *it;
     return nullptr;

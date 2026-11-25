@@ -20,15 +20,39 @@ hdiutil attach -nobrowse -readonly -mountpoint "$mount" "$image"
 test "$(readlink "$mount/Applications")" = /Applications
 cmp LICENSE "$mount/LICENSE"
 ditto "$mount/Crumb Writer.app" "$installed"
+cmp data/bsd-first-LICENSE "$installed/Contents/Resources/third-party/BSD-first/LICENSE"
 unset DICPATH CRUMBWRITER_THESAURUS_DIR QT_PLUGIN_PATH QT_QPA_PLATFORM DYLD_LIBRARY_PATH DYLD_FRAMEWORK_PATH
 export PATH=/usr/bin:/bin:/usr/sbin:/sbin
 python3 packaging/macos/bundle.py verify "$installed" arm64 x86_64
 executable="$installed/Contents/MacOS/Crumb Writer"
 "$executable" --version
 "$executable" --smoke-test
+xcrun swiftc "$(dirname "$0")/test-window.swift" -o "$scratch/test-window"
 
-# Send an actual Finder-style document-open event. Its byte-exact automatic
-# backup proves that the editor received and opened the file with its Unicode path.
+wait_for_open() {
+    local file=$1 backup attempt
+    for ((attempt=0; attempt<100; ++attempt)); do
+        for backup in "$file".*.bak; do cmp "$file" "$backup"; return; done
+        sleep 0.2
+    done
+    echo "Missing backup for $file" >&2
+    return 1
+}
+native_frame() {
+    local frame attempt
+    for ((attempt=0; attempt<50; ++attempt)); do
+        if frame=$("$scratch/test-window" frame "$app_pid" 2>"$scratch/window.log"); then
+            printf '%s\n' "$frame"
+            return
+        fi
+        sleep 0.2
+    done
+    cat "$scratch/window.log" >&2
+    return 1
+}
+
+# LaunchServices delivers the same multi-file open event as Finder. Each
+# manuscript must open, and WindowServer must see just one document window.
 manuscript="$manuscripts/Lluna – capítol 1.txt"
 printf '%s\n' 'La lluna' 'A goose audits the moon for bumps.' > "$manuscript"
 printf '%s\n' '{"version":2,"bookmarks":[]}' > "$manuscript.bookmarks"
@@ -36,28 +60,23 @@ printf '%s\n' 'Goose, Inspector' > "$manuscript.characters"
 printf '%s\n' 'Moon, Luna' > "$manuscript.recurring"
 printf '%s\n' 'Cranolo' > "$manuscript.dictionary"
 printf '%s\n' 'literal-guillemets=true' > "$manuscript.config"
-open -n -a "$installed" "$manuscript"
-for ((attempt=0; attempt<100; ++attempt)); do
-    backups=("$manuscript".*.bak)
-    [[ ${#backups[@]} -gt 0 ]] && break
-    sleep 0.2
-done
-test "${#backups[@]}" -gt 0
-cmp "$manuscript" "${backups[0]}"
+notes="$manuscripts/Reading notes.txt"
+printf '%s\n' 'A separate plain-text manuscript.' > "$notes"
+open -n -a "$installed" "$manuscript" "$notes"
+wait_for_open "$manuscript"
+wait_for_open "$notes"
+app_pid=$(pgrep -x 'Crumb Writer')
+initial_frame=$(native_frame)
 
 # LaunchServices delivers another file-open event to the running instance.
 second="$manuscripts/Segundo capítulo.txt"
 printf '%s\n' 'Otro capítulo' > "$second"
 open -a "$installed" "$second"
-for ((attempt=0; attempt<100; ++attempt)); do
-    more=("$second".*.bak)
-    [[ ${#more[@]} -gt 0 ]] && break
-    sleep 0.2
-done
-test "${#more[@]}" -gt 0
-cmp "$second" "${more[0]}"
-app_pid=$(pgrep -x 'Crumb Writer')
-kill "$app_pid"
+wait_for_open "$second"
+test "$(native_frame)" = "$initial_frame"
+"$executable" -- "$second" "$manuscript"
+test "$(native_frame)" = "$initial_frame"
+"$scratch/test-window" quit "$app_pid"
 for ((attempt=0; attempt<50; ++attempt)); do
     kill -0 "$app_pid" 2>/dev/null || break
     sleep 0.2

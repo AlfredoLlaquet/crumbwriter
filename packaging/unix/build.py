@@ -72,7 +72,7 @@ def build_pkg(stage, work, destination, version):
         "name": "crumbwriter", "origin": "editors/crumbwriter", "version": version,
         "comment": SUMMARY, "desc": DESCRIPTION, "maintainer": CONTACT, "www": WEBSITE,
         "prefix": "/usr/local", "categories": ["editors"], "deps": dependencies,
-        "licenses": ["UNLICENSE", "MyThes"], "licenselogic": "and",
+        "licenses": ["UNLICENSE", "MyThes", "CC0-1.0"], "licenselogic": "and",
         "abi": output("pkg", "config", "ABI"),
     }
     (meta / "+MANIFEST").write_text(json.dumps(manifest), encoding="utf-8")
@@ -121,7 +121,7 @@ def main():
         docs = payload / "share/doc/crumbwriter"
         if build is build_deb:
             # Include the complete set of bundled source notices in Debian's standard location.
-            notices = [docs / "LICENSE", docs / "COPYING-MyThes"]
+            notices = [docs / "LICENSE", docs / "COPYING-MyThes", REPOSITORY / "data/bsd-first-LICENSE"]
             (docs / "copyright").write_bytes(b"\n".join(path.read_bytes() for path in notices))
         build(stage, work, args.destination / filename, package_version)
         if args.upgrade_fixture:

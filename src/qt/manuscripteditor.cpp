@@ -12,6 +12,7 @@
 #include <QtCore/QSet>
 #include <QtCore/QTimer>
 #include <QtGui/QClipboard>
+#include <QtGui/QFontMetricsF>
 #include <QtGui/QGuiApplication>
 #include <QtGui/QSyntaxHighlighter>
 #include <QtGui/QTextBlock>
@@ -28,6 +29,8 @@ public:
     int activeLine = -1;
     const CrumbModel *model = nullptr;
     qreal sectionSpacing = 0;
+    int markerHeight = 2;
+    bool revealMarkers = false;
 
     QRectF blockBoundingRect(const QTextBlock &block) const override
     {
@@ -39,6 +42,15 @@ public:
         const bool beforeHeading = compactSeparators && next.isValid() && model &&
                                    model->headingLevel(next.blockNumber()) > 0;
         const qreal headingGap = beforeHeading ? sectionSpacing : 0;
+        if (compactSeparators && !revealMarkers && block.blockNumber() != activeLine &&
+            model && model->paragraphRole(block.blockNumber()) == ParagraphRole::TitleMarker &&
+            block.layout()->preeditAreaText().isEmpty()) {
+            // Fix the row's advance explicitly: font hinting alone gives a
+            // different minimum line height on each platform.
+            bounds.setHeight(markerHeight + headingGap +
+                             (next.isValid() ? 0 : document()->documentMargin()));
+            return bounds;
+        }
         if (hasTitleSpacer && block.blockNumber() == 1 && activeLine != 1 &&
             block.layout()->preeditAreaText().isEmpty()) {
             bounds.setHeight(qMax<qreal>(1, bounds.height() / 3) + headingGap);
@@ -127,24 +139,28 @@ public:
         body_.setFont(font);
         documentTitle_.setFont(scaledFont(font, 1.7));
         documentTitle_.setFontWeight(QFont::Bold);
-        constexpr std::array<qreal, 4> sizes{1.48, 1.30, 1.16, 1.06};
+        constexpr std::array<qreal, 4> sizes{1.48, 1.30, 1.16, 1.0};
         constexpr std::array<QTextCharFormat::UnderlineStyle, 4> lines{
             QTextCharFormat::SingleUnderline, QTextCharFormat::SingleUnderline,
-            QTextCharFormat::DashUnderline, QTextCharFormat::DotLine};
+            QTextCharFormat::DotLine, QTextCharFormat::DotLine};
         for (size_t i = 0; i < chapterTitles_.size(); ++i) {
             chapterTitles_[i].setFont(scaledFont(font, sizes[i]));
             chapterTitles_[i].setFontWeight(QFont::Bold);
             chapterTitles_[i].setUnderlineStyle(lines[i]);
         }
-        marker_.setFont(scaledFont(font, 0.14));
+        auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
+        const qreal writingHeight = QFontMetricsF(font, layout->paintDevice()).height();
+        layout->markerHeight = qMax(2, qRound(writingHeight / 10));
+        QFont markerFont(font);
+        markerFont.setPixelSize(qMax(1, layout->markerHeight - 1));
+        marker_.setFont(markerFont);
         marker_.setForeground(Qt::transparent);
         marker_.setFontLetterSpacingType(QFont::PercentageSpacing);
         marker_.setFontLetterSpacing(1);
 
         const bool generic = model_.isGeneric();
-        auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
         layout->compactSeparators = generic;
-        layout->sectionSpacing = qMax<qreal>(2, QFontMetricsF(font, layout->paintDevice()).height() * 0.45);
+        layout->sectionSpacing = qMax<qreal>(2, writingHeight * 0.45);
         layout->hasTitleSpacer = model_.paragraphRole(1) == ParagraphRole::TitleSpacer;
         if (document()->defaultFont() != font)
             document()->setDefaultFont(font);
@@ -411,6 +427,7 @@ void ManuscriptEditor::setShowManuscriptMarkup(bool show)
 {
     if (showManuscriptMarkup_ == show) return;
     showManuscriptMarkup_ = show;
+    static_cast<CrumbLayout *>(document()->documentLayout())->revealMarkers = show;
     if (model_->isGeneric()) {
         highlighter_->updateGuillemetCaret();
         highlighter_->rehighlight();

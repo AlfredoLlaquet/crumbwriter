@@ -62,6 +62,8 @@ void MainWindow::addSession(ManuscriptSession *session)
 {
     session->host_ = this;
     session->setParent(this);
+    // Parked controls belong to the desktop window font, including after detach.
+    session->parkedPanels_->setParent(this);
     sessions_.append(session);
     tabs_->addTab(session->editor_, session->label());
     selectSession(session);
@@ -243,29 +245,38 @@ void MainWindow::requestClose(const QList<ManuscriptSession *> &sessions, bool w
     ++closeAttempt_;
     closeTargets_ = sessions;
     closingWindow_ = wholeWindow;
-    QStringList pending;
+    bool pending = false;
     for (auto *session : sessions) {
         session->editor_->finishTyping();
         session->editor_->model().confirmMarkerOutside(-1);
         if (session->needsConfirmation()) {
             session->store_->beginCloseConfirmation();
-            pending.append(session->path().isEmpty() ? session->label() : session->path());
+            pending = true;
         }
     }
-    if (pending.isEmpty()) continueClose();
-    else showCloseDialog(pending);
+    if (pending) showCloseDialog();
+    else continueClose();
 }
 
-void MainWindow::showCloseDialog(const QStringList &pendingNames)
+void MainWindow::refreshCloseDialog()
 {
-    const QString question = pendingNames.size() == 1 ? tr("Save the pending changes before closing this manuscript?")
-        : tr("Save the pending changes in these %1 manuscripts before closing this window?").arg(pendingNames.size());
-    auto *box = new QMessageBox(QMessageBox::Question, tr("Unsaved Changes"), question, QMessageBox::NoButton, this);
+    QStringList names;
+    for (auto *s : closeTargets_) {
+        if (s->needsConfirmation()) names.append(s->path().isEmpty() ? s->label() : s->path());
+    }
+    closeDialog_->setText(names.size() <= 1 ? tr("Save the pending changes before closing this manuscript?")
+        : tr("Save the pending changes in these %1 manuscripts before closing this window?").arg(names.size()));
+    closeDialog_->setInformativeText(names.join(u'\n'));
+}
+
+void MainWindow::showCloseDialog()
+{
+    auto *box = new QMessageBox(QMessageBox::Question, tr("Unsaved Changes"), {}, QMessageBox::NoButton, this);
     closeDialog_ = box;
     box->setObjectName("confirmClose");
     box->setAttribute(Qt::WA_DeleteOnClose);
     box->setTextFormat(Qt::PlainText);
-    box->setInformativeText(pendingNames.join(u'\n'));
+    refreshCloseDialog();
     box->setWindowModality(Qt::NonModal);
     auto *saveButton = box->addButton(tr("Save and Close"), QMessageBox::AcceptRole);
     auto *discard = box->addButton(tr("Discard Unsaved Changes"), QMessageBox::DestructiveRole);
@@ -280,7 +291,7 @@ void MainWindow::showCloseDialog(const QStringList &pendingNames)
         }
         discarding_ = box->clickedButton() == discard;
         if (discarding_) {
-            for (auto *s : closeTargets_) discardRevisions_.insert(s, s->editor_->document()->revision());
+            for (auto *s : closeTargets_) discardRevisions_.insert(s, s->store_->editRevision());
         }
         closeQueue_ = closeTargets_;
         continueClose();
@@ -311,7 +322,7 @@ void MainWindow::continueClose()
 {
     if (discarding_) {
         for (auto it = discardRevisions_.cbegin(); it != discardRevisions_.cend(); ++it) {
-            if (it.key()->editor_->document()->revision() != it.value()) {
+            if (it.key()->store_->editRevision() != it.value()) {
                 auto *modified = it.key();
                 cancelClose();
                 selectSession(modified);

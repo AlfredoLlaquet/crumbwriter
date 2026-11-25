@@ -155,7 +155,7 @@ int main(int argc, char **argv)
     check(details && !details->isModal() && details->findChild<QPlainTextEdit *>()->toPlainText() == longTitle &&
           titleLabel->accessibleDescription().contains(longTitle) && titleLabel->height() == fixedTitleHeight,
           "a long crumb title occupies two fixed lines and opens in full from the keyboard");
-    key(details, Qt::Key_Escape);
+    key(details->findChild<QPlainTextEdit *>(), Qt::Key_Escape);
     check(!details->isVisible(), "Escape closes the expanded crumb title");
     editor.setFocus();
     editor.loadText("A first paragraph.");
@@ -317,6 +317,11 @@ int main(int argc, char **argv)
           history->topLevelItem(0)->text(0) == "A final «line».",
           "literal guillemets immediately appear in the outline and existing visits");
     editor.setLiteralGuillemets(false);
+
+    editor.loadText("An opening sentence.\nOnly section\n=====\nEnd.");
+    editor.jumpTo(0, false);
+    check(!list->currentItem() && editor.textCursor().position() == 0,
+          "prose before the first real heading does not select an unrelated title or the end command");
 
     QLocale::setDefault(QLocale(QLocale::Spanish, QLocale::Spain));
     editor.loadText(QStringLiteral("Book\n") + QStringLiteral("word ").repeated(1233) + "word");

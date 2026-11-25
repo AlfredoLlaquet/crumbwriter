@@ -43,11 +43,13 @@ if __name__ == "__main__":
         if tag != f"v{version}":
             sys.exit("Release tag and application version differ")
         notes = Path(__file__).with_name("notes.md").read_text(encoding="utf-8")
-        for key, value in dict(targets, REPOSITORY=repository, TAG=tag).items():
+        changelog = Path(__file__).with_name("changes") / f"{version}.md"
+        changes = changelog.read_text(encoding="utf-8").strip() if changelog.is_file() else ""
+        for key, value in dict(targets, REPOSITORY=repository, TAG=tag, CHANGES=changes).items():
             notes = notes.replace(f"@{key}@", value)
         if re.search(r"@[a-zA-Z0-9.]+@", notes):
             sys.exit("Unknown placeholder in release notes")
-        print(notes, end="")
+        print(notes.lstrip(), end="")
     elif len(command) == 1 and command[0] in targets:
         print(targets[command[0]])
     else:

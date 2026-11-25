@@ -24,7 +24,7 @@ The FreeBSD package matches the major version. Within that major, the required Q
 
 ### License and warranty
 
-Crumb Writer’s original code is dedicated to the public domain. Anyone may use, copy, modify, sell, or redistribute it. The software is provided “as is,” without warranty. To the fullest extent permitted by applicable law, the authors disclaim liability for claims or damages arising from its use. This dedication applies only to the editor. Writers retain their rights to their manuscripts. [Full text of the Unlicense](LICENSE)
+Crumb Writer’s original code is dedicated to the public domain. Anyone may use, copy, modify, sell, or redistribute it. The software is provided “as is,” without warranty. To the fullest extent permitted by applicable law, the authors disclaim liability for claims or damages arising from its use. The BSD first badge has a separate CC0 dedication, included with the app. Writers retain their rights to their manuscripts. [Full text of the Unlicense](LICENSE)
 
 The bundled libraries, spelling dictionary, and WordNet thesaurus data have their own licenses. The Windows installation folder and the Mac app’s `Contents/Resources` folder contain `third-party/README.txt` and the individual notices. Corresponding library sources and build recipes are available alongside the installers on each release page. Inside the editor, **About Crumb Writer → View License** opens the full Crumb Writer license offline.
 
@@ -44,7 +44,7 @@ Open the desktop application launcher, type **Crumb Writer**, and press **Enter*
 
 ### Install and update on Ubuntu or Debian
 
-**First installation.** Download the Ubuntu package above for Ubuntu 24.04 LTS on a 64-bit Intel or AMD computer. In the directory containing the file, run the following commands. APT installs Crumb Writer and its dependencies, including the US English spelling and thesaurus data.
+**First installation.** Choose the package corresponding to the Ubuntu or Debian version installed on your 64-bit Intel or AMD computer. The example uses Ubuntu 24.04 LTS. In the directory containing the file, run the following commands. APT installs Crumb Writer and its dependencies, including the US English spelling and thesaurus data.
 
 ~~~sh
 sudo apt update
@@ -198,7 +198,7 @@ Heading levels have progressively smaller type and solid or dotted underlining. 
 
 **Writing lists.** A new paragraph after `1. Buy coffee` starts with `2. `. Continue a bullet, a lettered list, a Roman sequence, or a multipart sequence such as `1.9.` → `1.10.`. An empty generated item ends the list on **Enter**. Immediate **Backspace** removes the whole suggested prefix. You can type over any prefix. An ordinary sentence beginning with *I* remains prose. For an ambiguous first item, use **Continue List** (**Ctrl+Shift+Enter**). Opening or pasting a manuscript preserves its existing numbering.
 
-**Finding your place.** Use **Ctrl+Up** and **Ctrl+Down** for physical lines. **Tab** and **Shift+Tab** jump between headings. **Ctrl+Shift+4** focuses **Titles**. Type part of a title and press **Enter** to go there. **Shift+F7** switches between manuscript order and alphabetical order. Manuscript order shows a tree. Alphabetical order shows a flat index with context for repeated titles. As you write, the outline selects the heading that contains the caret. Activating the general title places it at the top of the writing area. **End of document** is always the final entry in either order. It takes you to the end of the last actual paragraph. **Ctrl+Shift+3** searches visited paragraphs by their full text while showing their opening words. The right panel displays the day’s net word count, so deleting 150 more words than you add shows −150.
+**Finding your place.** Use **Ctrl+Up** and **Ctrl+Down** for physical lines. **Tab** and **Shift+Tab** jump between headings. **Ctrl+Shift+4** focuses **Titles**. Type part of a title and press **Enter** to go there. **Shift+F7** switches between manuscript order and alphabetical order. Manuscript order shows a tree. Alphabetical order shows a flat index with parent headings for context. As you write, the outline selects the heading that contains the caret. Activating the general title places it at the top of the writing area. **End of document** is always the final entry in either order. It takes you to the end of the last actual paragraph. **Ctrl+Shift+3** searches visited paragraphs by their full text while showing their opening words. The right panel displays the day’s net word count, so deleting 150 more words than you add shows −150.
 
 **Using the manuscript outside the editor.** To find the passage about the crates, a reader or script can run the following command.
 
@@ -367,7 +367,7 @@ American English spelling is enabled by default. In Generic mode it checks ordin
 
 A recognized web address is underlined. **Ctrl+click** opens it in your browser (**Command+click** also works on a Mac). With the caret on the address, press **Ctrl+Shift+J**, or use **Open Link** in the editor’s context menu. An address starting with `www.` opens using HTTPS. A sentence-ending comma or period stays in the prose. A closing parenthesis that belongs to the address stays with the link.
 
-Double-click or press **Ctrl+2** to select a word. In `notwithstanding—not` either word can be selected separately, and clicking the em dash selects the dash itself. **Ctrl+2** selects the whole word at the caret, including the internal punctuation in `O’Brien` or `well-read`. To look up an ordinary English synonym while drafting, press **F7**. The offline thesaurus uses the selection, or the word under the caret, and groups alternatives by meaning. Use the arrows to choose a word. **Enter** replaces the original passage in one undoable edit, **Ctrl+C** copies the chosen alternative, and **Escape** closes the window. **Ctrl+L** lets you try another lookup. For example, look up `doctor` and choose the sense you intend before picking an alternative.
+Double-click or press **Ctrl+2** to select a word. In `notwithstanding—not` either word can be selected separately, and clicking the em dash selects the dash itself. Internal punctuation stays with words such as `O’Brien` and `well-read`. To look up an ordinary English synonym while drafting, press **F7**. The offline thesaurus uses the selection, or the word under the caret, and groups alternatives by meaning. Use the arrows to choose a word. **Enter** replaces the original passage in one undoable edit, **Ctrl+C** copies the chosen alternative, and **Escape** closes the window. **Ctrl+L** lets you try another lookup. For example, look up `doctor` and choose the sense you intend before picking an alternative.
 
 For Merriam-Webster in your browser, select a phrase or place the caret on a word. Press **Ctrl+Shift+L**, release the keys, then press **D** for the dictionary, **S** for the entry’s synonyms section, or **T** for the thesaurus. **Escape** cancels the lookup. The menu equivalents are under **F10 → Edit**. Only the web commands send the chosen word or phrase to the website.
 

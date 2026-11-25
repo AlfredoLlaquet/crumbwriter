@@ -12,6 +12,7 @@ class CrumbTitleLabel final : public QLabel {
 public:
     explicit CrumbTitleLabel(QWidget *parent);
     void setTitle(const QString &title);
+    void closeFullTitle();
 protected:
     void changeEvent(QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;

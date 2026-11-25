@@ -23,7 +23,7 @@
 
 ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences, int untitledNumber)
     : QObject(host), host_(host), prefs_(preferences), untitledNumber_(untitledNumber),
-      editor_(new ManuscriptEditor), parkedPanels_(new QWidget(editor_)),
+      editor_(new ManuscriptEditor), parkedPanels_(new QWidget(host)),
       search_(new SearchPanel(editor_, &prefs_.settings(), parkedPanels_)),
       synonyms_(new SynonymPanel(editor_->document(), parkedPanels_)),
       side_(new NavigationPanel(editor_, &prefs_.settings(), parkedPanels_)),
@@ -48,15 +48,19 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
     store_->onPublished = [this](const QString &path, const QByteArray &metadata) {
         const QString error = editor_->model().publishDailySnapshot(path, metadata);
         if (!error.isEmpty()) showNotice(error);
-        if (store_->path().isEmpty() && path == store_->draftPath()) {
+        if (path == store_->draftPath()) {
             configDraft_ = path;
             QString configError;
-            if (!options_->carryToPath(path, &configError)) showNotice(configError);
+            const bool saved = store_->path().isEmpty() ? options_->carryToPath(path, &configError)
+                                                        : options_->copyToDraft(path, &configError);
+            if (!saved) showNotice(configError);
         }
         if (path == store_->path()) {
             if (QFileInfo(path) == QFileInfo(pendingSavePath_)) pendingSavePath_.clear();
-            QString bookmarkError;
-            if (!bookmarks_->publishSave(&bookmarkError)) showNotice(bookmarkError);
+            QString error;
+            if (!bookmarks_->publishSave(&error)) showNotice(error);
+            if (store_->draftPath().isEmpty() && !configPromotionFailed_ && !options_->pending() &&
+                !removeDraftConfig(&error)) showNotice(error);
         }
     };
     bookmarks_ = new Bookmarks(editor_,
@@ -112,7 +116,9 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
         if (!loading_ && host_->active_ == this && host_->isActiveWindow()) prefs_.remember(store_->path());
     });
 
-    applyPreferences(host_->palette());
+    // A new window can still have the preceding desktop palette while Qt
+    // delivers its theme change. Every tab starts with the chosen editor palette.
+    applyPreferences(prefs_.applyControlTheme());
     changed();
 }
 
@@ -139,6 +145,7 @@ ManuscriptSession::~ManuscriptSession()
     delete bookmarks_;
     delete words_;
     delete options_;
+    delete parkedPanels_;
     delete editor_;
 }
 
@@ -158,6 +165,7 @@ bool ManuscriptSession::load(const QString &name, bool recovery)
         QString configError;
         if (!options_->resetForPath(recovery ? name : store_->path(), &configError)) showNotice(configError);
         editor_->loadText(text);
+        openingCaret_ = editor_->isVisible() ? -1 : editor_->textCursor().position();
         const QString dailyError = editor_->model().openDailyCount(recovery ? name : store_->path());
         if (!dailyError.isEmpty()) showNotice(dailyError);
         side_->reset();
@@ -253,17 +261,22 @@ void ManuscriptSession::chooseFile(bool saving)
     }
     auto *dialog = new QFileDialog(editor_, saving ? "Save Manuscript As" : "Open Manuscript");
     chooser_ = dialog;
+    connect(dialog, &QDialog::finished, this, [this, dialog] {
+        if (chooser_ == dialog) chooser_.clear();
+    });
     dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->setWindowModality(Qt::NonModal);
     dialog->setAcceptMode(saving ? QFileDialog::AcceptSave : QFileDialog::AcceptOpen);
-    dialog->setFileMode(saving ? QFileDialog::AnyFile : QFileDialog::ExistingFile);
+    dialog->setFileMode(saving ? QFileDialog::AnyFile : QFileDialog::ExistingFiles);
     dialog->setNameFilters({"Text files (*.txt)", "All files (*)"});
     if (!path().isEmpty()) dialog->setDirectory(QFileInfo(path()).absolutePath());
     if (saving) dialog->selectFile(path().isEmpty()
         ? (editor_->model().isGeneric() ? "Manuscript.txt" : "Crumbs.txt")
         : QFileInfo(path()).fileName());
-    connect(dialog, &QFileDialog::fileSelected, this, [this, saving](const QString &name) {
-        if (!saving) { host_->openDocumentInTab(name); return; }
+    if (!saving) connect(dialog, &QFileDialog::filesSelected, this, [this](const QStringList &files) {
+        for (const auto &file : files) host_->openDocumentInTab(file);
+    });
+    if (saving) connect(dialog, &QFileDialog::fileSelected, this, [this](const QString &name) {
         if (!host_->canWritePath(this, name)) {
             store_->keepEditing();
             if (host_->closingSession_ == this) host_->cancelClose();
