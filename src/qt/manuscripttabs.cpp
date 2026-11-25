@@ -40,7 +40,8 @@ ManuscriptSession *MainWindow::findOpen(const QString &path)
         auto *window = dynamic_cast<MainWindow *>(widget);
         if (!window || window->allowClose_) continue;
         for (auto *session : window->sessions_) {
-            if (sameFile(session->path(), path) || sameFile(session->pendingSavePath_, path))
+            if (sameFile(session->path(), path) || sameFile(session->pendingSavePath_, path) ||
+                sameFile(session->store_->draftPath(), path))
                 return session;
         }
     }
@@ -49,13 +50,8 @@ ManuscriptSession *MainWindow::findOpen(const QString &path)
 
 bool MainWindow::canWritePath(const ManuscriptSession *writer, const QString &path) const
 {
-    for (auto *widget : QApplication::topLevelWidgets()) {
-        auto *window = dynamic_cast<MainWindow *>(widget);
-        if (!window) continue;
-        for (auto *s : window->sessions_) if (sameFile(s->store_->draftPath(), path)) return false;
-    }
-    auto *other = findOpen(path);
-    return !other || other == writer;
+    auto *owner = findOpen(path);
+    return !owner || (owner == writer && !sameFile(writer->store_->draftPath(), path));
 }
 
 void MainWindow::addSession(ManuscriptSession *session)
@@ -76,12 +72,10 @@ void MainWindow::newTab()
 
 bool MainWindow::openDocumentInTab(const QString &name, bool recovery)
 {
-    if (!recovery) {
-        if (auto *other = findOpen(name)) {
-            other->host_->selectSession(other);
-            other->host_->activateManuscript(false);
-            return true;
-        }
+    if (auto *other = findOpen(name)) {
+        other->host_->selectSession(other);
+        other->host_->activateManuscript(false);
+        return true;
     }
     // Reuse the pristine launch tab. An untitled draft with pending companion
     // changes is already someone's manuscript, even if its paper is empty.

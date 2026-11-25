@@ -14,7 +14,10 @@ the writing reference. AGENTS.md contains the standing maintenance rule.
 * MainWindow and manuscripttabs.cpp manage windows, tab order, path reuse,
   close confirmation and reopening. ManuscriptSession owns one editor, its
   store and its search, navigation, spelling, bookmark and companion tools.
-  The window shows the active session’s controls. Move Tab to New Window
+  The window shows the active session’s controls. Duplicate detection covers
+  the named document and its live private recovery draft. Resetting the layout
+  restores the default sort for every open tab’s Titles or Genres panel.
+  Move Tab to New Window
   moves the live session. It preserves undo and outstanding background work.
   Shared panel typography follows the application font independently of the
   manuscript font. Closing a file picker returns the keyboard to its editor.

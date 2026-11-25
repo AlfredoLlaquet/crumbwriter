@@ -167,6 +167,7 @@ void testRecoveredTabSettings(const QTemporaryDir &tmp)
     CHECK(window.openDocumentInTab(draft, true));
     auto *editor = window.editor();
     CHECK(window.path().isEmpty() && editor->literalGuillemets());
+    CHECK(window.openDocumentInTab(draft) && window.tabCount() == 1 && window.editor() == editor);
     CHECK(editor->model().paragraphRole(0) == ParagraphRole::Body);
     CHECK(until([&] { return editor->hasFocus(); }));
     key(Qt::Key_S, Qt::ControlModifier | Qt::ShiftModifier);

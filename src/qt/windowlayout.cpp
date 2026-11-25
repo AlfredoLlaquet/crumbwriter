@@ -241,8 +241,8 @@ public:
         applying_ = true;
         if (viewMode_) viewMode_->setCurrentIndex(0);
         for (auto *p : parts_) p->reset();
-        if (auto *button = window_->findChild<QToolButton *>("genreOrder"); button && button->window() == window_)
-            button->setChecked(button->property("layoutDefaultOrder").toBool());
+        for (auto *button : window_->findChildren<QToolButton *>("genreOrder"))
+            if (button->window() == window_) button->setChecked(button->property("layoutDefaultOrder").toBool());
         if (window_->objectName() != "manuscriptWindow" && defaultSize_.isValid()) window_->resize(defaultSize_);
         if (auto *arranger = window_->findChild<QDialog *>("layoutEditor", Qt::FindDirectChildrenOnly))
             arranger->close();
