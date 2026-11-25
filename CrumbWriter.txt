@@ -11,6 +11,22 @@ Generic mode” below and README.md. The searchable F1 guide lists commands
 by task. File formats, dependencies, publication and desktop checks follow
 the writing reference. AGENTS.md contains the standing maintenance rule.
 
+README.md opens with the writing experience. Generic mode comes first, with
+examples of headings, italics, lists, word lookup, and tracking names across
+a document. The companion-file table uses Harbor.txt to show what to copy
+when moving to another computer. “Write your own crumbs” introduces the form
+to new writers. Alfredo’s collection and its Crumb Reader at TheCrumbs.org
+show how a plain text file can become a published work.
+
+In the reader guide, use “document” for an open work, “plain text file” for
+what is saved, “writing area” for the editor, and “cursor” for the typing
+position. Use literary terms where they fit the example and keep names such
+as Manuscript Settings, Manuscript Dictionary, and Manuscript Statistics
+when directing readers to those windows. The README’s “Plain text file
+format” section covers the shared encoding, file lines, and mode detection.
+When editing the guide, check its heading links, examples, and companion
+filenames. tests/test-release-assets.py checks the versioned download links.
+
 * MainWindow and manuscripttabs.cpp manage windows, tab order, path reuse,
   close confirmation and reopening. ManuscriptSession owns one editor, its
   store and its search, navigation, spelling, bookmark and companion tools.
@@ -290,9 +306,11 @@ derived from the current first physical line. A literal // outside a URL
 marks Crumb mode. Embedded slashes in a web address, such as the pair in
 https://www.thecrumbs.org/, belong to the address. Any other first line,
 including an empty line, selects Generic mode. Inserting, removing or undoing
-the first-line delimiter changes the mode immediately. Files in either mode
-use UTF-8 without a BOM. Fonts, wrapping and navigation aids are display
-choices. A saved manuscript contains its text and physical line endings.
+the first-line delimiter changes the mode immediately. Saving in either mode
+writes UTF-8 without a byte order mark (BOM). src/storage.c accepts a leading
+BOM on input and omits it from saved text. A startup backup preserves the
+original bytes. Fonts, wrapping and navigation aids are display choices. A
+saved manuscript contains its text and physical line endings.
 
 Writing crumbs
 ~~~~~~~~~~~~~~
