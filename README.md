@@ -226,10 +226,10 @@ ftp -o ports.tar.gz https://cdn.openbsd.org/pub/OpenBSD/8.0/ports.tar.gz
 ftp -o SHA256.sig https://cdn.openbsd.org/pub/OpenBSD/8.0/SHA256.sig
 signify -C -p /etc/signify/openbsd-80-base.pub -x SHA256.sig ports.tar.gz
 tar -xzf ports.tar.gz -C /usr
-pkg_add git cmake-core ninja qt6-qtbase glib2 libarchive hunspell poppler-utils desktop-file-utils gtk4-update-icon-cache xz
+PKG_PATH=https://cdn.openbsd.org/pub/OpenBSD/8.0/packages/amd64/ pkg_add git cmake-core ninja qt6-qtbase glib2 libarchive hunspell poppler-utils desktop-file-utils gtk4-update-icon-cache xz
 ~~~
 
-Clone the matching release as your desktop account. From the checkout, run the remaining commands as root to install the port under `mystuff`, compile the editor and install the resulting package. The port fetches the versioned source archive, checks its digest and installs the spelling and thesaurus data.
+The command uses the signed packages built for the release ports tree. On a machine already using updated stable libraries, use its matching OpenBSD 8.0 stable ports tree (CVS tag OPENBSD_8_0). Clone the matching Crumb Writer release as your desktop account. From the checkout, run the remaining commands as root to install the port under `mystuff`, compile the editor and install the resulting package. The port fetches the versioned source archive, checks its digest and installs the spelling and thesaurus data.
 
 ~~~sh
 git clone --branch v3.1 https://github.com/AlfredoLlaquet/crumbwriter.git
@@ -237,7 +237,7 @@ cd crumbwriter
 mkdir -p /usr/ports/mystuff/editors/crumbwriter
 cp -R packaging/openbsd/port/. /usr/ports/mystuff/editors/crumbwriter/
 cd /usr/ports/mystuff/editors/crumbwriter
-make FETCH_PACKAGES= install
+make install
 ~~~
 
 Run `crumbwriter --smoke-test` in your desktop session to check the installed editor, spelling, thesaurus and file handling. [OpenBSD ports guide](https://www.openbsd.org/faq/ports/ports.html)

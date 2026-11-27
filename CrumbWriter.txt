@@ -97,7 +97,8 @@ root to update the ports checksum:
 
 The OpenBSD job verifies the 8.0 ports archive with signify, builds the
 native package with make package after installing its signed build and runtime
-dependencies, and exercises the installed editor in a fresh 8.0 VM. See README for installation and compilation commands.
+dependencies from the matching 8.0 release package repository. The installed
+editor is exercised in a fresh 8.0 VM with the usual signed stable updates. See README for installation and compilation commands.
 
 Source map and maintenance notes
 --------------------------------------------

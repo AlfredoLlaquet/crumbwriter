@@ -22,7 +22,7 @@ jobs:
           copyback: false
           prepare: |
             set -eu
-            pkg_add cmake-core ninja qt6-qtbase glib2 libarchive hunspell poppler-utils desktop-file-utils gtk4-update-icon-cache xz
+            PKG_PATH=https://cdn.openbsd.org/pub/OpenBSD/8.0/packages/amd64/ pkg_add cmake-core ninja qt6-qtbase glib2 libarchive hunspell poppler-utils desktop-file-utils gtk4-update-icon-cache xz
             cd /tmp
             ftp -o SHA256.sig https://cdn.openbsd.org/pub/OpenBSD/8.0/SHA256.sig
             ftp -o ports.tar.gz https://cdn.openbsd.org/pub/OpenBSD/8.0/ports.tar.gz
@@ -34,7 +34,7 @@ jobs:
             cp -R packaging/openbsd/port/. /usr/ports/mystuff/editors/crumbwriter/
             cp port-source/*.tar.xz /usr/ports/distfiles/
             cd /usr/ports/mystuff/editors/crumbwriter
-            make FETCH_PACKAGES= package
+            make package
             cp "$(make show=PKGFILE)" /tmp/
       - name: Retrieve the native package
         run: |
