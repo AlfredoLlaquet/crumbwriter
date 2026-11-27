@@ -182,8 +182,8 @@ void MainWindow::buildMenu()
     auto *styles = format->addMenu(tr("Style"));
     for (int value = -1; value <= 4; ++value) {
         const QString name = value < 0 ? tr("Main Title") : value == 0 ? tr("Regular Text") : tr("Title %1").arg(value);
-        auto *action = styles->addAction(name);
-        action->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+K, %1").arg(value < 0 ? QStringLiteral("M") : QString::number(value))));
+        const auto key = value < 0 ? QStringLiteral("M") : QString::number(value);
+        auto *action = styles->addAction(name + QStringLiteral("\tCtrl+Shift+K, ") + key);
         connect(action, &QAction::triggered, this, [this, value] { applyLineStyle(value); });
         styleActions_.append(action);
     }
@@ -266,6 +266,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
             if (active_->followAt(position, !click->modifiers().testFlag(Qt::ShiftModifier), true)) return true;
         }
     }
+    if (watched == active_->editor_ && e->type() == QEvent::FocusOut) styleChordPending_ = false;
     if (active_->webLookupPending_ && watched == active_->editor_ && e->type() == QEvent::FocusOut) {
         active_->webLookupPending_ = false;
         active_->changed();
@@ -283,6 +284,23 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     if (keys == (Qt::ControlModifier | Qt::ShiftModifier) && key->key() == Qt::Key_T) { reopenClosedTab(); return true; }
     if (keys == Qt::ControlModifier && key->key() == Qt::Key_F4) { closeCurrentTab(); return true; }
     if (widget == active_->editor_ && active_->editor_->viSelectionActive()) return false;
+    if (widget == active_->editor_ && styleChordPending_) {
+        if (key->key() == Qt::Key_Control || key->key() == Qt::Key_Shift) return true;
+        styleChordPending_ = false;
+        if (keys == Qt::NoModifier) {
+            if (key->key() == Qt::Key_M) applyLineStyle(-1);
+            else if (key->key() >= Qt::Key_0 && key->key() <= Qt::Key_4)
+                applyLineStyle(key->key() - Qt::Key_0);
+        }
+        active_->changed();
+        return true;
+    }
+    if (widget == active_->editor_ && keys == (Qt::ControlModifier | Qt::ShiftModifier)
+        && key->key() == Qt::Key_K && editor()->model().isGeneric()) {
+        styleChordPending_ = true;
+        active_->setStatusMessage(tr("Style: M for Main Title, 0 for Regular Text, 1–4 for section titles"));
+        return true;
+    }
     if (widget == active_->editor_ && active_->webLookupPending_) {
         if (key->key() == Qt::Key_Control || key->key() == Qt::Key_Shift) return true;
         active_->webLookupPending_ = false;

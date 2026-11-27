@@ -26,7 +26,8 @@ windowcommands.cpp builds File, Edit, View, Format, Navigate, Tools, Window
 and Help, retaining the writing toolbar. formattingtoolbar.cpp synchronizes
 Font, size and Style with the active document. In Generic mode the first
 line offers Main Title or Regular Text. Subsequent lines offer Regular Text
-or Title 1 through Title 4. Use Ctrl+Shift+K followed by M, 0 or 1–4.
+or Title 1 through Title 4. Use Ctrl+Shift+K followed by M, 0 or 1–4. The editor handles the chord
+in the active document and cancels it when focus leaves.
 ManuscriptOptions changes the heading marker and saves explicit first-line
 title detection in the manuscript's .config. The native text remains portable.
 In normal view heading-marker rows and on-screen heading underlines are
@@ -73,7 +74,8 @@ and the original notices installed alongside bundled tools and data. NOTICE.md
 identifies the distinct terms for Hunspell, SCOWL, MyThes, WordNet, Qt, GLib,
 libarchive and Poppler. Windows staging checks ownership of each bundled
 binary and collects its notices and matching source. macOS collects the
-deployed Qt frameworks and Homebrew dylibs. The release publishes matching
+deployed Qt frameworks and Homebrew dylibs, including the exact libarchive
+keg used for Office document conversion. The release publishes matching
 sources, recipes and checksums. The project Unlicense applies to original work.
 
 The OpenBSD 8.0 amd64 release uses the native ports tree. The port lives in

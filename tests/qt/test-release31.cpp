@@ -16,6 +16,8 @@
 #include <QListView>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QMessageBox>
+#include <QPushButton>
 #include <QSpinBox>
 #include <QTabBar>
 #include <QTabWidget>
@@ -182,6 +184,10 @@ void controls(const QTemporaryDir &tmp)
         check(style->count() == 5, "later-line style choices");
         setStyle(3);
         check(ed->manuscriptText().contains("Body.\n~~~~~"), ed->manuscriptText());
+        ed->setFocus();
+        key(ed, Qt::Key_K, Qt::ControlModifier | Qt::ShiftModifier);
+        key(ed, Qt::Key_2, {}, "2");
+        check(ed->manuscriptText().contains("Body.\n-----"), "keyboard line style");
         check(w.findChild<QSpinBox *>("writingFontSize")->accessibleName() == "Font size", "unlabeled size is accessible");
         w.findChild<QToolButton *>("addTab")->click();
         check(w.tabCount() == 2 && w.editor()->manuscriptText().isEmpty(), "+ opens a blank tab");
@@ -218,6 +224,51 @@ void controls(const QTemporaryDir &tmp)
     check(reopened.restoreWorkspace(state).isEmpty() && reopened.tabCount() == 3 && reopened.path().isEmpty(),
           "restored order and active blank tab");
 }
+void restoredDraft(const QTemporaryDir &tmp)
+{
+    Preferences prefs(tmp.filePath("draft.ini"));
+    prefs.settings().setValue("editor/live-save", false);
+    QJsonObject state;
+    QString draft;
+    auto closeUsing = [&](MainWindow &window, QMessageBox::ButtonRole role) {
+        window.close();
+        auto *box = window.findChild<QMessageBox *>("confirmClose");
+        check(box && box->isVisible(), "closing an edited draft offers a decision");
+        for (auto *button : box->buttons()) {
+            if (box->buttonRole(button) == role) { button->click(); break; }
+        }
+        QElapsedTimer clock;
+        clock.start();
+        while (window.isVisible() && clock.elapsed() < 10000) {
+            QApplication::processEvents();
+            QThread::msleep(5);
+        }
+        check(!window.isVisible(), "the close completed after persisting the decision");
+    };
+    {
+        MainWindow window(prefs);
+        window.setAttribute(Qt::WA_DeleteOnClose, false);
+        window.workspaceChanged = [&](bool closing) { if (closing) state = window.workspaceState(); };
+        window.activateManuscript(false);
+        type(window.editor(), "My untitled draft.");
+        window.editor()->jumpTo(5, false);
+        closeUsing(window, QMessageBox::AcceptRole);
+        const auto tabs = state.value("tabs").toArray();
+        check(tabs.size() == 1, "one retained draft");
+        draft = tabs.first().toObject().value("draft").toString();
+        check(QFile::exists(draft), "draft was persisted with live save disabled");
+    }
+    MainWindow restored(prefs);
+    restored.setAttribute(Qt::WA_DeleteOnClose, false);
+    restored.workspaceChanged = [&](bool closing) { if (closing) state = restored.workspaceState(); };
+    check(restored.restoreWorkspace(state).isEmpty() &&
+          restored.editor()->manuscriptText().trimmed() == "My untitled draft." &&
+          restored.editor()->textCursor().position() == 5, "draft text and caret recovered");
+    type(restored.editor(), "new");
+    closeUsing(restored, QMessageBox::DestructiveRole);
+    check(!QFile::exists(draft) && state.value("tabs").toArray().isEmpty(), "discarded draft stays closed");
+}
+
 }
 
 int main(int argc, char **argv)
@@ -225,11 +276,13 @@ int main(int argc, char **argv)
 #ifdef Q_OS_MACOS
     QApplication::setAttribute(Qt::AA_MacDontSwapCtrlAndMeta);
 #endif
-    QApplication app(argc, argv);
     QTemporaryDir tmp;
+    qputenv("XDG_DATA_HOME", QFile::encodeName(tmp.filePath("data")));
+    QApplication app(argc, argv);
     check(tmp.isValid(), "temporary directory");
     editing();
     formats(tmp);
     controls(tmp);
+    restoredDraft(tmp);
     return 0;
 }

@@ -67,6 +67,7 @@ private:
     void buildFormattingTools(QToolBar *bar);
     void syncFormattingTools();
     void applyLineStyle(int style);
+    bool styleChordPending_ = false;
     void importDocument();
     void exportDocument();
     void showHelp(bool licenses = false);

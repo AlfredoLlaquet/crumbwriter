@@ -5,7 +5,9 @@ qt=$1
 build=$2
 assets=$3
 cpu=$(uname -m)
+archive=$(brew --prefix libarchive)
 cmake -S . -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DLibArchive_INCLUDE_DIR="$archive/include" -DLibArchive_LIBRARY="$archive/lib/libarchive.dylib" \
     -DCMAKE_PREFIX_PATH="$qt" -DCMAKE_OSX_ARCHITECTURES="$cpu" -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
 cmake --build "$build" --parallel 3
 cmake --install "$build" --prefix "$build/installed"

@@ -65,7 +65,7 @@ void MainWindow::syncFormattingTools()
             auto *action = styleActions_.at(style + 1);
             const bool valid = generic && (style == 0 || (first ? style == -1 : style > 0));
             action->setEnabled(valid);
-            if (valid) lineStyle_->addItem(action->text(), style);
+            if (valid) lineStyle_->addItem(action->text().section(u'\t', 0, 0), style);
         }
     } else if (!generic) {
         for (auto *action : styleActions_) action->setEnabled(false);

@@ -358,7 +358,7 @@ struct SpellCheck::State {
         startNavigation(reverse);
     }
 
-    void act(SpellAction action, const QString &value) {
+    void act(SpellAction action, const QString &value, bool continueReview = true) {
         if (action == SpellAction::Dictionary) { controller.showDictionary(); return; }
         if (action == SpellAction::Previous || action == SpellAction::Next) {
             startNavigation(action == SpellAction::Previous);
@@ -392,7 +392,7 @@ struct SpellCheck::State {
         }
         current = {};
         schedule();
-        if (review && review->isVisible()) startNavigation(reverse);
+        if (continueReview && review && review->isVisible()) startNavigation(reverse);
     }
 
     void contextMenu(QMenu *menu, int position) {
@@ -496,7 +496,7 @@ void SpellCheck::correctAtCaret()
         connect(action, &QAction::triggered, this, [this, word, value] {
             if (!word.valid()) return;
             d->current = word;
-            d->act(SpellAction::Replace, value);
+            d->act(SpellAction::Replace, value, false);
             d->editor->setFocus();
         });
     }

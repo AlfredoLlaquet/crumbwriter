@@ -36,6 +36,7 @@ const Choice *chooseFile(QWidget *owner, bool saving, QString *path)
     QStringList filters;
     if (!saving) filters << QObject::tr("Supported documents (*.docx *.odt *.pdf *.html *.htm *.md *.markdown *.rtf *.txt)");
     for (const auto &choice : choices) if (!saving || choice.output) filters << choice.label;
+    if (!saving) filters << QObject::tr("All files (*)");
     picker.setNameFilters(filters);
     if (saving) {
         picker.setDefaultSuffix(choices[0].suffix);

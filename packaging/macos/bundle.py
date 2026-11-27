@@ -99,7 +99,7 @@ def relocate_homebrew(app, record, cpu):
         if edits:
             run("install_name_tool", *edits, staged)
 
-    for expected in ("libglib-", "libhunspell-"):
+    for expected in ("libglib-", "libhunspell-", "libarchive."):
         if not any(name.startswith(expected) for name in originals):
             raise ValueError(f"Missing Homebrew runtime dependency: {expected}")
     record.write_text("".join(str(p) + "\n" for p in sorted(originals.values())), encoding="utf-8")

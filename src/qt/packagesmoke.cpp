@@ -1,5 +1,7 @@
 #include "packagesmoke.h"
 #include "documentstore.h"
+#include "documentformats.h"
+#include "manuscripteditor.h"
 #include "mainwindow.h"
 #include "preferences.h"
 #include "spellwords.h"
@@ -76,6 +78,16 @@ int runPackageSmokeTest()
     if (!thesaurus.usingBundledDictionary()) return fail("The packaged US English thesaurus is missing.");
     if (!SpellWords::usingBundledDictionary()) return fail("The packaged en_US dictionary is missing.");
 #endif
+
+    if (!readBytes(":/help/README.md").contains("## Contents") ||
+        !readBytes(":/license/NOTICE.md").contains("WordNet"))
+        return fail("The integrated guide or third-party notices are missing.");
+    QString conversionError;
+    window.editor()->loadText("A Book\n=====\nA short PDF proof.");
+    const auto pdf = directory.filePath("proof.pdf");
+    if (!DocumentFormats::exportFile(pdf, DocumentFormats::Format::Pdf, {}, window.editor(), &conversionError) ||
+        !DocumentFormats::importFile(pdf, DocumentFormats::Format::Pdf, {}, &conversionError).contains("short PDF proof"))
+        return fail("Installed PDF export or text extraction failed. " + conversionError);
 
     const QString manuscript = directory.filePath(QStringLiteral("Capítol 風.txt"));
     const QByteArray original = QByteArray::fromHex("efbbbf") + "Chapter one\r\n";
