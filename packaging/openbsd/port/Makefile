@@ -1,8 +1,8 @@
 COMMENT =	plain-text editor for novels, stories and numbered crumbs
-DISTNAME =	crumbwriter-3.1
+DISTNAME =	crumbwriter-3.2
 CATEGORIES =	editors
 HOMEPAGE =	https://github.com/AlfredoLlaquet/crumbwriter
-SITES =		${HOMEPAGE}/releases/download/v3.1/
+SITES =		${HOMEPAGE}/releases/download/v3.2/
 EXTRACT_SUFX =	.tar.xz
 
 # Original code: Unlicense. Word data and artwork: see NOTICE.md.

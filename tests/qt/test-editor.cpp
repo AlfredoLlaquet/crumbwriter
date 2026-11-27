@@ -845,6 +845,81 @@ void fieldsAndClipboard(ManuscriptEditor &ed)
     expect(ed, haiku);
 }
 
+void foldedHeadingEditing(ManuscriptEditor &ed)
+{
+    const QString source = "Book\n====\nSection\n-------\nBody text.\n\nFinal";
+    const QString visible = "Book\nSection\nBody text.\n\nFinal";
+    ed.loadText(source);
+    ed.resize(540, 480);
+    ed.show();
+    settle();
+    auto block = [&](int line) { return ed.document()->findBlockByNumber(line); };
+    const int titleEnd = source.indexOf("\n-------");
+    const int body = source.indexOf("Body text.");
+    ed.jumpTo(titleEnd, false);
+    press(ed, Qt::Key_Right);
+    require(ed.textCursor().position() == body, "Right crosses the one visible paragraph break");
+    press(ed, Qt::Key_Left);
+    require(ed.textCursor().position() == titleEnd, "Left crosses the same paragraph break");
+    press(ed, Qt::Key_Down);
+    require(ed.textCursor().block() == block(4), "Down skips a folded marker");
+    press(ed, Qt::Key_Up);
+    require(ed.textCursor().block() == block(2), "Up skips a folded marker");
+    const auto bodyRect = ed.cursorRect(QTextCursor(block(4)));
+    require(ed.cursorForPosition(bodyRect.center()).block() == block(4), "mouse hit testing addresses the visible paragraph");
+    ed.selectAll();
+    ed.copy();
+    require(QApplication::clipboard()->text() == visible, "ordinary copy keeps intentional blank lines and omits markup");
+    ed.setShowManuscriptMarkup(true);
+    ed.selectAll();
+    ed.copy();
+    require(QApplication::clipboard()->text() == source, "markup view copies the original markers");
+    ed.jumpTo(block(3).position() + 2, false);
+    ed.setShowManuscriptMarkup(false);
+    require(ed.textCursor().position() == titleEnd, "hiding an active marker returns the caret to the heading");
+
+    press(ed, Qt::Key_Return);
+    expect(ed, "Book\n====\nSection\n-------\n\nBody text.\n\nFinal");
+    require(ed.textCursor().blockNumber() == 4 && ed.textCursor().block().isVisible(), "Enter starts visible body text after a heading");
+    ed.undo();
+    expect(ed, source);
+    ed.jumpTo(body, false);
+    press(ed, Qt::Key_Backspace);
+    expect(ed, "Book\n====\nSectionBody text.\n-------\n\nFinal");
+    require(ed.textCursor().position() == titleEnd, "joining retains the insertion point");
+    ed.undo();
+    expect(ed, source);
+    ed.jumpTo(titleEnd, false);
+    press(ed, Qt::Key_Delete);
+    expect(ed, "Book\n====\nSectionBody text.\n-------\n\nFinal");
+    ed.undo();
+    ed.selectRange(titleEnd - 3, body + 4, false);
+    ed.cut();
+    require(QApplication::clipboard()->text() == "ion\nBody", "cut contains only visible writing");
+    expect(ed, "Book\n====\nSect text.\n-------\n\nFinal");
+    ed.undo();
+    expect(ed, source);
+    ed.loadText("Only title\n==========");
+    ed.openAtEnd();
+    require(ed.textCursor().blockNumber() == 0 && ed.textCursor().atBlockEnd(), "a final hidden marker cannot hold the caret");
+    press(ed, Qt::Key_Delete);
+    expect(ed, "Only title\n==========");
+    ed.selectAll();
+    ed.cut();
+    expect(ed, "");
+    require(QApplication::clipboard()->text() == "Only title", "Select All excludes a final hidden marker");
+    ed.undo();
+    expect(ed, "Only title\n==========");
+    for (const auto &sample : {QString("Body.\nLast\n----"), QString("Top\n===\nBody.")}) {
+        ed.loadText(sample);
+        ed.openAtEnd();
+        press(ed, Qt::Key_Y, Qt::ControlModifier);
+        expect(ed, sample.startsWith("Body.") ? QString("Body.") : QString("Top\n==="));
+        ed.undo();
+        expect(ed, sample);
+    }
+}
+
 void genericParagraphs(ManuscriptEditor &ed)
 {
     const QString novel = QStringLiteral("The Clock Merchant\n\nWinter\n------\nPeople walked in.\n"
@@ -888,9 +963,11 @@ void genericParagraphs(ManuscriptEditor &ed)
     require(ed.textCursor().position() == block(7).position(), "reverse Tab reaches this heading's start");
     press(ed, Qt::Key_Backtab, Qt::ShiftModifier);
     require(ed.textCursor().position() == block(2).position(), "reverse Tab visits the preceding heading");
-    require(rect(3).height() < body / 2 &&
-            block(3).layout()->formats().front().format.foreground().color().alpha() == 0,
-            "an inactive marker is compact and shows no hyphens");
+    auto folded = [&](int line) {
+        return !block(line).isVisible() && block(line).lineCount() == 0 &&
+               ed.document()->documentLayout()->blockBoundingRect(block(line)).height() == 0;
+    };
+    require(folded(3), "a heading marker has no visible block or layout height");
     ed.setShowManuscriptMarkup(true);
     settle();
     press(ed, Qt::Key_Down, Qt::ControlModifier);
@@ -915,7 +992,8 @@ void genericParagraphs(ManuscriptEditor &ed)
     ed.setShowManuscriptMarkup(false);
     type(ed, "No separator.");
     settle();
-    require(!bold(2) && rect(2).height() == rect(4).height(), "typing after a chapter demotes its heading");
+    require(bold(2) && block(2).text().endsWith("No separator.") && folded(3),
+            "hiding markup moves the typing caret from the marker to its title");
     ed.undo();
     settle();
     expect(ed, novel);
@@ -982,7 +1060,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     settle();
     require(ed.model().provisionalMarkerLine() == -1 && ed.model().headingLevel(1) == 2,
             "moving away confirms a manually typed double hyphen and separator");
-    require(rect(2).height() <= body / 3, "an inactive title marker has a hairline writing row");
+    require(folded(2), "a confirmed marker has zero layout height");
     ed.setShowManuscriptMarkup(true);
     settle();
     require(rect(2).height() >= body - 1 && ed.model().headingLevel(1) == 2,
@@ -993,7 +1071,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     type(ed, "-- ");
     ed.jumpTo(0, false);
     settle();
-    require(ed.model().paragraphRole(0) == ParagraphRole::DocumentTitle && rect(1).height() <= body / 3,
+    require(ed.model().paragraphRole(0) == ParagraphRole::DocumentTitle && folded(1),
             "confirming a marker under an already inferred document title also compacts its row");
     ed.loadText("Prologue.\nDivision\n=\nChapter\n-\nScene\n~\nNote\n.\nBody.");
     ed.jumpTo(0, false);
@@ -1013,10 +1091,7 @@ void genericParagraphs(ManuscriptEditor &ed)
             "the top two heading levels use solid underlines and the lower two dotted underlines");
     ed.setShowManuscriptMarkup(false);
     settle();
-    const int markerAdvance = rect(9).top() - rect(8).top();
-    require(markerAdvance >= 0 && markerAdvance <= 1,
-            "inactive markup between a heading and ordinary prose occupies at most one logical pixel");
-    std::printf("At %.0f pt an inactive title marker occupies %d logical pixels.\n", ed.font().pointSizeF(), markerAdvance);
+    require(folded(2) && folded(4) && folded(6) && folded(8), "all four marker levels fold completely");
     require(rect(1).top() - rect(0).bottom() > body * 0.45,
             "section headings receive extra vertical separation without inserting blank file lines");
     ed.loadText("Opening.\n~\nAnother paragraph.");
@@ -1226,6 +1301,7 @@ int main(int argc, char **argv)
     shiftNavigation(editor);
     unicodeRoundTrip(editor);
     fieldsAndClipboard(editor);
+    foldedHeadingEditing(editor);
     genericParagraphs(editor);
     genericLists(editor);
     openingViewport();

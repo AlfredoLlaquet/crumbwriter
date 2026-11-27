@@ -50,7 +50,9 @@ void ManuscriptSession::connectWritingTools()
         editor_->setFocus();
         editor_->insertLiteral(text);
     };
-    synonyms_->returnToEditor = [this] { editor_->setFocus(); };
+    synonyms_->returnToEditor = [this] {
+        if (host_->active_ == this) host_->restoreEditorFocus();
+    };
     synonyms_->jumpToMatch = [this](int start, int end) {
         const auto original = editor_->textCursor();
         if (start != original.selectionStart() || end != original.selectionEnd())

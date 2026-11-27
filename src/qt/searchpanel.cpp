@@ -16,6 +16,7 @@
 #include <QMenu>
 #include <QPlainTextEdit>
 #include <QPromise>
+#include <QPointer>
 #include <QPushButton>
 #include <QScreen>
 #include <QScrollBar>
@@ -106,16 +107,24 @@ SearchPanel::SearchPanel(ManuscriptEditor *editor, QSettings *settings, QWidget 
         if (!isHidden())
             showStatus();
     });
-    connect(editor->document(), &QTextDocument::contentsChange, this, [this](int, int removed, int added) {
-        if (removed == 0 && added == 0)
-            return;
+    auto invalidatePaper = [this] {
         paperDirty = true;
+        if (!visibleHits.isEmpty()) {
+            visibleHits.clear();
+            this->editor->setSearchHighlights({});
+        }
         hit = {};
         invalidateIndex();
         cancelPreview();
         if (!isHidden() && !replacing)
             refreshDelay->start(0);
+    };
+    connect(editor->document(), &QTextDocument::contentsChange, this, [invalidatePaper](int, int removed, int added) {
+        if (removed || added) invalidatePaper();
     });
+    editor->onMarkupVisibilityChanged = [panel = QPointer<SearchPanel>(this), invalidatePaper] {
+        if (panel) invalidatePaper();
+    };
     editor->model().observe(this, [this](const CrumbChange &change) {
         if (change.modeChanged) updateControls();
     });
@@ -516,7 +525,7 @@ void SearchPanel::reset()
 const QString &SearchPanel::snapshot()
 {
     if (paperDirty) {
-        paper = editor->manuscriptText();
+        paper = viewOffsets.reset(editor->document(), editor->model().isGeneric() && !editor->showManuscriptMarkup());
         paperDirty = false;
     }
     return paper;
@@ -608,8 +617,8 @@ void SearchPanel::updateHighlights()
     QVector<Span> visible;
     if (!isHidden() && indexReady && options.mode != Mode::Number && !matches.spans.isEmpty()) {
         const QSize viewport = editor->viewport()->size();
-        const int first = editor->cursorForPosition(QPoint(0, 0)).position();
-        const int last = editor->cursorForPosition(QPoint(viewport.width(), viewport.height() - 1)).position();
+        const int first = viewOffsets.visiblePosition(editor->cursorForPosition(QPoint(0, 0)).position());
+        const int last = viewOffsets.visiblePosition(editor->cursorForPosition(QPoint(viewport.width(), viewport.height() - 1)).position());
         auto it = std::lower_bound(matches.spans.begin(), matches.spans.end(), first,
                                    [](Span span, int position) { return span.end < position; });
         for (; it != matches.spans.end() && it->start <= last; ++it) {
@@ -628,8 +637,8 @@ void SearchPanel::updateHighlights()
     for (Span range : visible) {
         QTextEdit::ExtraSelection mark;
         mark.cursor = QTextCursor(editor->document());
-        mark.cursor.setPosition(range.start);
-        mark.cursor.setPosition(range.end, QTextCursor::KeepAnchor);
+        mark.cursor.setPosition(viewOffsets.sourcePosition(range.start));
+        mark.cursor.setPosition(viewOffsets.sourcePosition(range.end), QTextCursor::KeepAnchor);
         mark.format = format;
         selections.append(mark);
     }
@@ -638,11 +647,11 @@ void SearchPanel::updateHighlights()
 
 void SearchPanel::showMatch(Span selected, bool didWrap)
 {
-    saveOrigin(selected.start);
+    saveOrigin(viewOffsets.sourcePosition(selected.start));
     hit = selected;
     wrapped = didWrap;
     QScopedValueRollback<bool> guard(movingCursor, true);
-    editor->selectMatch(selected.start, selected.end);
+    editor->selectMatch(viewOffsets.sourcePosition(selected.start), viewOffsets.sourcePosition(selected.end));
     scheduleHighlights();
     showStatus();
 }
@@ -669,7 +678,7 @@ void SearchPanel::previewText(bool restorePrevious)
     Span selected;
     bool wait = false;
     if (!findEntry->text().isEmpty())
-        selected = literalAt(origin.position(), backwards, didWrap, wait);
+        selected = literalAt(viewOffsets.visiblePosition(origin.position()), backwards, didWrap, wait);
     if (wait) {
         previewPending = true;
         restorePending = restorePrevious;
@@ -703,10 +712,12 @@ void SearchPanel::stepNumber(bool reverse)
     remember();
     int at = -1;
     if (generic) {
-        auto last = editor->document()->lastBlock();
-        if (last.blockNumber() > 0 && last.length() == 1) last = last.previous();
-        if (number <= quint64(last.blockNumber()) + 1)
-            at = editor->document()->findBlockByNumber(int(number - 1)).position();
+        quint64 visibleLine = 0;
+        for (auto block = editor->document()->begin(); block.isValid(); block = block.next()) {
+            if (!block.isVisible()) continue;
+            if (!block.next().isValid() && block.blockNumber() > 0 && block.length() == 1) break;
+            if (++visibleLine == number) { at = block.position(); break; }
+        }
     } else {
         at = editor->model().findNumber(number, origin.position(), reverse, options.wrap);
     }
@@ -752,7 +763,7 @@ void SearchPanel::step(bool reverse)
         remember();
     bool didWrap = false;
     Span selected;
-    const int start = hit.found() ? (reverse ? hit.start : hit.end) : origin.position();
+    const int start = hit.found() ? (reverse ? hit.start : hit.end) : viewOffsets.visiblePosition(origin.position());
     if (options.mode == Mode::Text) {
         bool wait = false;
         selected = literalAt(start, reverse, didWrap, wait);
@@ -856,7 +867,7 @@ void SearchPanel::replaceOne()
     }
     const Span selected = hit;
     const auto cursor = editor->textCursor();
-    if (cursor.selectionStart() != selected.start || cursor.selectionEnd() != selected.end) {
+    if (cursor.selectionStart() != viewOffsets.sourcePosition(selected.start) || cursor.selectionEnd() != viewOffsets.sourcePosition(selected.end)) {
         step(false);
         return;
     }
@@ -873,7 +884,7 @@ void SearchPanel::replaceOne()
     int caret;
     {
         QScopedValueRollback<bool> guard(replacing, true);
-        caret = editor->replaceRangeLiteral(selected.start, selected.end, expanded);
+        caret = editor->replaceRangeLiteral(viewOffsets.sourcePosition(selected.start), viewOffsets.sourcePosition(selected.end), expanded);
         editor->jumpTo(caret, false);
     }
     origin = editor->textCursor();
@@ -973,9 +984,9 @@ void SearchPanel::applyPreview()
         transaction.beginEditBlock();
         for (auto it = plan.edits.crbegin(); it != plan.edits.crend(); ++it) {
             QTextCursor edit(editor->document());
-            edit.setPosition(it->original.start);
-            edit.setPosition(it->original.end, QTextCursor::KeepAnchor);
-            ManuscriptText::insert(edit, it->replacement);
+            edit.setPosition(viewOffsets.sourcePosition(it->original.start));
+            edit.setPosition(viewOffsets.sourcePosition(it->original.end), QTextCursor::KeepAnchor);
+            ManuscriptText::replaceVisibleRange(edit, it->replacement);
         }
         transaction.endEditBlock();
     }

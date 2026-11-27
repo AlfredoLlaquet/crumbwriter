@@ -1,6 +1,7 @@
 #pragma once
 
 #include "searchengine.h"
+#include "manuscripttext.h"
 #include "searchhistory.h"
 #include <QTextCursor>
 #include <QWidget>
@@ -91,6 +92,7 @@ private:
     QVector<Span> visibleHits;
     QColor highlightColor;
     QString paper;
+    ManuscriptText::VisibleText viewOffsets;
     QString notice;
     QTextCursor origin;
     Span hit;

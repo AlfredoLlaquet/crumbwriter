@@ -8,6 +8,7 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextLayout>
+#include <cstdlib>
 
 namespace {
 enum class Token { Space, Word, Punctuation };
@@ -27,23 +28,39 @@ Token tokenAt(const QTextCursor &cursor, bool bigWord)
     return Token::Punctuation;
 }
 
+bool stepCharacter(QTextCursor &cursor, bool back)
+{
+    const auto before = cursor.position();
+    if (ManuscriptText::crossHiddenMarker(cursor, back, QTextCursor::MoveAnchor)) return cursor.position() != before;
+    return cursor.movePosition(back ? QTextCursor::PreviousCharacter : QTextCursor::NextCharacter);
+}
+
+int relativeLine(QTextBlock block, int count)
+{
+    const bool back = count < 0;
+    for (int i = 0; block.isValid() && i < std::abs(count); ++i)
+        block = ManuscriptText::adjacentVisibleBlock(block, back);
+    return block.isValid() ? block.blockNumber() : -1;
+}
+
 bool wordStep(QTextCursor &cursor, QChar motion)
 {
     const bool big = motion.isUpper();
     if (motion.toLower() == u'b') {
         do {
-            if (!cursor.movePosition(QTextCursor::PreviousCharacter)) return false;
+            if (!stepCharacter(cursor, true)) return false;
         } while (!cursor.atStart() && tokenAt(cursor, big) == Token::Space);
         const auto kind = tokenAt(cursor, big);
         auto previous = cursor;
-        while (previous.movePosition(QTextCursor::PreviousCharacter) && tokenAt(previous, big) == kind)
+        while (stepCharacter(previous, true) && tokenAt(previous, big) == kind)
             cursor = previous;
         return true;
     }
+    const int start = cursor.position();
     if (cursor.atEnd()) return false;
     auto skip = [&](Token kind) {
         while (!cursor.atEnd() && tokenAt(cursor, big) == kind)
-            cursor.movePosition(QTextCursor::NextCharacter);
+            if (!stepCharacter(cursor, false)) break;
     };
     if (motion.toLower() == u'w') {
         skip(tokenAt(cursor, big));
@@ -52,13 +69,15 @@ bool wordStep(QTextCursor &cursor, QChar motion)
         skip(Token::Space);
         skip(tokenAt(cursor, big)); // Exclusive Qt endpoint includes the last letter.
     }
-    return true;
+    return cursor.position() != start;
 }
 
 int lastLine(const QTextDocument *doc)
 {
-    const auto last = doc->lastBlock();
-    return last.blockNumber() - int(last.blockNumber() > 0 && last.length() == 1);
+    auto last = doc->lastBlock();
+    if (last.blockNumber() > 0 && (!last.isVisible() || last.length() == 1))
+        last = ManuscriptText::adjacentVisibleBlock(last, true);
+    return last.blockNumber();
 }
 
 QTextLayout *layoutFor(const QTextBlock &block)
@@ -101,7 +120,7 @@ std::optional<int> screenRow(const QTextCursor &cursor, int distance)
     const int last = lastLine(cursor.document());
     while (row < 0 || row >= layout->lineCount()) {
         if (row >= 0) row -= layout->lineCount();
-        block = distance < 0 ? block.previous() : block.next();
+        block = ManuscriptText::adjacentVisibleBlock(block, distance < 0);
         if (!block.isValid() || block.blockNumber() > last) return {};
         layout = layoutFor(block);
         if (distance < 0) row += layout->lineCount();
@@ -123,13 +142,15 @@ std::optional<int> literal(const ViMotion &motion, QTextCursor cursor)
     const bool till = op.toLower() == u't';
     const auto cs = op.toLower() == u'q' ? Qt::CaseInsensitive : Qt::CaseSensitive;
     if (motion.skipLastCharacter)
-        cursor.movePosition(back ? QTextCursor::PreviousCharacter : QTextCursor::NextCharacter);
+        stepCharacter(cursor, back);
     const bool multiline = motion.target.contains(u'\n');
     auto block = cursor.block();
-    qsizetype edge = multiline ? cursor.position() : cursor.positionInBlock();
+    ManuscriptText::VisibleText offsets;
+    const QString visible = multiline ? offsets.reset(cursor.document(), true) : QString();
+    qsizetype edge = multiline ? offsets.visiblePosition(cursor.position()) : cursor.positionInBlock();
     int remaining = motion.count;
     while (block.isValid()) {
-        const auto text = multiline ? ManuscriptText::documentText(cursor.document())
+        const auto text = multiline ? visible
                                     : ManuscriptText::blockText(block);
         if (back && edge < 0) edge = text.size();
         while (back ? edge >= motion.target.size() : edge < text.size()) {
@@ -139,12 +160,13 @@ std::optional<int> literal(const ViMotion &motion, QTextCursor cursor)
             const qsizetype after = hit + motion.target.size();
             if (--remaining == 0) {
                 const bool useEnd = back ? till : !till;
-                return (multiline ? 0 : block.position()) + int(useEnd ? after : hit);
+                const int pos = int(useEnd ? after : hit);
+                return multiline ? offsets.sourcePosition(pos) : block.position() + pos;
             }
             edge = back ? hit : after;
         }
         if (multiline) break;
-        block = back ? block.previous() : block.next();
+        block = ManuscriptText::adjacentVisibleBlock(block, back);
         edge = back ? -1 : 0;
     }
     return {};
@@ -218,7 +240,6 @@ std::optional<ViMotion> ViMotion::parse(const QString &command, QString &hint)
 std::optional<int> ViMotion::destination(QTextCursor cursor) const
 {
     cursor.clearSelection();
-    const auto row = qint64(cursor.blockNumber());
     if (!target.isEmpty()) {
         const auto end = literal(*this, cursor);
         if (!end) return {};
@@ -231,18 +252,17 @@ std::optional<int> ViMotion::destination(QTextCursor cursor) const
         return block.position() + (after ? layout->nextCursorPosition(column)
                                          : layout->previousCursorPosition(column));
     }
-    if (name == "j") return physicalLine(cursor, row + count, name);
-    if (name == "k") return physicalLine(cursor, row - count, name);
+    if (name == "j" || name == "k") return physicalLine(cursor, relativeLine(cursor.block(), name == "k" ? -count : count), name);
     if (name == "gj" || name == "gk") return screenRow(cursor, name == "gk" ? -count : count);
     if (name == "gg" || name == "G") {
-        const int line = explicitCount ? count - 1 : name == "gg" ? 0 : lastLine(cursor.document());
+        const int line = explicitCount ? relativeLine(cursor.document()->begin(), count - 1) : name == "gg" ? 0 : lastLine(cursor.document());
         return physicalLine(cursor, line, name);
     }
     if (name == "$" || name == "0" || name == "^")
-        return physicalLine(cursor, name == "$" ? row + count - 1 : row, name);
+        return physicalLine(cursor, relativeLine(cursor.block(), name == "$" ? count - 1 : 0), name);
     if (name == "h" || name == "l") {
-        if (!cursor.movePosition(name == "h" ? QTextCursor::PreviousCharacter : QTextCursor::NextCharacter,
-                                 QTextCursor::MoveAnchor, count)) return {};
+        for (int i = 0; i < count; ++i)
+            if (!stepCharacter(cursor, name == "h")) return {};
     } else {
         for (int i = 0; i < count; ++i)
             if (!wordStep(cursor, name.front())) return {};

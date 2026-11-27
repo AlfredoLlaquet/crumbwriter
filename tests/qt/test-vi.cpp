@@ -297,6 +297,27 @@ void restoreViewport(ManuscriptEditor &ed)
           "cancel also restores virtual rows and their viewport");
 }
 
+void foldedHeadings(ManuscriptEditor &ed)
+{
+    const QString text = "Book\n====\nBody.\nLast\n----";
+    ed.loadText(text);
+    auto move = [&](int from, const QString &motion, int expected) {
+        ed.jumpTo(from, false);
+        start(ed);
+        type(ed, motion);
+        check(ed.textCursor().position() == expected, "Vi selection moves over visible manuscript lines");
+        key(ed, Qt::Key_Return);
+    };
+    const int body = text.indexOf("Body.");
+    const int last = text.indexOf("Last");
+    move(0, "j", body);
+    move(body, "k", 0);
+    move(0, "gg2", body);
+    move(0, "G", last);
+    move(body, "h", 4);
+    move(4, "l", body);
+}
+
 void wrappedRows(ManuscriptEditor &ed)
 {
     const auto row = QStringLiteral("Crumb 1: Wrap: ") + QStringLiteral("many words ").repeated(18);
@@ -333,5 +354,6 @@ int main(int argc, char **argv)
     liveSelection(editor);
     compositionAndWhitespace(editor);
     restoreViewport(editor);
+    foldedHeadings(editor);
     wrappedRows(editor);
 }

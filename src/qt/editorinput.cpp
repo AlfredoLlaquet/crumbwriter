@@ -114,12 +114,8 @@ bool ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
         ++end;
     cursor.setPosition(first);
     cursor.setPosition(end, QTextCursor::KeepAnchor);
-    if (text.isEmpty()) {
-        if (!cursor.hasSelection()) return false;
-        cursor.removeSelectedText();
-    } else {
-        ManuscriptText::insert(cursor, text);
-    }
+    if (text.isEmpty() && !cursor.hasSelection()) return false;
+    ManuscriptText::replaceVisibleRange(cursor, text);
     if (kind == Input::Typed && smart_)
         punctuation_->feed(document(), first, text, model_->isGeneric());
     if ((kind == Input::Typed && !text.endsWith(u'\n')) || kind == Input::Erase)
@@ -369,7 +365,8 @@ void ManuscriptEditor::removeByKey(bool backward, bool byWord)
     if (!c.hasSelection()) {
         const auto op = backward ? (byWord ? QTextCursor::PreviousWord : QTextCursor::PreviousCharacter)
                                  : (byWord ? QTextCursor::NextWord : QTextCursor::NextCharacter);
-        c.movePosition(op, QTextCursor::KeepAnchor);
+        if (!ManuscriptText::crossHiddenMarker(c, backward, QTextCursor::KeepAnchor))
+            c.movePosition(op, QTextCursor::KeepAnchor);
     }
     const auto run = byWord || textCursor().hasSelection() ? EditRun::None
                           : backward ? EditRun::Backspace : EditRun::Delete;
@@ -529,6 +526,16 @@ void ManuscriptEditor::keyPressEvent(QKeyEvent *e)
         }
     }
 #endif
+    if ((key == Qt::Key_Left || key == Qt::Key_Right) &&
+        !(mods & ~(Qt::ControlModifier | Qt::ShiftModifier)) && !rows_) {
+        auto cursor = textCursor();
+        const bool extend = mods.testFlag(Qt::ShiftModifier);
+        if ((!cursor.hasSelection() || extend) &&
+            ManuscriptText::crossHiddenMarker(cursor, key == Qt::Key_Left, extend ? QTextCursor::KeepAnchor : QTextCursor::MoveAnchor)) {
+            setTextCursor(cursor);
+            return;
+        }
+    }
     if (enter && mods == Qt::ControlModifier) { centerCurrentLine(); return; }
     if (enter && mods == Qt::AltModifier) { topCurrentCrumb(); return; }
     if (enter && mods == (Qt::ControlModifier | Qt::ShiftModifier)) { continueList(); return; }

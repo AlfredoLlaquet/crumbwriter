@@ -29,28 +29,19 @@ public:
     int activeLine = -1;
     const CrumbModel *model = nullptr;
     qreal sectionSpacing = 0;
-    int markerHeight = 2;
-    bool revealMarkers = false;
 
     QRectF blockBoundingRect(const QTextBlock &block) const override
     {
+        if (!block.isVisible()) return {};
         auto bounds = QPlainTextDocumentLayout::blockBoundingRect(block);
         // An empty block has no characters for the highlighter to style.
         // Only the spacer immediately after the document title needs a
         // shorter advance. Restore the native writing row while editing it.
-        const auto next = block.next();
+        auto next = block.next();
+        while (next.isValid() && !next.isVisible()) next = next.next();
         const bool beforeHeading = compactSeparators && next.isValid() && model &&
                                    model->headingLevel(next.blockNumber()) > 0;
         const qreal headingGap = beforeHeading ? sectionSpacing : 0;
-        if (compactSeparators && !revealMarkers &&
-            model && model->paragraphRole(block.blockNumber()) == ParagraphRole::TitleMarker &&
-            block.layout()->preeditAreaText().isEmpty()) {
-            // Fix the row's advance explicitly: font hinting alone gives a
-            // different minimum line height on each platform.
-            bounds.setHeight(1 + headingGap +
-                             (next.isValid() ? 0 : document()->documentMargin()));
-            return bounds;
-        }
         if (hasTitleSpacer && block.blockNumber() == 1 && activeLine != 1 &&
             block.layout()->preeditAreaText().isEmpty()) {
             bounds.setHeight(qMax<qreal>(1, bounds.height() / 3) + headingGap);
@@ -150,14 +141,6 @@ public:
         }
         auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
         const qreal writingHeight = QFontMetricsF(font, layout->paintDevice()).height();
-        layout->markerHeight = qMax(2, qRound(writingHeight / 10));
-        QFont markerFont(font);
-        markerFont.setPixelSize(qMax(1, layout->markerHeight - 1));
-        marker_.setFont(markerFont);
-        marker_.setForeground(Qt::transparent);
-        marker_.setFontLetterSpacingType(QFont::PercentageSpacing);
-        marker_.setFontLetterSpacing(1);
-
         const bool generic = model_.isGeneric();
         layout->compactSeparators = generic;
         layout->sectionSpacing = qMax<qreal>(2, writingHeight * 0.45);
@@ -238,8 +221,7 @@ protected:
             const auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
             auto format = writingFormat(role, model_.headingLevel(line));
             if (role == ParagraphRole::TitleMarker) {
-                if (!editor_->showManuscriptMarkup()) format = marker_;
-                else if (line != layout->activeLine) {
+                if (editor_->showManuscriptMarkup() && line != layout->activeLine) {
                     // The viewport paints the repeated glyphs to the actual title width.
                     format.setForeground(Qt::transparent);
                     format.setFontLetterSpacing(1);
@@ -309,7 +291,7 @@ private:
     int revealedOpen_ = -1;
     QList<GuillemetMarkup::Span> currentPairs_;
     CrumbModel &model_;
-    QTextCharFormat header_, title_, body_, documentTitle_, marker_;
+    QTextCharFormat header_, title_, body_, documentTitle_;
     std::array<QTextCharFormat, 4> chapterTitles_;
     QColor warningInk_;
     QSet<int> pending_;
@@ -340,6 +322,7 @@ ManuscriptEditor::ManuscriptEditor(QWidget *parent)
     highlighter_ = new CrumbHighlighter(this, *model_);
     connect(this, &QPlainTextEdit::cursorPositionChanged, this, [this]{ onCursorMoved(); });
     model_->observe(this, [this](const CrumbChange &change) {
+        syncMarkerVisibility(change.firstLine, change.lastLine);
         if (change.textChanged && !editing_ && !replaying_) {
             editRun_ = EditRun::None;
             vi_->abandon();
@@ -419,6 +402,7 @@ void ManuscriptEditor::openAtEnd()
     // This also restores the preceding writing after reopening a top-aligned file.
     setCenterOnScroll(false);
     setTextCursor(writingEnd());
+    settleVisibleCursor();
     if (isVisible())
         finishOpeningViewport();
 }
@@ -430,11 +414,61 @@ void ManuscriptEditor::setSmartPunctuation(bool enabled)
         punctuation_->reset();
 }
 
+void ManuscriptEditor::syncMarkerVisibility(int first, int last)
+{
+    auto *doc = document();
+    auto block = doc->findBlockByNumber(qMax(0, first));
+    if (!block.isValid()) return;
+    const int start = block.position();
+    bool changed = false;
+    for (; block.isValid() && block.blockNumber() <= last; block = block.next()) {
+        const bool visible = showManuscriptMarkup_ || !model_->isGeneric() ||
+                             model_->paragraphRole(block.blockNumber()) != ParagraphRole::TitleMarker;
+        if (block.isVisible() == visible) continue;
+        block.setVisible(visible);
+        block.setLineCount(visible ? qMax(1, block.layout()->lineCount()) : 0);
+        changed = true;
+    }
+    if (changed) {
+        const int end = block.isValid() ? block.position() : doc->characterCount();
+        doc->markContentsDirty(start, end - start);
+        auto *layout = static_cast<QPlainTextDocumentLayout *>(doc->documentLayout());
+        layout->requestUpdate();
+        Q_EMIT layout->documentSizeChanged(layout->documentSize());
+        if (onMarkupVisibilityChanged) onMarkupVisibilityChanged();
+    }
+}
+
+QTextCursor ManuscriptEditor::visibleEnd() const
+{
+    auto block = document()->lastBlock();
+    while (!block.isVisible() && block.previous().isValid()) block = block.previous();
+    QTextCursor cursor(block);
+    cursor.movePosition(QTextCursor::EndOfBlock);
+    return cursor;
+}
+
+void ManuscriptEditor::settleVisibleCursor()
+{
+    auto cursor = textCursor();
+    auto visible = [this](int pos) {
+        const auto block = document()->findBlock(pos);
+        return block.isValid() && !block.isVisible() ? block.position() - 1 : pos;
+    };
+    const int anchor = visible(cursor.anchor()), position = visible(cursor.position());
+    if (anchor != cursor.anchor() || position != cursor.position()) {
+        cursor.setPosition(anchor);
+        cursor.setPosition(position, QTextCursor::KeepAnchor);
+        setTextCursor(cursor);
+    }
+}
+
 void ManuscriptEditor::setShowManuscriptMarkup(bool show)
 {
     if (showManuscriptMarkup_ == show) return;
     showManuscriptMarkup_ = show;
-    static_cast<CrumbLayout *>(document()->documentLayout())->revealMarkers = show;
+    syncMarkerVisibility(0, document()->blockCount() - 1);
+    settleVisibleCursor();
     if (model_->isGeneric()) {
         highlighter_->updateTypography();
         highlighter_->updateGuillemetCaret();
@@ -477,6 +511,7 @@ void ManuscriptEditor::prepareSearch()
 
 void ManuscriptEditor::onCursorMoved()
 {
+    settleVisibleCursor();
     if (!editing_ && !replaying_) {
         vi_->abandon();
         finishTyping();
@@ -727,6 +762,15 @@ void ManuscriptEditor::deleteCrumb()
     } else if (line > 0) {
         first = block.position() - 1;
     }
+    if (generic && block.next().isValid() && !block.next().isVisible()) {
+        const auto after = block.next().next();
+        if (after.isValid()) end = after.position();
+        else {
+            end = block.position() + block.length() - 1;
+            if (first > 0) --first;
+        }
+    }
+    if (!document()->findBlock(first).isVisible()) first = document()->findBlock(first).position() - 1;
     QScopedValueRollback<bool> guard(editing_, true);
     auto cursor = at(first);
     cursor.setPosition(end, QTextCursor::KeepAnchor);
@@ -816,8 +860,10 @@ void ManuscriptEditor::navigate(bool backward, bool fields, bool extend)
     if (model_->isGeneric()) {
         // Reversing from the middle of a heading can reach its own start.
         const bool inside = !virt && textCursor().positionInBlock() > 0;
-        const int next = fields ? model_->neighborTitle(line + int(backward && inside), backward)
+        int next = fields ? model_->neighborTitle(line + int(backward && inside), backward)
                                 : model_->neighbor(line, backward);
+        while (next >= 0 && !document()->findBlockByNumber(next).isVisible())
+            next = model_->neighbor(next, backward);
         if (next >= 0)
             moveTo(document()->findBlockByNumber(next).position(), extend);
         return;

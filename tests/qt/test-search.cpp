@@ -331,6 +331,38 @@ void controlsAndReplace()
     check(list->isVisible() && list->model()->rowCount() >= 2, "recent query list with modes");
 }
 
+void hiddenHeadingMarkers()
+{
+    Fixture f;
+    const QString source = "Heading\n=======\nThe body.\n\nEnd.";
+    f.editor->loadText(source);
+    f.editor->jumpTo(0);
+    f.search->find(false);
+    f.query->setText("===");
+    check(!f.editor->textCursor().hasSelection(), "hidden markers cannot be found in the writing view");
+    f.query->setText("body");
+    check(f.isAt(2, "body"), "visible match after a folded marker maps to the source");
+    f.editor->setShowManuscriptMarkup(true);
+    f.query->setText("===");
+    check(f.isAt(1, "==="), "markup view includes literal marker characters in Find");
+    f.editor->setShowManuscriptMarkup(false);
+    f.search->goToNumber();
+    f.number->setText("2");
+    f.search->repeat();
+    check(f.isAt(2), "Go To Line counts only paragraphs in the current view");
+    f.key(Qt::Key_H, Qt::ControlModifier);
+    f.key(Qt::Key_R, Qt::ControlModifier);
+    f.query->setText(QStringLiteral("ing\\nThe"));
+    f.replacement->setText(" for the");
+    auto *all = f.button("cw-replace-all");
+    all->click();
+    all->click();
+    check(f.editor->manuscriptText() == "Head for the body.\n=======\n\nEnd.",
+          "multiline replacement edits visible writing and preserves the leading heading style");
+    f.editor->undo();
+    check(f.editor->manuscriptText() == source, "undo restores the raw heading marker in one step");
+}
+
 void staleAndReservedText()
 {
     Fixture f;
@@ -396,6 +428,7 @@ int main(int argc, char **argv)
     overlappingSearch();
     directFindAndFocus();
     controlsAndReplace();
+    hiddenHeadingMarkers();
     staleAndReservedText();
     asynchronousSearch();
     std::puts("Qt search, regex, history, navigation and replacement checks passed");

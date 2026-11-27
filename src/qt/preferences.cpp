@@ -77,7 +77,7 @@ constexpr HelpRow shortcuts[] = {
     {"Panels","F9 / Shift+F9","Show or hide navigation / synonym lists"},
     {"Layout","Ctrl+Shift+F10","Arrange panels and columns in the current window. The View menu can restore all default layouts"},
     {"Synonym lists","Insert / F2 / Delete","Add from the manuscript selection / edit / remove a synonym group"},
-    {"Synonym lists","Enter / Ctrl+Enter","Find all occurrences / insert the first synonym at the manuscript caret. Both clear the panel search"},
+    {"Synonym lists","Enter / Ctrl+Enter","Find all occurrences / insert a name at the caret. Choose among multiple synonyms"},
     {"Synonym lists","F5 / Escape","Reload the list from disk / return to the manuscript"},
     {"Generic mode","Titles → End of document","Go to the end of the final paragraph. This entry stays last in either sort order."},
     {"Generic mode","Chapter marker","Type =, -, ~ or . alone after a heading. Leave the marker to confirm. A list beginning with a hyphen and text stays prose. Blank lines within the manuscript keep their space."},

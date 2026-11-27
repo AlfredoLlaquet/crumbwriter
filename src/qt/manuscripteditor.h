@@ -26,6 +26,7 @@ public:
     void loadText(const QString &text);
     void openAtEnd();
     void setShowManuscriptMarkup(bool show);
+    std::function<void()> onMarkupVisibilityChanged;
     bool showManuscriptMarkup() const { return showManuscriptMarkup_; }
     void setPaperPalette(const QPalette &palette);
     void setPaperActive(bool active);
@@ -101,6 +102,9 @@ private:
     int clampPosition(int value) const;
     QTextCursor at(int position) const;
     QTextCursor writingEnd() const;
+    QTextCursor visibleEnd() const;
+    void syncMarkerVisibility(int first, int last);
+    void settleVisibleCursor();
     QTextBlock crumbEdgeBlock() const;
     void navigate(bool backward, bool fields, bool extend = false);
     void moveTo(int position, bool extend);

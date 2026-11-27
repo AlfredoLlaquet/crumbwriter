@@ -871,6 +871,10 @@ void testWritingTools(const QTemporaryDir &tmp)
     key(Qt::Key_Exclam, Qt::ControlModifier | Qt::ShiftModifier);
     CHECK(!ed->hasFocus());
     key(Qt::Key_Return, Qt::ControlModifier);
+    auto *names = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+    CHECK(names && names->activeAction()->text() == "Fox, Captain");
+    QKeyEvent chooseName(QEvent::KeyPress, Qt::Key_Return, {});
+    QApplication::sendEvent(names, &chooseName);
     CHECK(until([&] { return ed->hasFocus(); }));
     CHECK(ed->textCursor().block().text().endsWith("Fox, Captain"));
 

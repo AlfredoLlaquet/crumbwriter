@@ -10,6 +10,7 @@
 #include <QKeyEvent>
 #include <QLineEdit>
 #include <QListView>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -151,6 +152,7 @@ void pane(const QString &dir)
     cursor.setPosition(editor.toPlainText().indexOf("then"));
     editor.setTextCursor(cursor);
     panel.insertSynonym = [&](const QString &s) { editor.insertPlainText(s); editor.setFocus(); };
+    panel.returnToEditor = [&] { editor.setFocus(); };
     int jumped = -1;
     QString selected;
     panel.jumpToMatch = [&](int start, int end) {
@@ -199,8 +201,14 @@ void pane(const QString &dir)
     panel.focusCharacters();
     search->setText("zed");
     key(search, Qt::Key_Return, Qt::ControlModifier);
-    check(search->text().isEmpty() && editor.toPlainText().contains("🦋 Zorbo Marmalade then"),
-          "Ctrl+Enter clears the search and inserts the first synonym at the saved selection");
+    auto *choices = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+    check(choices && choices->actions().size() == 6 && choices->actions()[0]->text() == "Zorbo Marmalade" &&
+          choices->actions()[1]->text() == "Zed" && choices->actions()[2]->text() == "Dr. Ada, DDS",
+          "Ctrl+Enter lists each saved spelling in original order");
+    key(choices, Qt::Key_Down);
+    key(choices, Qt::Key_Return);
+    check(search->text().isEmpty() && editor.toPlainText().contains("🦋 Zed then") && editor.hasFocus(),
+          "an alternate spelling replaces the saved selection and returns focus");
 
     panel.focusRecurring();
     check(thingSearch->hasFocus() && thingSearch->placeholderText() == "Search recurring", "shortcut focuses recurring search");

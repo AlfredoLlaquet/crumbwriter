@@ -1,9 +1,9 @@
 Crumb Writer
 ============
 
-Version 3.1. Created and directed by Alfredo Llaquet-Alsina. Implemented by ChatGPT.
+Version 3.2. Created and directed by Alfredo Llaquet-Alsina. Implemented by ChatGPT.
 
-Version 3.1 implementation guide
+Version 3.2 implementation guide
 --------------------------------
 
 Software Project Working Rules
@@ -24,14 +24,19 @@ Menus, writing tools and editing
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 windowcommands.cpp builds File, Edit, View, Format, Navigate, Tools, Window
 and Help, retaining the writing toolbar. formattingtoolbar.cpp synchronizes
-Font, size and Style with the active document. In Generic mode the first
+Font, size and Style with the active document. Separate layout groups keep six
+logical pixels between each label and control and extra space before Style. In Generic mode the first
 line offers Main Title or Regular Text. Subsequent lines offer Regular Text
 or Title 1 through Title 4. Use Ctrl+Shift+K followed by M, 0 or 1–4. The editor handles the chord
 in the active document and cancels it when focus leaves.
 ManuscriptOptions changes the heading marker and saves explicit first-line
 title detection in the manuscript's .config. The native text remains portable.
 In normal view heading-marker rows and on-screen heading underlines are
-hidden. Ctrl+Shift+F9 reveals them. editorviewport.cpp measures the shaped
+hidden. manuscripteditor.cpp folds each confirmed marker as a zero-height
+QTextBlock with no cursor stop. manuscripttext.cpp maps visible text offsets
+to manuscript offsets for search, clipboard and edits across paragraph breaks.
+The underlying text keeps every marker for saving, undo and markup view.
+Ctrl+Shift+F9 reveals the markers. editorviewport.cpp measures the shaped
 title and scales the repeated marker glyphs to its displayed width.
 
 Generic mode initially hides Characters. View > Characters remembers a choice
@@ -46,8 +51,9 @@ explicitly typed or pasted marker can replace the proposal once.
 
 Documents and sessions
 ~~~~~~~~~~~~~~~~~~~~~~
-Use + beside the tabs or double-click unused space on the strip to open a
-blank document. workspacestate.cpp records tab order, active tab, named file
+File > New File, Window > New Tab and Ctrl+T focus a blank untitled tab in
+the current window. The + button and a double-click on unused tab space
+run the same command. workspacestate.cpp records tab order, active tab, named file
 or private recovery path, selection and scroll in the local settings.
 application.cpp restores windows on cold start; documents supplied on the
 command line still activate their own tabs. A missing file produces a notice.
@@ -228,15 +234,15 @@ Installing the FreeBSD and Linux release packages
 
 Use the package for the target OS, release series and architecture. Every
 installer carries its version. The README links directly to the exact assets
-under releases/download/v3.1/. Release checks exercise FreeBSD 15.1, 14.4,
+under releases/download/v3.2/. Release checks exercise FreeBSD 15.1, 14.4,
 and 14.5 (the latter two share one binary), Ubuntu 24.04 and 26.04, and
 Debian 13. The install commands below assume a local download for amd64.
 
-    FreeBSD 15.x   pkg install ./crumbwriter-3.1-FreeBSD-15-amd64.pkg
-    FreeBSD 14.x   pkg install ./crumbwriter-3.1-FreeBSD-14-amd64.pkg
-    Ubuntu 24.04   sudo apt install ./crumbwriter_3.1-ubuntu24.04_amd64.deb
-    Ubuntu 26.04   sudo apt install ./crumbwriter_3.1-ubuntu26.04_amd64.deb
-    Debian 13      sudo apt install ./crumbwriter_3.1-debian13_amd64.deb
+    FreeBSD 15.x   pkg install ./crumbwriter-3.2-FreeBSD-15-amd64.pkg
+    FreeBSD 14.x   pkg install ./crumbwriter-3.2-FreeBSD-14-amd64.pkg
+    Ubuntu 24.04   sudo apt install ./crumbwriter_3.2-ubuntu24.04_amd64.deb
+    Ubuntu 26.04   sudo apt install ./crumbwriter_3.2-ubuntu26.04_amd64.deb
+    Debian 13      sudo apt install ./crumbwriter_3.2-debian13_amd64.deb
 
 On FreeBSD run pkg as root. For an update, close the editor, download the
 new asset and repeat the install command with its filename. apt remove
@@ -252,7 +258,7 @@ release, source, checksums and version-specific license are available at
 https://github.com/AlfredoLlaquet/crumbwriter/releases/latest
 
 Windows 10 version 1903 or later and Windows 11 use
-CrumbWriter-3.1-Windows-x64-Setup.exe on x64 computers. Run Setup as the
+CrumbWriter-3.2-Windows-x64-Setup.exe on x64 computers. Run Setup as the
 desktop account. View License opens the notice during installation.
 Start Crumb Writer from the Start menu or its optional desktop shortcut.
 Setup can also add Crumb Writer to Explorer's Open With for plain-text
@@ -263,7 +269,7 @@ program, use Settings > Apps > Installed apps (Apps & features on Windows
 10). Personal settings, manuscripts, backups and companion files survive
 an update or uninstall.
 
-macOS 15 or later uses CrumbWriter-3.1-macOS-Universal.dmg on both Apple
+macOS 15 or later uses CrumbWriter-3.2-macOS-Universal.dmg on both Apple
 silicon and Intel. Open the disk image, drag Crumb Writer to Applications,
 eject the image and open Crumb Writer from Applications. From the keyboard
 in Finder, select Crumb Writer, press Command+C, press Command+Shift+A to
@@ -278,18 +284,18 @@ Every public installer has a signed GitHub build record (an artifact
 attestation). In its download directory, a signed-in GitHub CLI can identify
 the workflow and source revision that produced this exact file.
 
-    gh attestation verify crumbwriter_3.1-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify crumbwriter-3.1-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-3.1-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-3.1-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter_3.2-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter-3.2-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.2-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.2-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
 
 Use the command for the file downloaded. For a SHA-256 check, compare
 the output of the corresponding command with SHA256SUMS on the same release.
 
-    Get-FileHash .\CrumbWriter-3.1-Windows-x64-Setup.exe -Algorithm SHA256
-    shasum -a 256 CrumbWriter-3.1-macOS-Universal.dmg
-    sha256sum crumbwriter_3.1-ubuntu24.04_amd64.deb
-    sha256 -q crumbwriter-3.1-FreeBSD-15-amd64.pkg
+    Get-FileHash .\CrumbWriter-3.2-Windows-x64-Setup.exe -Algorithm SHA256
+    shasum -a 256 CrumbWriter-3.2-macOS-Universal.dmg
+    sha256sum crumbwriter_3.2-ubuntu24.04_amd64.deb
+    sha256 -q crumbwriter-3.2-FreeBSD-15-amd64.pkg
 
 The Windows installer has no Windows publisher certificate. SmartScreen
 can display an unfamiliar-app or unknown-publisher warning. After verifying
@@ -382,7 +388,7 @@ desktop account.
 
 Repeat the original make install command with the same account and prefix.
 Launch from the desktop menu. Help > About Crumb Writer opens About and shows the installed
-version. The command crumbwriter --version also prints "Crumb Writer 3.1".
+version. The command crumbwriter --version also prints "Crumb Writer 3.2".
 
 Opening a manuscript
 ~~~~~~~~~~~~~~~~~~~~
@@ -940,8 +946,12 @@ Characters and Ctrl+Shift+2 focuses Search Recurring. Typing part of any
 alias highlights the first case-insensitive match. All rows stay visible.
 Up/Down cycle through the matches, wrapping at the ends. From the field or
 list, Enter finds every occurrence of all aliases in the selected group.
-Ctrl+Enter inserts its first synonym. Either action clears the search field.
-Escape returns focus to the manuscript.
+Ctrl+Enter, a single left-click on the entry, and Insert at caret in either
+sidebar menu share the same insertion command. A group with one name inserts
+it immediately. A group with several names offers every saved form in order.
+Choose with a click or with the arrows and Enter. Escape dismisses the
+choice and restores focus to the manuscript with the original selection.
+Finding or inserting clears the sidebar search field.
 Insert opens Add with the selected manuscript text suggested as one alias.
 On macOS, physical Control+I does the same in either the Characters or
 Recurring search field or list. On a compact Mac keyboard, Backspace (often
@@ -961,7 +971,8 @@ a genre appends its next crumb. In Genres Ctrl+Enter finds all occurrences.
 
 A manuscript named Crumbs.txt has two UTF-8 text companions named
 Crumbs.txt.characters and Crumbs.txt.recurring. Each physical line is one
-group. The first synonym determines the display order and insertion text.
+group. The first synonym determines the display order and appears first in the
+insertion menu.
 The optional leading metadata fields ,no-complete, exclude this group from
 automatic and F5 completion. The group editor exposes this as Exclude from
 autocomplete (Alt+E), initially unchecked. Legacy rows retain their behavior.
@@ -1315,8 +1326,8 @@ start that thread. All editor windows share the loaded dictionary.
 Each manuscript has one QPlainTextEdit with a QSyntaxHighlighter. It follows
 the widget width. A Qt plain-text layout computes visible paragraphs at the
 current width. The background band is painted over visible wrapped rows. In Generic mode
-the layout uses a small default font for empty separators, with body and
-heading sizes applied to the appropriate nonblank blocks.
+confirmed heading-marker blocks have zero layout lines in normal view.
+Visible paragraphs retain their own line heights and intentional blank lines.
 Whole-file regex scans and replacement planning can run in the background.
 Stale results are invalidated when the query or document changes.
 
@@ -1443,7 +1454,11 @@ navigation, editor, live movement selections, search, window, appearance,
 layout, symbol picker, interactive synonyms and resize
 tests. The resize test measures a completed paint after typing in a moving
 window with recognized aliases on every paragraph and checks the actual text
-and caret. The installed-package smoke test verifies the embedded symbol
+and caret. The editor, search and Vi tests exercise movement, clipboard and
+replacement across folded headings, including undo and terminal headings.
+Window tests cover keyboard and mouse synonym choices, cancellation, both
+sidebar menus, toolbar spacing and the File menu's blank tab.
+The installed-package smoke test verifies the embedded symbol
 catalog by searching for U+2661.
 The layout suite opens two manuscripts under simulated tiling and reopens
 a saved floating window after its monitor disappears. It checks that the

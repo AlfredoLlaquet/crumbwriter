@@ -14,8 +14,10 @@
 #include <QFontDatabase>
 #include <QJsonArray>
 #include <QKeyEvent>
+#include <QLabel>
 #include <QListView>
 #include <QMenu>
+#include <QMenuBar>
 #include <QMouseEvent>
 #include <QMessageBox>
 #include <QPushButton>
@@ -45,6 +47,23 @@ void key(QWidget *widget, int code, Qt::KeyboardModifiers modifiers = {}, const 
 {
     QKeyEvent event(QEvent::KeyPress, code, modifiers, text);
     QApplication::sendEvent(widget, &event);
+    QApplication::processEvents();
+}
+
+void leftClick(QWidget *widget, const QPoint &pos)
+{
+    // A real pointer travels from the popup trigger to its menu item.
+    const QPoint start = widget->mapFromGlobal(QCursor::pos());
+    for (int i = 1; i <= 8; ++i) {
+        const QPoint next = start + (pos - start) * i / 8;
+        QMouseEvent move(QEvent::MouseMove, next, widget->mapToGlobal(next), Qt::NoButton, {}, {});
+        QApplication::sendEvent(widget, &move);
+    }
+    for (auto type : {QEvent::MouseButtonPress, QEvent::MouseButtonRelease}) {
+        auto buttons = type == QEvent::MouseButtonPress ? Qt::LeftButton : Qt::NoButton;
+        QMouseEvent event(type, pos, widget->mapToGlobal(pos), Qt::LeftButton, buttons, {});
+        QApplication::sendEvent(widget, &event);
+    }
     QApplication::processEvents();
 }
 
@@ -139,11 +158,12 @@ void controls(const QTemporaryDir &tmp)
     const QString path = tmp.filePath("chapter.txt");
     writeFile(path, "A Book\nBody.\nLast.\n");
     writeFile(path + ".characters", "Mara, the clerk\nZoe\n");
+    writeFile(path + ".recurring", "a star, A & B\n");
     QJsonObject state;
     {
         MainWindow w(prefs);
         w.setAttribute(Qt::WA_DeleteOnClose, false);
-        w.resize(980, 650);
+        w.resize(1200, 650);
         w.activateManuscript(false);
         check(w.loadDocument(path), path);
         auto *ed = w.editor();
@@ -172,6 +192,48 @@ void controls(const QTemporaryDir &tmp)
         check(ed->manuscriptText().startsWith("Zoe"), "insert the selected entry at the manuscript caret");
         ed->undo();
         ed->jumpTo(0, false);
+        auto popup = [] { return qobject_cast<QMenu *>(QApplication::activePopupWidget()); };
+        auto clickRow = [](QListView *list, int index) {
+            leftClick(list->viewport(), list->visualRect(list->model()->index(index, 0)).center());
+        };
+        ed->selectRange(0, 1, false);
+        clickRow(characters, 0);
+        check(popup() && popup()->actions().size() == 2 && popup()->activeAction()->text() == "Mara",
+              "a single left-click offers both names in saved order");
+        key(popup(), Qt::Key_Escape);
+        check(ed->textCursor().selectedText() == "A" && ed->manuscriptText().startsWith("A Book"),
+              "canceling preserves the original text and selection");
+        QElapsedTimer focusWait;
+        focusWait.start();
+        while (!ed->hasFocus() && focusWait.elapsed() < 1500) { QApplication::processEvents(); QThread::msleep(5); }
+        check(ed->hasFocus(), "canceling restores keyboard focus to the manuscript");
+        auto *recurring = w.findChild<QListView *>("recurringList");
+        clickRow(recurring, 0);
+        auto *choices = popup();
+        check(choices && choices->actions().size() == 2, "recurring element shows its choices");
+        const auto choicePos = choices->actionGeometry(choices->actions().last()).center();
+        check(choices->actionAt(choicePos) == choices->actions().last(), "mouse addresses the alternate form");
+        leftClick(choices, choicePos);
+        check(ed->manuscriptText().startsWith("A & B Book"), "a mouse choice inserts the literal alias over the selection");
+        ed->undo();
+        ed->jumpTo(0, false);
+        auto *menu = w.findChild<QToolButton *>("charactersMenu")->menu();
+        auto *insert = [&] {
+            for (auto *a : menu->actions()) if (a->text().contains("Insert at caret")) return a;
+            return static_cast<QAction *>(nullptr);
+        }();
+        check(insert, "sidebar menu has Insert at caret");
+        for (bool contextMenu : {false, true}) {
+            if (contextMenu) characters->customContextMenuRequested(characters->visualRect(characters->model()->index(0, 0)).center());
+            else menu->popup(characters->mapToGlobal(QPoint(0, 0)));
+            leftClick(menu, menu->actionGeometry(insert).center());
+            check(popup() && popup()->actions().first()->text() == "Mara", "both sidebar menus open name selection");
+            key(popup(), Qt::Key_Down);
+            key(popup(), Qt::Key_Return);
+            check(ed->manuscriptText().startsWith("the clerkA Book"), "keyboard confirms the alternate name");
+            ed->undo();
+            ed->jumpTo(0, false);
+        }
         auto setStyle = [&](int value) {
             const int i = style->findData(value);
             check(i >= 0, "requested style is coherent");
@@ -192,6 +254,19 @@ void controls(const QTemporaryDir &tmp)
         key(ed, Qt::Key_2, {}, "2");
         check(ed->manuscriptText().contains("Body.\n-----"), "keyboard line style");
         check(w.findChild<QSpinBox *>("writingFontSize")->accessibleName() == "Font size", "unlabeled size is accessible");
+        auto *family = w.findChild<QComboBox *>("writingFont");
+        auto *size = w.findChild<QSpinBox *>("writingFontSize");
+        auto labelFor = [&](QWidget *widget) -> QLabel * {
+            for (auto *label : w.findChildren<QLabel *>()) if (label->buddy() == widget) return label;
+            return nullptr;
+        };
+        auto gap = [&](QWidget *left, QWidget *right) {
+            return right->mapTo(&w, QPoint(0, 0)).x() - left->mapTo(&w, QPoint(left->width(), 0)).x();
+        };
+        auto *fontLabel = labelFor(family);
+        auto *styleLabel = labelFor(style);
+        check(fontLabel && styleLabel && gap(fontLabel, family) >= 6 && gap(family, size) >= 6 &&
+              gap(size, styleLabel) >= 12 && gap(styleLabel, style) >= 6, "font and style controls have visible spacing");
         w.findChild<QToolButton *>("addTab")->click();
         check(w.tabCount() == 2 && w.editor()->manuscriptText().isEmpty(), "+ opens a blank tab");
         auto *tabs = w.findChild<QTabWidget *>("manuscript");
@@ -217,6 +292,13 @@ void controls(const QTemporaryDir &tmp)
         ed->loadText({});
         state = w.workspaceState();
         check(state["tabs"].toArray().size() == 3, "all tabs recorded");
+        auto *fileMenu = w.findChild<QMenuBar *>("manuscriptMenuBar")->actions().first()->menu();
+        auto *newFile = fileMenu->actions().first();
+        check(newFile->text().section('\t', 0, 0) == "New File", "File begins with New File");
+        newFile->trigger();
+        QApplication::processEvents();
+        check(w.tabCount() == 4 && w.editor() != ed && w.path().isEmpty() && w.editor()->manuscriptText().isEmpty() &&
+              w.editor()->hasFocus(), "File > New File focuses a fresh untitled tab in the same window");
         for (auto *action : w.findChildren<QAction *>()) {
             if (action->text() == "Crumb Writer Help") action->trigger();
         }

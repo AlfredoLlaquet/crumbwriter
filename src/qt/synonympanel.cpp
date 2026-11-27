@@ -20,6 +20,7 @@
 #include <QSplitter>
 #include <QTextDocument>
 #include <QToolButton>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -122,7 +123,7 @@ public:
         search_->setPlaceholderText(tr("Search %1").arg(id_));
         search_->setAccessibleName(search_->placeholderText());
         search_->setToolTip(tr("Search any synonym (%1). Up and Down move between matches. "
-                               "Enter finds occurrences. Ctrl+Enter inserts the first synonym.").arg(keys));
+                               "Enter finds occurrences. Ctrl+Enter or a left-click inserts a name. Choose a spelling when the entry has several.").arg(keys));
         search_->installEventFilter(this);
         layout->addWidget(search_);
         list_->setObjectName(id_ + QStringLiteral("List"));
@@ -143,7 +144,10 @@ public:
         });
         search_->activateRow = [this](bool inserting) { return use(inserting); };
         search_->returnToEditor = [this] { if (owner_.returnToEditor) owner_.returnToEditor(); };
-        connect(list_, &QListView::activated, this, [this] { search_->activateCurrent(); });
+        connect(list_, &QListView::clicked, this, [this](const QModelIndex &index) {
+            list_->setCurrentIndex(index);
+            search_->activateCurrent(true);
+        });
         setTabOrder(options, search_);
         setTabOrder(search_, list_);
         layout->addWidget(list_, 1);
@@ -213,7 +217,28 @@ private:
         const auto &group = file.groups().at(row).aliases;
         if (inserting) {
             if (!owner_.insertSynonym) return false;
-            owner_.insertSynonym(group.first());
+            if (group.size() == 1) {
+                owner_.insertSynonym(group.first());
+            } else {
+                auto *choices = new QMenu(list_);
+                choices->setObjectName(id_ + QStringLiteral("InsertionChoices"));
+                choices->setAccessibleName(tr("Choose a name to insert"));
+                choices->setAttribute(Qt::WA_DeleteOnClose);
+                for (const auto &name : group) {
+                    QString label = name;
+                    auto *choice = choices->addAction(label.replace(u'&', QStringLiteral("&&")));
+                    connect(choice, &QAction::triggered, this, [this, name] { owner_.insertSynonym(name); });
+                }
+                connect(choices, &QMenu::aboutToHide, this, [this, choices] {
+                    choices->deleteLater();
+                    QTimer::singleShot(0, this, [this] {
+                        if (owner_.returnToEditor) owner_.returnToEditor();
+                    });
+                });
+                const auto rect = list_->visualRect(list_->currentIndex());
+                choices->popup(list_->viewport()->mapToGlobal(rect.bottomLeft()));
+                choices->setActiveAction(choices->actions().first());
+            }
         } else {
             if (!owner_.document_) return false;
             const int offset = this == owner_.recurring_ ? int(owner_.characters_->file.groups().size()) : 0;

@@ -123,12 +123,12 @@ int ManuscriptEditor::rowPitch() const
 {
     if (model_->isGeneric())
         return qMax(1, QFontMetrics(font(), viewport()).height());
-    return qMax(1, cursorRect(at(document()->characterCount()-1)).height());
+    return qMax(1, cursorRect(visibleEnd()).height());
 }
 
 QRect ManuscriptEditor::virtualCaretRect() const
 {
-    const auto end = cursorRect(at(document()->characterCount()-1));
+    const auto end = cursorRect(visibleEnd());
     const int pitch = rowPitch();
     const qint64 y = virtualTop_ ? qint64(rows_ - virtualTop_) * pitch
                                  : end.bottom() + 1 + qint64(rows_ - 1) * pitch;
@@ -138,7 +138,7 @@ QRect ManuscriptEditor::virtualCaretRect() const
 bool ManuscriptEditor::onLastVisualRow() const
 {
     const auto c = textCursor();
-    if (c.block() != document()->lastBlock())
+    if (c.block() != visibleEnd().block())
         return false;
     // Request layout only for the active block, including after a resize.
     blockBoundingRect(c.block());
@@ -162,7 +162,7 @@ void ManuscriptEditor::setVirtualRows(int rows)
         virtualTop_ = 0;
         setCursorWidth(rows ? 0 : 1);
         if (rows) {
-            auto c = at(document()->characterCount()-1);
+            auto c = visibleEnd();
             if (textCursor().hasSelection() || textCursor().position() != c.position())
                 setTextCursor(c);
         }
@@ -297,8 +297,8 @@ void ManuscriptEditor::mousePressEvent(QMouseEvent *e)
         int rows = 0;
         if (virtualTop_) {
             rows = virtualTop_ + y / rowPitch();
-        } else if (cursorForPosition(e->position().toPoint()).block() == document()->lastBlock()) {
-            const QRect end = cursorRect(at(document()->characterCount()-1));
+        } else if (cursorForPosition(e->position().toPoint()).block() == visibleEnd().block()) {
+            const QRect end = cursorRect(visibleEnd());
             if (y >= end.bottom()+1)
                 rows = 1 + (y-end.bottom()-1)/rowPitch();
         }

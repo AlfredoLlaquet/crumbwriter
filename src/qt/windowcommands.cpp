@@ -77,8 +77,9 @@ void MainWindow::buildMenu()
         connect(action, &QAction::triggered, this, fn);
         return action;
     };
+    add(fileMenu_, tr("New File"), "Ctrl+T", &MainWindow::newTab);
     add(fileMenu_, "Open…", "Ctrl+O", [this] { active_->chooseFile(false); });
-    add(tabMenu, "New tab", "Ctrl+T", [this] { newTab(); });
+    add(tabMenu, "New tab", "Ctrl+T", &MainWindow::newTab);
     add(tabMenu, "New window", "Ctrl+Shift+N", [this] { newWindow()->activateManuscript(false); });
     add(tabMenu, tr("Next tab"), "Ctrl+Tab", [this] { stepTab(1); });
     add(tabMenu, tr("Previous tab"), "Ctrl+Shift+Tab", [this] { stepTab(-1); });
