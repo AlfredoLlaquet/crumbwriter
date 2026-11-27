@@ -15,7 +15,11 @@
 
 That choice pays off long after the first draft. Your files stay small. You can search a folder full of documents for a half-remembered sentence or compare two drafts to see exactly which words changed. A publishing tool can use your chapter headings to build an ebook’s table of contents or turn each chapter into a page on a website. When you revise a sentence, it’s already in the source for the next edition. A separate export from DOCX or ODT is a step you can skip.
 
-Crumb Writer is free for FreeBSD, Linux, Windows, and macOS. Programmed by **ChatGPT** for Alfredo Llaquet-Alsina. [Downloads and installation](#download-crumb-writer)
+Crumb Writer is free for FreeBSD, Linux, Windows, and macOS. 
+
+Created and directed by **Alfredo Llaquet-Alsina**. Implemented by **ChatGPT**.
+
+[Downloads and installation](#download-crumb-writer)
 
 ## From a page of notes to a whole book
 
