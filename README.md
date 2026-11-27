@@ -15,11 +15,19 @@
 
 That choice pays off long after the first draft. Your files stay small. You can search a folder full of documents for a half-remembered sentence or compare two drafts to see exactly which words changed. A publishing tool can use your chapter headings to build an ebook’s table of contents or turn each chapter into a page on a website. When you revise a sentence, it’s already in the source for the next edition. A separate export from DOCX or ODT is a step you can skip.
 
-Crumb Writer is free for FreeBSD, Linux, Windows, and macOS. 
+Crumb Writer is free for FreeBSD, OpenBSD, Linux, Windows, and macOS.
 
 Created and directed by **Alfredo Llaquet-Alsina**. Implemented by **ChatGPT**.
 
-[Downloads and installation](#download-crumb-writer)
+## Contents
+
+- [Writing prose](#from-a-page-of-notes-to-a-whole-book) · [Finding words](#find-the-word-you-mean) · [Tracking characters and places](#keep-track-of-the-world-inside-your-writing)
+- [Document files](#what-travels-with-your-document) · [Writing your own crumbs](#write-your-own-crumbs)
+- [Downloads and installation](#download-crumb-writer) · [Verifying a download](#verify-a-download)
+- [Building on FreeBSD](#build-and-run-on-freebsd) · [Building on OpenBSD](#build-and-run-on-openbsd) · [Building on Ubuntu](#build-and-run-on-ubuntu)
+- [Import and export](#import-and-export) · [Plain text file format](#plain-text-file-format) · [Crumb mode](#writing-crumbs-in-crumb-mode) · [Generic mode](#writing-novels-and-other-prose-in-generic-mode)
+- [Word counts](#how-words-are-counted) · [Tabs and sessions](#working-with-several-documents) · [Writing and navigation](#writing-and-navigation)
+- [Find and replace](#find-and-replace) · [Names and spelling](#characters-recurring-and-spelling) · [Statistics](#statistics-and-daily-count) · [Bookmarks and saves](#bookmarks-and-saves) · [Licenses](#licenses-and-credits)
 
 ## From a page of notes to a whole book
 
@@ -67,17 +75,18 @@ Alfredo’s collection is one example of what that plain text file can become. I
 
 ## Download Crumb Writer
 
-Choose the package for your operating system and processor. The filenames and links below all refer to **version 3.0**. For a newer edition, open the [latest release](https://github.com/AlfredoLlaquet/crumbwriter/releases/latest).
+Choose the package for your operating system and processor. The filenames and links below all refer to **version 3.1**. For a newer edition, open the [latest release](https://github.com/AlfredoLlaquet/crumbwriter/releases/latest).
 
 | Intended compatibility | Release checks | Download |
 | --- | --- | --- |
-| FreeBSD 15.x, amd64 | 15.1 | [crumbwriter-3.0-FreeBSD-15-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/crumbwriter-3.0-FreeBSD-15-amd64.pkg) |
-| FreeBSD 14.x, amd64 | 14.4 and 14.5 | [crumbwriter-3.0-FreeBSD-14-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/crumbwriter-3.0-FreeBSD-14-amd64.pkg) |
-| Ubuntu 24.04 LTS, amd64 | 24.04 | [crumbwriter_3.0-ubuntu24.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/crumbwriter_3.0-ubuntu24.04_amd64.deb) |
-| Ubuntu 26.04 LTS, amd64 | 26.04 | [crumbwriter_3.0-ubuntu26.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/crumbwriter_3.0-ubuntu26.04_amd64.deb) |
-| Debian 13, amd64 | 13 (trixie) | [crumbwriter_3.0-debian13_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/crumbwriter_3.0-debian13_amd64.deb) |
-| Windows 10 version 1903 or later and Windows 11, x64 | Windows Server 2025 (x64) and Windows 11 on Arm (x64 emulation) | [CrumbWriter-3.0-Windows-x64-Setup.exe](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/CrumbWriter-3.0-Windows-x64-Setup.exe) |
-| macOS 15 or later, Apple silicon and Intel | macOS 15 on both CPU architectures | [CrumbWriter-3.0-macOS-Universal.dmg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/CrumbWriter-3.0-macOS-Universal.dmg) |
+| FreeBSD 15.x, amd64 | 15.1 | [crumbwriter-3.1-FreeBSD-15-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/crumbwriter-3.1-FreeBSD-15-amd64.pkg) |
+| FreeBSD 14.x, amd64 | 14.4 and 14.5 | [crumbwriter-3.1-FreeBSD-14-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/crumbwriter-3.1-FreeBSD-14-amd64.pkg) |
+| OpenBSD 8.0, amd64 | 8.0 | [crumbwriter-3.1.tgz](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/crumbwriter-3.1.tgz) |
+| Ubuntu 24.04 LTS, amd64 | 24.04 | [crumbwriter_3.1-ubuntu24.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/crumbwriter_3.1-ubuntu24.04_amd64.deb) |
+| Ubuntu 26.04 LTS, amd64 | 26.04 | [crumbwriter_3.1-ubuntu26.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/crumbwriter_3.1-ubuntu26.04_amd64.deb) |
+| Debian 13, amd64 | 13 (trixie) | [crumbwriter_3.1-debian13_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/crumbwriter_3.1-debian13_amd64.deb) |
+| Windows 10 version 1903 or later and Windows 11, x64 | Windows Server 2025 (x64) and Windows 11 on Arm (x64 emulation) | [CrumbWriter-3.1-Windows-x64-Setup.exe](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/CrumbWriter-3.1-Windows-x64-Setup.exe) |
+| macOS 15 or later, Apple silicon and Intel | macOS 15 on both CPU architectures | [CrumbWriter-3.1-macOS-Universal.dmg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/CrumbWriter-3.1-macOS-Universal.dmg) |
 
 Crumb Writer uses Qt 6. On FreeBSD and Linux you can run it on a desktop such as GNOME or Xfce, under a standalone X11 window manager, or with a Wayland compositor.
 
@@ -96,14 +105,25 @@ The bundled libraries, spelling dictionary, and WordNet thesaurus data have thei
 **First installation.** Download the FreeBSD package above for a 64-bit Intel or AMD computer running FreeBSD 15.x or 14.x. From the directory containing the download, run the following as root. The leading `./` tells `pkg` to install the file you downloaded. It obtains dependencies from your configured FreeBSD repositories.
 
 ~~~sh
-pkg install ./crumbwriter-3.0-FreeBSD-15-amd64.pkg
+pkg install ./crumbwriter-3.1-FreeBSD-15-amd64.pkg
 ~~~
 
-On FreeBSD 14.x, use `crumbwriter-3.0-FreeBSD-14-amd64.pkg` in the install command.
+On FreeBSD 14.x, use `crumbwriter-3.1-FreeBSD-14-amd64.pkg` in the install command.
 
-Open the desktop application launcher, type **Crumb Writer**, and press **Enter**. Press **Ctrl+O** to open a document. The next time you start the editor, it reopens the last document you worked on. **F10**, then **A**, shows the installed version.
+Open the desktop application launcher, type **Crumb Writer**, and press **Enter**. Press **Ctrl+O** to open a document. The next time you start the editor, it restores your open windows and tabs. **Help → About Crumb Writer** shows the installed version.
 
 **Update.** Save your writing and close the editor. Download the newer package from the latest release and repeat the install command with the new version in its filename. To uninstall, run `pkg delete crumbwriter`. Your documents and their companion files stay where you saved them.
+
+### Install or update on OpenBSD
+
+Download the OpenBSD package into its own folder and verify it with the release checksum or attestation. Open a terminal in that folder. As root, run the first command for a new installation or the second for an update. Only that folder is trusted for the independently distributed package. OpenBSD supplies the signed dependencies from its usual mirror.
+
+~~~sh
+env TRUSTED_PKG_PATH="$PWD" PKG_PATH=installpath pkg_add "$PWD/crumbwriter-3.1.tgz"
+env TRUSTED_PKG_PATH="$PWD" PKG_PATH=installpath pkg_add -u "$PWD/crumbwriter-3.1.tgz"
+~~~
+
+Launch **Crumb Writer** from the application menu or run `crumbwriter` in a graphical session. To remove the package, run `pkg_delete crumbwriter` as root.
 
 ### Install and update on Ubuntu or Debian
 
@@ -111,10 +131,10 @@ Open the desktop application launcher, type **Crumb Writer**, and press **Enter*
 
 ~~~sh
 sudo apt update
-sudo apt install ./crumbwriter_3.0-ubuntu24.04_amd64.deb
+sudo apt install ./crumbwriter_3.1-ubuntu24.04_amd64.deb
 ~~~
 
-For Ubuntu 26.04, use `crumbwriter_3.0-ubuntu26.04_amd64.deb` in the command. On Debian 13, use `crumbwriter_3.0-debian13_amd64.deb`.
+For Ubuntu 26.04, use `crumbwriter_3.1-ubuntu26.04_amd64.deb` in the command. On Debian 13, use `crumbwriter_3.1-debian13_amd64.deb`.
 
 Open **Crumb Writer** from the desktop application menu. Use **Ctrl+O** to open a file and **F1** for the searchable keyboard guide.
 
@@ -142,18 +162,19 @@ The installer has no Windows publisher certificate. SmartScreen may display **Wi
 GitHub Actions creates a signed build record, called an **artifact attestation**, for every downloadable package and the checksum list. With GitHub CLI installed and signed in, run the command for the file just downloaded, in the folder containing it.
 
 ~~~text
-gh attestation verify crumbwriter-3.0-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter-3.0-FreeBSD-14-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter_3.0-ubuntu26.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter_3.0-debian13_amd64.deb --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter_3.0-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
-gh attestation verify CrumbWriter-3.0-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
-gh attestation verify CrumbWriter-3.0-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter-3.1-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter-3.1-FreeBSD-14-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter-3.1.tgz --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter_3.1-ubuntu26.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter_3.1-debian13_amd64.deb --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter_3.1-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+gh attestation verify CrumbWriter-3.1-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
+gh attestation verify CrumbWriter-3.1-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
 ~~~
 
 A successful check identifies the repository, build workflow, and source revision that produced the downloaded bytes. Windows SmartScreen and Apple Gatekeeper make their own decisions when opening the program. [GitHub CLI verification guide](https://cli.github.com/manual/gh_attestation_verify)
 
-For a quick integrity check, download the checksum list for the same release and compare the 64 hexadecimal characters beside your filename with your local result. On FreeBSD, run `sha256 -q crumbwriter-3.0-FreeBSD-15-amd64.pkg`. On Ubuntu, run `sha256sum crumbwriter_3.0-ubuntu24.04_amd64.deb`. On macOS, run `shasum -a 256 CrumbWriter-3.0-macOS-Universal.dmg`. In Windows PowerShell, use `Get-FileHash .\CrumbWriter-3.0-Windows-x64-Setup.exe -Algorithm SHA256`. [Version 3.0 checksums](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.0/SHA256SUMS)
+For a quick integrity check, download the checksum list for the same release and compare the 64 hexadecimal characters beside your filename with your local result. On FreeBSD, run `sha256 -q crumbwriter-3.1-FreeBSD-15-amd64.pkg`. On Ubuntu, run `sha256sum crumbwriter_3.1-ubuntu24.04_amd64.deb`. On macOS, run `shasum -a 256 CrumbWriter-3.1-macOS-Universal.dmg`. In Windows PowerShell, use `Get-FileHash .\CrumbWriter-3.1-Windows-x64-Setup.exe -Algorithm SHA256`. [Version 3.1 checksums](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.1/SHA256SUMS)
 
 The repository uses GitHub’s **immutable releases**. When a release is published with this setting, GitHub locks the tag to its source commit and locks the attached files. The signed build record independently lets a reader verify the downloaded bytes. [GitHub’s immutable release guide](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
 
@@ -164,7 +185,7 @@ The repository uses GitHub’s **immutable releases**. When a release is publish
 For a source installation on FreeBSD 14.x or 15.x, install the dependencies as root.
 
 ~~~sh
-pkg install git pkgconf glib qt6-base hunspell en-hunspell en-mythes
+pkg install git pkgconf glib qt6-base hunspell en-hunspell en-mythes poppler-utils
 ~~~
 
 Get the source as your desktop account.
@@ -180,7 +201,7 @@ From that checkout, run the following command as root. It builds the application
 make install
 ~~~
 
-Open the desktop application launcher, type **Crumb Writer**, and press **Enter**. **Ctrl+O** opens a document with the cursor at the end. By default, the editor reopens the last document when you start it again. **F1** opens the searchable keyboard guide.
+Open the desktop application launcher, type **Crumb Writer**, and press **Enter**. **Ctrl+O** opens a document with the cursor at the end. By default, the editor restores your open windows and tabs at startup. **F1** opens the searchable keyboard guide.
 
 For a personal installation, run `make install PREFIX="$HOME/.local"` as your desktop account. That account’s graphical session needs `$HOME/.local/bin` on its `PATH` so the launcher can find the executable.
 
@@ -193,7 +214,33 @@ cd crumbwriter
 git pull --ff-only
 ~~~
 
-In the updated directory, repeat the original installation command and prefix. For a system installation, run `make install` as root. Reopen **Crumb Writer** from the application menu. **F10**, then **A**, opens About, which shows the installed version.
+In the updated directory, repeat the original installation command and prefix. For a system installation, run `make install` as root. Reopen **Crumb Writer** from the application menu. **Help → About Crumb Writer** opens About, which shows the installed version.
+
+## Build and run on OpenBSD
+
+The 8.0 amd64 package is built with the OpenBSD ports infrastructure. Install the base and X sets and use the **8.0 release** ports tree. The tree belongs in `/usr/ports`. With a fresh tree, run the following as root.
+
+~~~sh
+cd /tmp
+ftp -o ports.tar.gz https://cdn.openbsd.org/pub/OpenBSD/8.0/ports.tar.gz
+ftp -o SHA256.sig https://cdn.openbsd.org/pub/OpenBSD/8.0/SHA256.sig
+signify -C -p /etc/signify/openbsd-80-base.pub -x SHA256.sig ports.tar.gz
+tar -xzf ports.tar.gz -C /usr
+pkg_add git
+~~~
+
+Clone the matching release as your desktop account. From the checkout, run the remaining commands as root to install the port under `mystuff`, compile the editor and install the resulting package. The port fetches the versioned source archive, checks its digest and installs the spelling and thesaurus data.
+
+~~~sh
+git clone --branch v3.1 https://github.com/AlfredoLlaquet/crumbwriter.git
+cd crumbwriter
+mkdir -p /usr/ports/mystuff/editors/crumbwriter
+cp -R packaging/openbsd/port/. /usr/ports/mystuff/editors/crumbwriter/
+cd /usr/ports/mystuff/editors/crumbwriter
+make FETCH_PACKAGES= install
+~~~
+
+Run `crumbwriter --smoke-test` in your desktop session to check the installed editor, spelling, thesaurus and file handling. [OpenBSD ports guide](https://www.openbsd.org/faq/ports/ports.html)
 
 ## Build and run on Ubuntu
 
@@ -201,13 +248,21 @@ The release includes native Ubuntu 24.04 LTS, Ubuntu 26.04 LTS, and Debian 13 pa
 
 ~~~sh
 sudo apt update
-sudo apt install git build-essential pkgconf qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us mythes-en-us libxcb-cursor0
+sudo apt install git build-essential pkgconf qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev libarchive-dev poppler-utils hunspell-en-us mythes-en-us libxcb-cursor0
 git clone https://github.com/AlfredoLlaquet/crumbwriter.git
 cd crumbwriter
 sudo make install
 ~~~
 
 Open the desktop application menu, search for **Crumb Writer**, and press **Enter**. For a source update from 2.5.1 or earlier, first run `sudo apt install mythes-en-us`. For subsequent updates, close the application, run `git pull --ff-only` in the checkout, and run `sudo make install` again. On either platform, `make` as your desktop account can perform the compilation ahead of the system installation. Run `make check` in a graphical session for the parser, storage, and editor tests. [Unix package, desktop, and tiling checks](https://github.com/AlfredoLlaquet/crumbwriter/actions/workflows/check.yml)
+
+## Import and export
+
+**File → Import** opens a converted document in a new, editable, untitled tab. Use **Save As** to give that manuscript a name. The supported inputs are Word (DOCX), OpenDocument (ODT), Markdown, HTML, RTF, PDF with a text layer, and plain text. An image-only PDF needs OCR before import. Headings, paragraphs, lists and italics are converted where the source supplies them. Page artwork, complex page layouts and PDF reading order may need attention after conversion.
+
+For plain text, select an encoding and check the preview. Choose **Fixed-width text** for a file hard-wrapped at 80 columns or enter its actual line width. The importer joins wrapped prose while preserving blank lines and new list items.
+
+**File → Export** writes a separate copy. DOCX, ODT, HTML and PDF use the selected writing font, size, heading hierarchy and italics. The receiving device needs the selected font for editable formats. PDF export checks that the selected font allows embedding. For legacy text, choose a code page. If it cannot represent a character, the export stops before replacing the destination. **Fixed-width text** wraps at 80 columns and expands one space after a period to two. Ordinary **Save** keeps the native UTF-8 manuscript and companion files.
 
 ## Plain text file format
 
@@ -265,11 +320,13 @@ By dawn the water had learned the shape of the pier.
 
 One character is enough. When you leave the marker line, the editor repeats that character to match the visible length of the heading, including spaces. *The Night Clerk* takes 15 hyphens. Accents and emoji count as the characters you see. While you’re on the line, you can still type a hyphen, a space, and `Buy coffee` to make a list item, even if the editor saves in the meantime. A marker contains only repetitions of its own character. A period at the end of a sentence stays part of the sentence.
 
-Heading levels use different sizes and solid or dotted underlines. Extra space above a heading sets off a new section. The marker below it takes up only a sliver of space until you move the cursor onto its line to edit it at normal size. **F10 → View → Show manuscript markup** reveals all the markers and italic delimiters together. Each empty line in the body leaves one line of space. A paragraph surrounded by blank lines stays ordinary prose. A blank line you just opened at the end stays available for typing through an autosave.
+Use the toolbar’s **Style** list or **Format → Style** to change the current line. On line one, choose **Main Title** or **Regular Text**. On later lines, choose **Regular Text** or **Title 1** through **Title 4**. Press **Ctrl+Shift+K**, release it, then press **M**, **0**, or **1–4**, respectively. Choosing Regular Text on the first line also turns off automatic main-title detection for this document.
+
+In the normal writing view, headings use size, weight and spacing. **View → Show manuscript markup** (**Ctrl+Shift+F9**) reveals the marker rows, italic delimiters and the on-screen heading underlines. Once you leave a marker row, its repeated characters span the visible width of the heading, including in a proportional font. Link and spelling underlines keep their usual meanings. Each empty line in the body leaves one line of space. A paragraph surrounded by blank lines stays ordinary prose. A blank line you just opened at the end stays available for typing through an autosave.
 
 **Writing in italics.** Enclose a passage in guillemets, the angled quotation marks in `«the other moon»`. The words appear in italics. You can see the marks while the cursor is in the passage, and they disappear from view when you move away. **Ctrl+K** inserts the opening or closing mark. With text selected, it adds or removes the pair in one undo step. Each pair belongs to one paragraph. If you use guillemets for dialogue, open **Manuscript Settings** and select **Display guillemets literally**. The same dialog offers **Disable general title detection**, which lets the first paragraph remain ordinary prose unless you give it a heading marker. Both choices travel with the document in `Harbor.txt.config`.
 
-**Writing lists.** Start a new paragraph after `1. Buy coffee` and it begins with `2. `. Bullets, lettered lists, Roman numerals, and multilevel lists such as `1.9.` → `1.10.` continue the same way. Press **Enter** on an empty item to end the list, or **Backspace** immediately after creating it to remove the suggested prefix. You can edit any prefix. An ordinary sentence beginning with *I* stays prose. Use **Continue list** (**Ctrl+Shift+Enter**) when you mean to start a list and the first item could be read either way. Existing numbering stays as written when you open a file or paste a list.
+**Writing lists.** Start a new paragraph after `1. Buy coffee` and it begins with `2. `. Bullets, lettered lists, Roman numerals, and multilevel lists such as `1.9.` → `1.10.` continue the same way. Press **Enter** on an empty item to end the list, or **Backspace** immediately after creating it to remove the suggested prefix. You can edit any prefix. An ordinary sentence beginning with *I* stays prose. Use **Continue list** (**Ctrl+Shift+Enter**) when you mean to start a list and the first item could be read either way. If you type the proposed marker yourself or paste an item that already begins with a marker, the line gets one prefix. Pasting an explicitly numbered item keeps its supplied number.
 
 **Finding your place.** **Ctrl+Up** and **Ctrl+Down** move between file lines. **Tab** and **Shift+Tab** jump between headings. **Ctrl+Shift+4** focuses **Titles**. Type part of a title and press **Enter** to go there. **Shift+F7** switches between document order and alphabetical order. Document order shows the headings as a tree. Alphabetical order shows a flat index with parent headings for context. The outline follows the section you’re writing. Choosing the general title brings it to the top of the writing area. **End of document** is the last entry in either order and takes you to the end of the last paragraph. **Ctrl+Shift+3** searches the full text of visited paragraphs, which appear under their opening words. The right panel shows the day’s net word count. Deleting 150 more words than you add shows −150.
 
@@ -305,11 +362,13 @@ Generic mode uses the same rules for spaces, em dashes, and slashes surrounded b
 
 ## Working with several documents
 
-**Ctrl+O** opens a document in a tab. If it’s already open, you return to its tab, even in another window. Switch tabs with **Ctrl+Tab** and **Ctrl+Shift+Tab**. The panels follow the active document. Each tab keeps its own undo history, search, bookmarks, dictionary, selection, and scroll position. **Ctrl+T** opens a blank tab, and **Ctrl+Shift+N** opens another window. To put a document on a second monitor, use **F10 → Tabs → Move tab to new window**. Its editing history goes with it.
+**Ctrl+O** opens a document in a tab. If it’s already open, you return to its tab, even in another window. Switch tabs with **Ctrl+Tab** and **Ctrl+Shift+Tab**. The panels follow the active document. Each tab keeps its own undo history, search, bookmarks, dictionary, selection, and scroll position. The **+** beside the tabs, a double-click on empty tab-bar space, or **Ctrl+T** opens a blank tab, and **Ctrl+Shift+N** opens another window. To put a document on a second monitor, use **Window → Move tab to new window**. Its editing history goes with it.
 
-**Ctrl+F4** closes a tab. **Ctrl+Shift+T** reopens the most recently closed saved document where you left it. **Alt+W** closes the window. If any documents still have changes waiting to be saved, the editor identifies them before closing. In the writing area, **Ctrl+W** deletes a word and **Ctrl+N** appends a crumb or paragraph.
+By default the next launch restores the windows, tab order, selected tab, caret and scroll positions, including retained untitled drafts. **Settings → Restore open windows and tabs at startup** controls this behavior. A missing file is reported while the remaining tabs reopen. **Ctrl+F4** closes a tab. **Ctrl+Shift+T** reopens the most recently closed saved document where you left it. **Alt+W** closes the window. If any documents still have changes waiting to be saved, the editor identifies them before closing. In the writing area, **Ctrl+W** deletes a word and **Ctrl+N** appends a crumb or paragraph.
 
 ## Writing and navigation
+
+When inserting between two words, you can temporarily leave extra spaces around the caret. The editor tidies the gap once you finish editing it. In `first—second`, **Ctrl+Right** and **Ctrl+Left** stop on each side of the em dash.
 
 On a Mac, **Ctrl** means the physical **Control** key and **Alt** means **Option**. The usual **Command** shortcuts also work for New Window, Open, Save, Save As, Find, Select All, Cut, Copy, Paste, Undo, and Redo. **Command+,** opens Settings, **Command+W** closes the current window, and **Command+Q** quits the editor through its normal save confirmation. **Control+Shift+Space** starts movement selection when **Control+Space** switches input sources. **Control+Shift+B** opens Bookmarks, and **Control+Shift+W** toggles Wrap in Find, leaving Option available for typing special characters. On keyboards whose top row controls media, hold **Fn** for function keys such as **F1**.
 
@@ -354,12 +413,12 @@ On a Mac, **Ctrl** means the physical **Control** key and **Alt** means **Option
 | Ctrl+S / Ctrl+Shift+S | Save / Save As |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo a run of typing, Backspaces, or forward Deletes |
 | Ctrl+Shift+N / Alt+W | Open a new window / close the current window from the writing area |
-| Ctrl+, / F10 / F1 | Settings / document menu / searchable keyboard reference |
-| F10, then A | About Crumb Writer. Enter opens the repository link. Alt+L opens the license offline |
+| Ctrl+, / F10 / F1 | Settings / File menu / searchable keyboard reference |
+| Ctrl+. | Choose a spelling correction for the word at the caret |
 
-Press **Ctrl+,** and choose **Appearance** to follow the desktop or select **Light** or **Dark**. The choice applies to the toolbar, search fields, lists, menus, and editor dialogs. The three-line button beside **Find** opens the document menu (**F10**). The same symbol beside **Characters** and **Recurring** opens actions for that list. A focused menu button opens with **Space**, **Enter**, or **Down**. **Escape** closes the menu.
+Press **Ctrl+,** and choose **Appearance** to follow the desktop or select **Light** or **Dark**. The choice applies to the toolbar, search fields, lists, menus, and editor dialogs. The menu bar groups commands under **File**, **Edit**, **View**, **Format**, **Navigate**, **Tools**, **Window** and **Help**. **F10** opens File. Beside **Find**, **Font** selects an installed family and the adjacent number sets its size. A new installation uses 14-point Georgia on Windows, Charter on macOS and Noto Serif on BSD and Linux, with a system serif fallback. Existing font preferences take precedence. **Help → Crumb Writer Help** opens this guide offline. The three-line buttons beside **Characters** and **Recurring** open their list actions. A focused menu button opens with **Space**, **Enter**, or **Down**. **Escape** closes the menu.
 
-A faint tint of your desktop accent color follows the current crumb or paragraph across all its wrapped lines. When another window becomes active, the writing area turns a softer gray. You can use the panels or search field and keep the active writing colors. Change the writing font and size in **Settings**. The middle of the status bar links to **Read Alfredo Llaquet-Alsina’s Crumbs at TheCrumbs.org**. In a narrow window or during a movement command, the writing status takes that space. You can also reach the site through **F10 → Open TheCrumbs.org**.
+A faint tint of your desktop accent color follows the current crumb or paragraph across all its wrapped lines. When another window becomes active, the writing area turns a softer gray. You can use the panels or search field and keep the active writing colors. Change the writing font and size in **Settings**. The middle of the status bar links to **Read Alfredo Llaquet-Alsina’s Crumbs at TheCrumbs.org**. In a narrow window or during a movement command, the writing status takes that space. You can also reach the site through **Help → Open TheCrumbs.org**.
 
 Smart punctuation writes curly quotes and apostrophes, em dashes, and ellipses into the file as you type. Pasting turns tabs and repeated spaces into single spaces and trims trailing spaces in one undo step. When you backspace over the last word of a line, the space before it stays at the cursor so you can type a replacement, even through an autosave. The saved file omits trailing spaces.
 
@@ -420,6 +479,8 @@ Search starts case-insensitive, with wrap enabled. Regular expressions prefer th
 
 ## Characters, Recurring, and spelling
 
+**View → Characters** shows or hides the Characters list. Its initial state is hidden in Generic mode and shown in Crumb mode. Each mode remembers its own choice. Right-click a sidebar entry to act on that entry. Character and recurring entries offer editing, deletion, finding all occurrences and insertion at the writing caret. Titles, genres and visit history offer the operations that apply to those entries.
+
 Use **Ctrl+Shift+1** for **Search Characters** or **Ctrl+Shift+2** for **Search Recurring**. Type part of any name in an entry. The first match is highlighted, and all entries stay visible. **Up** and **Down** move between matches. From the search field or the list, **Enter** finds passages containing any of the entry’s names. **Ctrl+Enter** inserts its first name where you were writing. Either action clears the search field. **Escape** returns you to the writing area.
 
 Press **Insert** to add an entry. If you’ve selected text in the document, it appears in the new entry, selected so you can edit or replace it. Otherwise the field opens blank. **Enter** saves the entry, **F2** edits an existing one, and **Delete** removes it after confirmation.
@@ -438,7 +499,7 @@ Put the cursor on or immediately after a name. **F6** finds the previous mention
 
 Names match regardless of capitalization or the use of curly or straight apostrophes. A longer name covers a shorter name inside the same mention. If you’ve listed both `Inspector Goose` and `Goose`, “Inspector Goose saluted a goose” has two matches. The results, underlines, and navigation all follow this rule. Each result shows the matched text in bold in its surrounding passage. In Crumb mode you can follow or find a genre such as *Night Audit* anywhere it appears. Genres use the underline setting for **Recurring** and stay out of autocomplete.
 
-American English spell check is on by default. In Generic mode it checks all ordinary prose, even a line that looks like a numbered crumb header. Press **F8** to review a possible mistake. Choose a suggestion, replace one or all occurrences, ignore the word once or throughout the document, or add it to the dictionary. **Ctrl+Shift+D** opens **Manuscript Dictionary** for the current document. Its `.dictionary` companion file holds one word per line, and capitalization doesn’t affect matching.
+American English spell check uses the Hunspell en_US dictionary and is on by default. Press **Ctrl+.** on a misspelled word, select a suggestion with the arrow keys and press **Enter** to replace that occurrence, or **Escape** to leave it alone. In Generic mode it checks all ordinary prose, even a line that looks like a numbered crumb header. Press **F8** to review a possible mistake. Choose a suggestion, replace one or all occurrences, ignore the word once or throughout the document, or add it to the dictionary. **Ctrl+Shift+D** opens **Manuscript Dictionary** for the current document. Its `.dictionary` companion file holds one word per line, and capitalization doesn’t affect matching.
 
 Spell check accepts complete names in **Characters** and **Recurring**, as well as complete genre names in Crumb mode. To recognize a shorter name on its own, add it as another name in the entry. Straight and curly apostrophes both work in contractions such as `I’m`. Adding `Hedberg` also accepts `Hedberg’s` and `Hedberg's`. Web addresses are skipped. Use **Ctrl+,** to open Settings and switch spell check on or off.
 
@@ -450,13 +511,13 @@ Double-click or press **Ctrl+2** to select a word. In `notwithstanding—not`, e
 
 Press **F7** to look up the selection or the word at the cursor in the offline English thesaurus. Scroll through the alternatives by meaning, choose one with the arrow keys, and press **Enter** to replace the original wording in one undo step. **Ctrl+C** copies the alternative, **Ctrl+L** looks up another word, and **Escape** closes the window. For a word such as `doctor`, choose the meaning you intend before picking an alternative.
 
-For Merriam-Webster in your browser, select a phrase or put the cursor on a word. Press **Ctrl+Shift+L**, release the keys, then press **D** for the dictionary, **S** for the entry’s synonyms section, or **T** for the thesaurus. **Escape** cancels the lookup. You can also choose the destination under **F10 → Edit → Look Up in Merriam-Webster**. Only these web lookups send the word or phrase to the website.
+For Merriam-Webster in your browser, select a phrase or put the cursor on a word. Press **Ctrl+Shift+L**, release the keys, then press **D** for the dictionary, **S** for the entry’s synonyms section, or **T** for the thesaurus. **Escape** cancels the lookup. You can also choose the destination under **Tools → Look Up in Merriam-Webster**. Only these web lookups send the word or phrase to the website.
 
 ## Statistics and daily count
 
 **Ctrl+Shift+I** opens **Manuscript Statistics**. It shows the number of crumbs or nonblank paragraphs, the total word count, and the average words per crumb or paragraph to two decimal places. **Ctrl+C** copies all three figures with their labels and your usual thousands separators.
 
-In Crumb mode the daily counter tracks how many of today’s new crumbs remain. In Generic mode it shows the net change in words. Crumb Writer remembers each document’s counts on this computer between sessions. A new local date starts a new count. To set a starting figure, open **F10 → Set Today’s Count**, enter the value, and press **Enter**. **Reset to Zero** fills in zero for you to confirm. Generic mode accepts negative numbers. Further edits, including Undo, count from the figure you set.
+In Crumb mode the daily counter tracks how many of today’s new crumbs remain. In Generic mode it shows the net change in words. Crumb Writer remembers each document’s counts on this computer between sessions. A new local date starts a new count. To set a starting figure, open **Tools → Set Today’s Count**, enter the value, and press **Enter**. **Reset to Zero** fills in zero for you to confirm. Generic mode accepts negative numbers. Further edits, including Undo, count from the figure you set.
 
 ## Bookmarks and saves
 
@@ -466,6 +527,10 @@ For `Harbor.txt`, bookmarks live in `Harbor.txt.bookmarks` in the same folder. O
 
 **Compare with Startup Backup** opens a read-only view of the paragraphs that have changed since this file was opened. The backup appears on the left and your current text on the right. Use **F3** and **Shift+F3** to move through changes, **F5** to compare again after editing, or **Escape** to close the comparison.
 
-By default, Crumb Writer makes a dated backup beside the document before you start editing and saves in the background while you write. Closing with changes waiting to be saved offers **Save and Close**, **Discard Unsaved Changes**, and **Keep Editing**. **Save and Close** waits until your latest edit reaches disk. If saving fails, the window stays open.
+By default, Crumb Writer makes a dated backup beside the document before you start editing and saves in the background while you write. When closing with unsaved changes, choose **Save and Close**, **Discard Unsaved Changes**, or **Keep Editing**. With session restoration enabled, **Save and Restore Tabs** also keeps untitled work for your next launch. **Save and Close** waits until your latest edit reaches disk. If saving fails, the window stays open.
 
 [CrumbWriter.txt](CrumbWriter.txt) documents the file format, counting rules, keyboard controls, backup and recovery behavior, code structure, and maintenance checks.
+
+## Licenses and credits
+
+**Help → Licenses** opens the project license, artwork and data notices, and the component inventory offline. The OpenBSD package includes original notices for its bundled word data. Windows and macOS also carry the notices for the libraries and tools they distribute. Their matching source archives and build recipes accompany the installers. [Third-party notices](NOTICE.md) · [Release downloads](https://github.com/AlfredoLlaquet/crumbwriter/releases)

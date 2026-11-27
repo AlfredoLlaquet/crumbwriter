@@ -37,25 +37,38 @@ void ManuscriptEditor::trackSeparator(const QTextCursor &cursor)
 {
     model_->confirmMarkerOutside(cursor.blockNumber());
     pendingSpace_ = {};
-    if (!cursor.hasSelection() && cursor.atBlockEnd() && cursor.positionInBlock() > 0 &&
+    if (!cursor.hasSelection() && cursor.positionInBlock() > 0 &&
         document()->characterAt(cursor.position() - 1) == u' ') {
         pendingSpace_ = cursor;
         pendingSpace_.setKeepPositionOnInsert(true);
     }
 }
 
+bool ManuscriptEditor::insidePendingSpaces(int position) const
+{
+    if (pendingSpace_.isNull()) return false;
+    int i = pendingSpace_.position();
+    while (i > position && document()->characterAt(i - 1) == u' ') --i;
+    while (i < position && document()->characterAt(i) == u' ') ++i;
+    return i == position;
+}
+
 void ManuscriptEditor::trimPending(bool joinPrevious)
 {
-    if (pendingSpace_.isNull())
-        return;
+    if (pendingSpace_.isNull()) return;
     auto p = pendingSpace_;
     pendingSpace_ = {};
-    if (!p.atBlockEnd() || !p.positionInBlock() || document()->characterAt(p.position()-1) != u' ')
-        return;
+    int left = p.position(), right = left;
+    while (left > 0 && document()->characterAt(left - 1) == u' ') --left;
+    while (document()->characterAt(right) == u' ') ++right;
+    p.setPosition(right);
+    const int keep = p.atBlockEnd() ? 0 : 1;
+    if (right - left <= keep) return;
+    p.setPosition(left + keep, QTextCursor::KeepAnchor);
     QScopedValueRollback<bool> guard(editing_, true);
     if (joinPrevious)
         p.joinPreviousEditBlock();
-    p.deletePreviousChar();
+    p.removeSelectedText();
     if (joinPrevious)
         p.endEditBlock();
 }
@@ -69,7 +82,24 @@ bool ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
     QString text = normalizeInsertion(input, kind == Input::Typed || !atEnd);
     const bool leftSpace = first > 0 && horizontal(document()->characterAt(first - 1));
 
-    if (leftSpace) {
+    const bool editingGap = !atEnd && (kind == Input::Erase ||
+        (kind == Input::Typed && !input.isEmpty() && input.trimmed().isEmpty() &&
+         !input.contains(u'\n') && !input.contains(u'\r')));
+    if (editingGap && kind == Input::Typed) {
+        text = input;
+        text.replace(u'\t', u' ');
+    }
+    if (kind == Input::Typed && !text.isEmpty() && !text.front().isSpace()) {
+        while (first > 1 && horizontal(document()->characterAt(first - 1)) &&
+               horizontal(document()->characterAt(first - 2))) --first;
+        while (horizontal(document()->characterAt(end)) && horizontal(document()->characterAt(end + 1))) ++end;
+        // Remove the extra left separators while retaining one before the insertion.
+        if (first < cursor.selectionStart()) {
+            cursor.setPosition(first);
+            cursor.setPosition(end, QTextCursor::KeepAnchor);
+        }
+    }
+    if (leftSpace && !editingGap) {
         if (text.startsWith(u' '))
             text.remove(0, 1);
         // Typing and erasing can expose a separator at the active caret.
@@ -80,7 +110,7 @@ bool ManuscriptEditor::replaceAt(QTextCursor &cursor, const QString &input, Inpu
     }
     // At most one horizontal separator exists on either side of an already
     // normalized selection. Include just the overlapping byte-sized space.
-    if (horizontal(right) && (text.endsWith(u' ') || (text.isEmpty() && leftSpace)))
+    if (!editingGap && horizontal(right) && (text.endsWith(u' ') || (text.isEmpty() && leftSpace)))
         ++end;
     cursor.setPosition(first);
     cursor.setPosition(end, QTextCursor::KeepAnchor);
@@ -244,6 +274,8 @@ void ManuscriptEditor::typeText(const QString &text, int replaceStart, int repla
     // A discarded duplicate space creates no undo command to join later.
     const bool continued = !replaceStart && !replaceLength && typeListItem(c, text);
     const bool changed = continued || replaceAt(c, text, Input::Typed);
+    if (changed && model_->isGeneric() && run == EditRun::Typing)
+        GenericList::resolveTypedPrefix(c);
     if (changed) editRun_ = run;
     else if (editRun_ != run) editRun_ = EditRun::None;
     recordEditForHash(c, text);
@@ -270,6 +302,8 @@ void ManuscriptEditor::insertSelection(const QString &text, Input kind)
         ManuscriptText::insert(c, QString(count, u'\n'));
     }
     const QString removed = removedSelection(c);
+    if (kind == Input::Paste && model_->isGeneric())
+        GenericList::replaceGeneratedPrefixForPaste(c, text);
     replaceAt(c, text, kind);
     c.endEditBlock();
     setTextCursor(c);
@@ -351,10 +385,10 @@ void ManuscriptEditor::deleteWord()
         if (c.atBlockEnd() && !c.atBlockStart()) c.movePosition(QTextCursor::PreviousCharacter);
         c = WordSelection::atCharacter(c);
     }
-    eraseSelection(c);
+    eraseSelection(c, EditRun::None, true);
 }
 
-void ManuscriptEditor::eraseSelection(QTextCursor c, EditRun run)
+void ManuscriptEditor::eraseSelection(QTextCursor c, EditRun run, bool wholeWord)
 {
     if (isReadOnly() || !c.hasSelection()) {
         if (run != editRun_) editRun_ = EditRun::None;
@@ -365,7 +399,7 @@ void ManuscriptEditor::eraseSelection(QTextCursor c, EditRun run)
     clearAlignment();
     beginInputBlock(c, run);
     const QString removed = run == EditRun::None ? removedSelection(c) : QString();
-    replaceAt(c, {}, Input::Erase);
+    replaceAt(c, {}, wholeWord ? Input::WholeWord : Input::Erase);
     c.endEditBlock();
     setTextCursor(c);
     trackSeparator(c);

@@ -9,5 +9,7 @@ namespace GenericList {
 // also permits a lone bare letter or Roman numeral.
 QString nextPrefix(const QTextBlock &item, bool explicitRequest = false);
 void insertPrefix(QTextCursor &cursor, const QString &prefix);
+void resolveTypedPrefix(QTextCursor &cursor);
+void replaceGeneratedPrefixForPaste(QTextCursor &cursor, const QString &text);
 bool selectEmptyGeneratedPrefix(QTextCursor &cursor);
 }

@@ -3,6 +3,8 @@
 
 #include "preferences.h"
 #include <QLocalServer>
+#include <QJsonObject>
+#include <QTimer>
 #include <QLockFile>
 #include <QObject>
 #include <QPointer>
@@ -20,10 +22,14 @@ private:
     MainWindow *newWindow();
     MainWindow *preferredWindow() const;
     void acceptRequests();
+    void saveWorkspace(MainWindow *closing = nullptr);
+    void closeNextWindow();
     Preferences preferences_;
     QList<QPointer<MainWindow>> windows_;
     QPointer<MainWindow> lastActive_;
-    bool recovered_ = false;
+    bool recovered_ = false, restoring_ = false, quitting_ = false;
+    QTimer checkpoint_;
+    QList<QJsonObject> closedDuringQuit_;
     QLocalServer server_;
     std::unique_ptr<QLockFile> instanceLock_;
 };

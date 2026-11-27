@@ -632,9 +632,7 @@ void GuiAudit::checkMainControls(MainWindow &window)
     int actionCount = 0;
     for (auto *action : bar->actions()) {
         auto *button = qobject_cast<QToolButton *>(bar->widgetForAction(action));
-        // Its QWidgetAction has a title for the toolbar overflow menu, while
-        // the main surface deliberately shows only the three-stroke icon.
-        if (!button || button->objectName() == "documentMenuButton" || action->text().isEmpty()) continue;
+        if (!button || action->text().isEmpty()) continue;
         ++actionCount;
         const QString label = "toolbar/" + action->text();
         require(button->isVisible() && button->isEnabled(), label + " is visible and enabled");
@@ -647,7 +645,7 @@ void GuiAudit::checkMainControls(MainWindow &window)
     }
     require(actionCount == 4, "All four labeled toolbar actions were measured");
 
-    for (const auto *name : {"documentMenuButton", "charactersMenu", "recurringMenu"}) {
+    for (const auto *name : {"charactersMenu", "recurringMenu"}) {
         auto *button = window.findChild<QToolButton *>(name);
         require(button && button->isVisible() && button->menu(), QString("Visible menu button: ") + name);
         if (!button) continue;

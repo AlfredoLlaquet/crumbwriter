@@ -13,9 +13,16 @@
   </qresource>
   <qresource prefix="/bsd-first">
     <file alias="badge.png">bsd-first-about.png</file>
+    <file alias="badge-dark.png">bsd-first-about-dark.png</file>
     <file alias="CC0">bsd-first-LICENSE</file>
   </qresource>
   <qresource prefix="/license">
     <file alias="LICENSE">../LICENSE</file>
+    <file alias="MyThes.txt">../third_party/mythes/COPYING</file>
+    <file alias="NOTICE.md">../NOTICE.md</file>
+    <file alias="Unicode.txt">unicode-LICENSE.txt</file>
+  </qresource>
+  <qresource prefix="/help">
+    <file alias="README.md">../README.md</file>
   </qresource>
 </RCC>

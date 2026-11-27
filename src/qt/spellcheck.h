@@ -16,6 +16,7 @@ public:
     ~SpellCheck() override;
     void setEnabled(bool enabled);
     void setAliases(const QStringList &aliases);
+    void correctAtCaret();
     void next(bool backward = false);
     void showDictionary();
     bool openManuscript(const QString &path, QString *error = nullptr);

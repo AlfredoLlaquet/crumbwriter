@@ -11,6 +11,9 @@ permissions:
   contents: read
 
 jobs:
+  openbsd:
+    uses: ./.github/workflows/openbsd.yml
+
   freebsd:
     name: Build and test on FreeBSD ${{ matrix.release }}
     runs-on: ubuntu-24.04
@@ -32,7 +35,7 @@ jobs:
           release: ${{ matrix.release }}
           copyback: false
           prepare: |
-            pkg install -y qt6-base qt6-wayland glib pkgconf hunspell en-hunspell en-mythes python3 xorg-vfbserver dejavu
+            pkg install -y qt6-base qt6-wayland glib pkgconf hunspell en-hunspell en-mythes poppler-utils python3 xorg-vfbserver dejavu
           run: |
             set -eu
             make -j2 crumbwriter tests/qt/test-gui-audit
@@ -147,7 +150,7 @@ jobs:
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us mythes-en-us dpkg-dev \
+          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev libarchive-dev poppler-utils hunspell-en-us mythes-en-us dpkg-dev \
             libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon openbox x11-utils
       - name: Build
         id: build
@@ -210,7 +213,7 @@ jobs:
             -v "$RUNNER_TEMP/packages:/packages" "$IMAGE" sh -ec '
               apt-get update
               apt-get install -y --no-install-recommends build-essential pkgconf qt6-base-dev \
-                libglib2.0-dev libhunspell-dev dpkg-dev python3
+                libglib2.0-dev libhunspell-dev libarchive-dev poppler-utils dpkg-dev python3
               cp -a /source /build
               cd /build
               make -j2
@@ -245,7 +248,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             git ca-certificates build-essential pkgconf npm qt6-base-dev qt6-qpa-plugins libglib2.0-dev \
-            libhunspell-dev hunspell-en-us mythes-en-us libxcb-cursor0 \
+            libhunspell-dev libarchive-dev poppler-utils hunspell-en-us mythes-en-us libxcb-cursor0 \
             kwin-x11 plasma-workspace dbus-x11 xvfb xauth x11-utils xterm xdotool xclip \
             shared-mime-info xfonts-base fonts-dejavu-core python3 libx11-dev
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

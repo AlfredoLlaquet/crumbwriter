@@ -17,6 +17,21 @@
 #include <QVBoxLayout>
 
 namespace {
+class BadgeButton final : public QPushButton {
+public:
+    explicit BadgeButton(QWidget *parent) : QPushButton(parent) { refresh(); }
+protected:
+    void changeEvent(QEvent *event) override {
+        QPushButton::changeEvent(event);
+        if (event->type() == QEvent::PaletteChange) refresh();
+    }
+private:
+    void refresh() {
+        setIcon(QIcon(palette().window().color().lightness() < 128 ?
+                      QStringLiteral(":/bsd-first/badge-dark.png") : QStringLiteral(":/bsd-first/badge.png")));
+    }
+};
+
 class RepositoryLink final : public QLabel {
 public:
     explicit RepositoryLink(QWidget *parent) : QLabel(parent) { updateLink(); }
@@ -90,12 +105,11 @@ void MainWindow::showAbout()
         auto *heading = new QHBoxLayout;
         heading->addWidget(title);
         heading->addStretch();
-        auto *badge = new QPushButton(dialog);
+        auto *badge = new BadgeButton(dialog);
         badge->setObjectName("bsdFirstBadge");
         badge->setAccessibleName(tr("BSD first — open the badge project"));
         badge->setToolTip(tr("BSD first — open the badge project (Alt+B)"));
         badge->setShortcut(QKeySequence(QStringLiteral("Alt+B")));
-        badge->setIcon(QIcon(QStringLiteral(":/bsd-first/badge.png")));
         badge->setIconSize(QSize(72, 72));
         badge->setFlat(true);
         badge->setAutoDefault(false);
@@ -104,7 +118,10 @@ void MainWindow::showAbout()
         });
         heading->addWidget(badge);
         layout->addLayout(heading);
-        layout->addWidget(new QLabel(tr("Programmed by ChatGPT for Alfredo Llaquet-Alsina."), dialog));
+        auto *statement = new QLabel(tr("This application was built and tested on BSD first to make it run well on as many operating systems as possible."), dialog);
+        statement->setWordWrap(true);
+        layout->addWidget(statement);
+        layout->addWidget(new QLabel(tr("Created and directed by <b>Alfredo Llaquet-Alsina</b>. Implemented by <b>ChatGPT</b>."), dialog));
         layout->addWidget(new QLabel(tr("Qt %1").arg(qVersion()), dialog));
         auto *notice = new QLabel(tr("The Unlicense dedicates Crumb Writer’s original code to the "
                                      "public domain. The editor is provided “as is,” without "

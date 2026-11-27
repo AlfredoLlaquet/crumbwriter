@@ -2,6 +2,7 @@
 #include "backupcomparison.h"
 #include "documentstore.h"
 #include "guillemetmarkup.h"
+#include "genericparagraph.h"
 #include <QTextBlock>
 #include "manuscripteditor.h"
 
@@ -97,6 +98,45 @@ bool ManuscriptOptions::copyToDraft(const QString &draft, QString *error)
     if (recoveryConfig_.manuscriptPath() != draft && !recoveryConfig_.openManuscript(draft, error))
         return false;
     return recoveryConfig_.bytes() == config_.bytes() || recoveryConfig_.write(config_.bytes(), error);
+}
+
+// -1 is the main title, 0 ordinary prose, and 1–4 section headings.
+bool ManuscriptOptions::setLineStyle(int style, QString *error)
+{
+    auto &model = editor_->model();
+    if (!model.isGeneric() || editor_->isReadOnly()) return false;
+    auto caret = editor_->textCursor();
+    auto block = caret.block();
+    if (model.paragraphRole(block.blockNumber()) == ParagraphRole::TitleMarker) block = block.previous();
+    const bool first = block.blockNumber() == 0;
+    if (style < -1 || style > 4 || (first && style > 0) || (!first && style == -1) ||
+        (style && !GenericParagraph::canHaveMarker(block.text()))) return false;
+    if (first) {
+        const auto updated = setFlag(config_.bytes(), disableTitleKey, style == 0);
+        if (updated != config_.bytes() && !config_.write(updated, error)) return false;
+        apply();
+    }
+    const auto next = block.next();
+    const bool marker = next.isValid() && GenericParagraph::markerLevel(next.text());
+    QTextCursor edit(block);
+    edit.movePosition(QTextCursor::EndOfBlock);
+    edit.beginEditBlock();
+    if (marker) {
+        edit.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
+        edit.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        edit.removeSelectedText();
+    }
+    if (style) {
+        edit.insertBlock();
+        const QChar mark = QStringLiteral("=-~.").at(qMax(1, style) - 1);
+        edit.insertText(QString(GenericParagraph::markerLength(block.text(), editor_->literalGuillemets()), mark));
+    }
+    edit.endEditBlock();
+    model.confirmMarkerOutside(-1);
+    if (caret.block() != block) caret = QTextCursor(block);
+    editor_->setTextCursor(caret);
+    if (onChanged) onChanged();
+    return true;
 }
 
 void ManuscriptOptions::showSettings()

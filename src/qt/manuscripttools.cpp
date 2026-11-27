@@ -79,6 +79,7 @@ bool ManuscriptSession::updateCompanions(CompanionAction action, const QString &
         bool ok = true;
         switch (action) {
         case CompanionAction::Open:   ok = companion->openManuscript(manuscript, &error); break;
+        case CompanionAction::Draft:
         case CompanionAction::SaveAs: ok = companion->saveAs(manuscript, &error); break;
         case CompanionAction::Flush:
             if (companion->hasPending()) ok = companion->flush(&error);
@@ -109,6 +110,7 @@ bool ManuscriptSession::updateCompanions(CompanionAction action, const QString &
 
 void MainWindow::focusSynonyms(bool recurring)
 {
+    if (!recurring && !charactersAction_->isChecked()) charactersAction_->trigger();
     showPanel(leftPane_, true, synonymWidth_);
     if (recurring) active_->synonyms_->focusRecurring();
     else active_->synonyms_->focusCharacters();

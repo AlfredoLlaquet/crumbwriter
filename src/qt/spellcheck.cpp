@@ -472,6 +472,38 @@ void SpellCheck::setAliases(const QStringList &aliases)
     d->exceptionsChanged();
 }
 
+void SpellCheck::correctAtCaret()
+{
+    if (!d->enabled || !d->editor) return;
+    if (!SpellWords::available()) {
+        if (onNotice) onNotice(SpellWords::loading() ? tr("Loading the spelling dictionary…") : missingDictionary);
+        return;
+    }
+    const auto hit = d->issueAt(d->editor->textCursor().position());
+    if (!hit) return;
+    const auto word = d->mark(*hit);
+    const auto suggestions = SpellWords::suggestions(word.text);
+    if (suggestions.isEmpty()) {
+        if (onNotice) onNotice(tr("No spelling suggestions for %1.").arg(word.text));
+        return;
+    }
+    auto *menu = new QMenu(d->editor);
+    menu->setAttribute(Qt::WA_DeleteOnClose);
+    menu->setObjectName("caretCorrections");
+    menu->setAccessibleName(tr("Spelling suggestions"));
+    for (const auto &value : suggestions) {
+        auto *action = menu->addAction(QString(value).replace(u'&', QStringLiteral("&&")));
+        connect(action, &QAction::triggered, this, [this, word, value] {
+            if (!word.valid()) return;
+            d->current = word;
+            d->act(SpellAction::Replace, value);
+            d->editor->setFocus();
+        });
+    }
+    menu->popup(d->editor->viewport()->mapToGlobal(d->editor->cursorRect().bottomLeft()));
+    menu->setActiveAction(menu->actions().first());
+}
+
 void SpellCheck::next(bool backward) { d->startNavigation(backward); }
 
 void SpellCheck::showDictionary()

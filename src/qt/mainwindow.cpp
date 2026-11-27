@@ -79,11 +79,22 @@ MainWindow::MainWindow(Preferences &preferences, QWidget *parent)
     tabs_->setAccessibleName(tr("Manuscript"));
     tabs_->setDocumentMode(true);
     tabs_->setMovable(true);
+    connect(tabs_->tabBar(), &QTabBar::tabMoved, this, [this] { if (workspaceChanged) workspaceChanged(false); });
     tabs_->setTabsClosable(true);
     tabs_->tabBar()->setObjectName("manuscriptTabs");
     tabs_->tabBar()->setAccessibleName(tr("Open manuscripts"));
     tabs_->tabBar()->setExpanding(false);
     tabs_->setElideMode(Qt::ElideMiddle);
+    auto *addTab = new QToolButton(tabs_);
+    addTab->setObjectName("addTab");
+    addTab->setText("+");
+    addTab->setAccessibleName(tr("New blank tab"));
+    addTab->setToolTip(tr("New blank tab (Ctrl+T)"));
+    tabs_->setCornerWidget(addTab);
+    connect(addTab, &QToolButton::clicked, this, &MainWindow::newTab);
+    connect(tabs_->tabBar(), &QTabBar::tabBarDoubleClicked, this, [this](int index) {
+        if (index < 0) newTab();
+    });
     connect(tabs_->tabBar(), &QTabBar::tabBarClicked, this, [this](int index) {
         if (auto *page = tabs_->widget(index)) page->setFocus(Qt::MouseFocusReason);
     });
@@ -198,7 +209,7 @@ void MainWindow::applyPreferences()
 {
     const QPalette palette = prefs_.applyControlTheme();
     for (auto *session : sessions_) session->applyPreferences(palette);
-    if (active_) updateFooter();
+    if (active_) { updateModeControls(); updateFooter(); }
 }
 
 void MainWindow::changeEvent(QEvent *e)

@@ -1,4 +1,5 @@
 #include "navigation.h"
+#include <QMenu>
 #include "crumbtitlelabel.h"
 #include "guillemetmarkup.h"
 #include "layoutcolumns.h"
@@ -232,7 +233,7 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
             search->activateRow = [this](bool alternate) { return openGenreOrTitle(alternate); };
             genreMentions_ = new QAction(tr("Find all genre occurrences\tCtrl+Enter"), tree);
             tree->addAction(genreMentions_);
-            tree->setContextMenuPolicy(Qt::ActionsContextMenu);
+
             connect(genreMentions_, &QAction::triggered, search, [search] { search->activateCurrent(true); });
             setTabOrder(genreOrder_, search);
         } else {
@@ -242,6 +243,19 @@ NavigationPanel::NavigationPanel(ManuscriptEditor *editor, QSettings *settings, 
             search->setAccessibleName(search->placeholderText());
             search->setToolTip(tr("Search visit history (Ctrl+Shift+3). Up and Down move between matches. Enter returns to the passage."));
         }
+        tree->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(tree, &QWidget::customContextMenuRequested, tree, [this, tree, search, genres](QPoint point) {
+            auto *item = tree->itemAt(point);
+            if (!item) return;
+            tree->setCurrentItem(item);
+            auto *menu = new QMenu(tree);
+            menu->setAttribute(Qt::WA_DeleteOnClose);
+            const bool genre = genres && !editor_->model().isGeneric();
+            menu->addAction(genre ? tr("Insert next crumb in genre") : tr("Go to passage"),
+                            search, [search] { search->activateCurrent(); });
+            if (genre) menu->addAction(genreMentions_);
+            menu->popup(tree->viewport()->mapToGlobal(point));
+        });
         setTabOrder(search, tree);
         connect(tree, &QTreeWidget::itemClicked, this, [search] { search->activateCurrent(); });
         column->addWidget(search);

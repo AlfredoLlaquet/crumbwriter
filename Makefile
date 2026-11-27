@@ -3,8 +3,8 @@ PREFIX ?= /usr/local
 PKG_CONFIG ?= pkg-config
 CFLAGS ?= -O2
 CXXFLAGS ?= -O2
-QT_CFLAGS != $(PKG_CONFIG) --cflags Qt6Widgets Qt6Network
-QT_LIBS != $(PKG_CONFIG) --libs Qt6Widgets Qt6Network
+QT_CFLAGS != $(PKG_CONFIG) --cflags Qt6Widgets Qt6Network Qt6Xml
+QT_LIBS != $(PKG_CONFIG) --libs Qt6Widgets Qt6Network Qt6Xml
 HUNSPELL_CFLAGS != $(PKG_CONFIG) --cflags hunspell
 HUNSPELL_LIBS != $(PKG_CONFIG) --libs hunspell
 QT_TOOL_DIR != $(PKG_CONFIG) --variable=libexecdir Qt6Core
@@ -14,7 +14,7 @@ CORE_LIBS != $(PKG_CONFIG) --libs gio-2.0
 C_FLAGS = -std=c11 -Wall -Wextra -Wpedantic -Isrc $(CORE_CFLAGS) $(CPPFLAGS) $(CFLAGS)
 CXX_FLAGS = -std=c++17 -fPIC -pthread -Wall -Wextra -Wpedantic -DQT_NO_KEYWORDS -Isrc -Isrc/qt -Ithird_party/mythes \
             $(QT_CFLAGS) $(HUNSPELL_CFLAGS) $(CORE_CFLAGS) $(CPPFLAGS) $(CXXFLAGS)
-LIBS = $(QT_LIBS) $(HUNSPELL_LIBS) $(CORE_LIBS) -pthread $(LDLIBS)
+LIBS = -larchive $(QT_LIBS) $(HUNSPELL_LIBS) $(CORE_LIBS) -pthread $(LDLIBS)
 
 CORE_OBJECTS = src/crumb.o src/spacing.o src/storage.o src/storage-posix.o src/draft.o
 CORE_HEADERS = src/crumb.h src/spacing.h src/storage.h src/storage-platform.h src/draft.h
@@ -36,7 +36,7 @@ APP_OBJECTS = $(MYTHES_OBJECT) $(QT_OBJECTS) $(CORE_OBJECTS) $(RESOURCE)
 QT_TESTS = tests/qt/test-model tests/qt/test-documentstore tests/qt/test-bookmarks \
            tests/qt/test-editor tests/qt/test-search tests/qt/test-navigation tests/qt/test-synonyms tests/qt/test-spelling \
            tests/qt/test-window tests/qt/test-vi tests/qt/test-resize tests/qt/test-symbols \
-           tests/qt/test-synonymwriting tests/qt/test-appearance tests/qt/test-layout tests/qt/test-wordtools tests/qt/test-manuscriptoptions
+           tests/qt/test-synonymwriting tests/qt/test-appearance tests/qt/test-layout tests/qt/test-wordtools tests/qt/test-manuscriptoptions tests/qt/test-release31
 
 all: crumbwriter
 
@@ -56,7 +56,7 @@ src/qt/thesaurus.o: third_party/mythes/mythes.hxx
 $(CORE_OBJECTS): $(CORE_HEADERS)
 src/qt/main.o $(QT_OBJECTS): $(QT_HEADERS) $(CORE_HEADERS)
 
-data/qt-icons.cpp: data/crumbwriter.qrc data/symbols.tsv data/bsd-first-about.png data/bsd-first-LICENSE $(ICON_FILES) LICENSE
+data/qt-icons.cpp: data/crumbwriter.qrc data/symbols.tsv data/bsd-first-about.png data/bsd-first-about-dark.png data/bsd-first-LICENSE data/unicode-LICENSE.txt README.md NOTICE.md third_party/mythes/COPYING $(ICON_FILES) LICENSE
 	$(RCC) --name crumbwriter -o $@ data/crumbwriter.qrc
 
 tests/test-crumb: tests/test-crumb.c src/crumb.o
@@ -106,6 +106,9 @@ tests/qt/test-wordtools: tests/qt/test-wordtools.cpp $(WORD_TOOL_OBJECTS)
 tests/qt/test-manuscriptoptions: tests/qt/test-manuscriptoptions.cpp $(APP_OBJECTS)
 	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
 
+tests/qt/test-release31: tests/qt/test-release31.cpp $(APP_OBJECTS)
+	$(TEST_LINK) $(APP_OBJECTS) $(LIBS)
+
 tests/qt/test-symbols: tests/qt/test-symbols.cpp
 tests/qt/test-synonymwriting: tests/qt/test-synonymwriting.cpp
 tests/qt/test-appearance: tests/qt/test-appearance.cpp
@@ -138,7 +141,7 @@ install: crumbwriter
 		install -m 644 "$$icon" "$$dir/"; \
 	done
 	touch "$(DESTDIR)$(PREFIX)/share/icons/hicolor"
-	install -m 644 CrumbWriter.txt LICENSE "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
+	install -m 644 CrumbWriter.txt NOTICE.md LICENSE "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/"
 	install -m 644 third_party/mythes/COPYING "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/COPYING-MyThes"
 	install -m 644 data/bsd-first-LICENSE "$(DESTDIR)$(PREFIX)/share/doc/crumbwriter/COPYING-BSD-first"
 

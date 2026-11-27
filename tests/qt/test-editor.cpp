@@ -348,6 +348,8 @@ void spacing(ManuscriptEditor &ed)
     ed.loadText(QStringLiteral("Leaf 1: : é\tX z."));
     ed.jumpTo(QStringLiteral("Leaf 1: : é ").size(), false);
     press(ed, Qt::Key_Delete);
+    expect(ed, QStringLiteral("Leaf 1: : é  z."));
+    press(ed, Qt::Key_End);
     expect(ed, QStringLiteral("Leaf 1: : é z."));
     ed.undo();
     expect(ed, QStringLiteral("Leaf 1: : é X z."));
@@ -615,6 +617,8 @@ void undoAndBoundaries(ManuscriptEditor &ed)
     expect(ed, original);
     ed.selectRange(red, red+3, false);
     press(ed, Qt::Key_X, Qt::ControlModifier);
+    expect(ed, QStringLiteral("Leaf 1: : X  Y"));
+    press(ed, Qt::Key_End);
     expect(ed, QStringLiteral("Leaf 1: : X Y"));
     require(QApplication::clipboard()->text() == QStringLiteral("red"), "keyboard cut writes native clipboard");
     press(ed, Qt::Key_Z, Qt::ControlModifier);
@@ -654,7 +658,7 @@ void editRuns(ManuscriptEditor &ed)
     press(ed, Qt::Key_Delete);
     press(ed, Qt::Key_Backspace);
     undo();
-    expect(ed, original + "ed f");
+    expect(ed, original + "red f");
     undo();
     expect(ed, original + "x red f");
 
@@ -858,7 +862,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     };
     const int body = rect(4).height();
     require(rect(0).height() > rect(2).height() && rect(2).height() > body &&
-            bold(0) && bold(2) && !bold(4) && block(2).layout()->formats().front().format.fontUnderline() &&
+            bold(0) && bold(2) && !bold(4) && !block(2).layout()->formats().front().format.fontUnderline() &&
             !block(0).layout()->formats().front().format.fontUnderline(), "document and chapter titles have distinct bold sizes");
     require(rect(2).top() - rect(1).top() < body && rect(6).height() >= body - 1 &&
             ed.cursorForPosition(rect(1).topLeft() + QPoint(1, 1)).blockNumber() == 1,
@@ -887,6 +891,8 @@ void genericParagraphs(ManuscriptEditor &ed)
     require(rect(3).height() < body / 2 &&
             block(3).layout()->formats().front().format.foreground().color().alpha() == 0,
             "an inactive marker is compact and shows no hyphens");
+    ed.setShowManuscriptMarkup(true);
+    settle();
     press(ed, Qt::Key_Down, Qt::ControlModifier);
     require(ed.textCursor().position() == block(3).position() && rect(3).height() >= body - 1,
             "Ctrl+Down reaches the full-size editable marker");
@@ -906,6 +912,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     require(rect(3).height() >= body - 1 && !ed.document()->isUndoAvailable(),
             "canceling composition leaves the active marker editable without an edit");
     expect(ed, novel);
+    ed.setShowManuscriptMarkup(false);
     type(ed, "No separator.");
     settle();
     require(!bold(2) && rect(2).height() == rect(4).height(), "typing after a chapter demotes its heading");
@@ -996,13 +1003,19 @@ void genericParagraphs(ManuscriptEditor &ed)
             typeSize(5) > typeSize(7) && typeSize(7) == typeSize(9) && bold(7),
             "heading sizes descend through level four, which uses the bold writing size");
     auto underlineStyle = [&](int line) { return block(line).layout()->formats().front().format.underlineStyle(); };
+    require(underlineStyle(1) == QTextCharFormat::NoUnderline && underlineStyle(7) == QTextCharFormat::NoUnderline,
+            "normal reading view uses heading type without on-screen underlines");
+    ed.setShowManuscriptMarkup(true);
+    settle();
     require(underlineStyle(1) == QTextCharFormat::SingleUnderline &&
             underlineStyle(3) == QTextCharFormat::SingleUnderline &&
             underlineStyle(5) == QTextCharFormat::DotLine && underlineStyle(7) == QTextCharFormat::DotLine,
             "the top two heading levels use solid underlines and the lower two dotted underlines");
+    ed.setShowManuscriptMarkup(false);
+    settle();
     const int markerAdvance = rect(9).top() - rect(8).top();
-    require(markerAdvance >= 2 && markerAdvance <= 3,
-            "inactive markup between a heading and ordinary prose occupies two or three logical pixels");
+    require(markerAdvance >= 0 && markerAdvance <= 1,
+            "inactive markup between a heading and ordinary prose occupies at most one logical pixel");
     std::printf("At %.0f pt an inactive title marker occupies %d logical pixels.\n", ed.font().pointSizeF(), markerAdvance);
     require(rect(1).top() - rect(0).bottom() > body * 0.45,
             "section headings receive extra vertical separation without inserting blank file lines");

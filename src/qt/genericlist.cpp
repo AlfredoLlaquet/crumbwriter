@@ -1,6 +1,7 @@
 #include "genericlist.h"
 #include "manuscripttext.h"
 
+#include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTextFormat>
@@ -190,4 +191,48 @@ bool GenericList::selectEmptyGeneratedPrefix(QTextCursor &cursor)
     if (prefix.isEmpty() || cursor.block().text() != prefix) return false;
     cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
     return true;
+}
+
+namespace {
+QString generatedAtStart(const QTextBlock &block)
+{
+    QTextCursor first(block);
+    first.movePosition(QTextCursor::NextCharacter);
+    return first.charFormat().stringProperty(generatedPrefix);
+}
+
+// Bare letters are ambiguous in prose. Only accept one when confirming the
+// proposed token. A punctuated pasted number is allowed to override numbering.
+bool explicitPrefix(const QString &text, const QString &proposal)
+{
+    static const QRegularExpression marked(QStringLiteral(
+        R"(^ *(?:[-*]|\(\*\)|\([A-Za-z0-9.]+\)|[0-9]+(?:\.[0-9]+)*[.)]|[0-9]+(?:\.[0-9]+)+|[A-Za-z]+[.)]) )"));
+    return text.startsWith(proposal) || marked.match(text).hasMatch();
+}
+}
+
+void GenericList::replaceGeneratedPrefixForPaste(QTextCursor &cursor, const QString &text)
+{
+    auto selection = cursor;
+    if (selectEmptyGeneratedPrefix(selection) && explicitPrefix(text, cursor.block().text()))
+        cursor = selection;
+}
+
+void GenericList::resolveTypedPrefix(QTextCursor &cursor)
+{
+    if (!cursor.atBlockEnd()) return;
+    const auto block = cursor.block();
+    const QString proposed = generatedAtStart(block);
+    if (proposed.isEmpty() || !block.text().startsWith(proposed)) return;
+    const QString typed = block.text().mid(proposed.size());
+    if (typed.isEmpty()) return;
+    const auto token = proposed.trimmed();
+    if (typed == token && !token.back().isLetterOrNumber()) {
+        cursor.setPosition(block.position() + proposed.size(), QTextCursor::KeepAnchor);
+        cursor.removeSelectedText();
+    } else if (explicitPrefix(typed, proposed)) {
+        QTextCursor erase(block);
+        erase.setPosition(block.position() + proposed.size(), QTextCursor::KeepAnchor);
+        erase.removeSelectedText();
+    }
 }

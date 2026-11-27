@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 INSTALLERS = {
     "freebsd15": "crumbwriter-{version}-FreeBSD-15-amd64.pkg",
     "freebsd14": "crumbwriter-{version}-FreeBSD-14-amd64.pkg",
+    "openbsd": "crumbwriter-{version}.tgz",
     "ubuntu24.04": "crumbwriter_{version}-ubuntu24.04_amd64.deb",
     "ubuntu26.04": "crumbwriter_{version}-ubuntu26.04_amd64.deb",
     "debian13": "crumbwriter_{version}-debian13_amd64.deb",

@@ -8,6 +8,8 @@
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QFontComboBox>
+#include <QFontDatabase>
+#include <QSignalBlocker>
 #include <QFormLayout>
 #include <QHeaderView>
 #include <QLineEdit>
@@ -85,8 +87,10 @@ constexpr HelpRow shortcuts[] = {
     {"Thesaurus","Arrows / Enter / Ctrl+C","Choose an alternative / replace the original passage / copy the chosen word. Ctrl+L edits the lookup and Escape closes."},
     {"Web reference","Ctrl+Shift+L, then D / S / T","Look up the selection or current word in the Merriam-Webster dictionary / entry synonyms / thesaurus. Escape cancels."},
     {"Web links","Ctrl+click or Ctrl+Shift+J","Open an HTTP, HTTPS, or www. address in your browser. Open Link is also in the context menu. Spelling skips the address."},
-    {"Daily count","F10 → Set Today’s Count","Enter the new count or choose Reset to Zero, then press Enter. Generic word counts can be negative."},
-    {"Website","F10 → Open TheCrumbs.org","Open Alfredo Llaquet-Alsina’s Crumbs in the browser. The same link appears in the center of the status bar when space permits."},
+    {"Daily count","Tools → Set Today’s Count","Enter the new count or choose Reset to Zero, then press Enter. Generic word counts can be negative."},
+    {"Website","Help → Open TheCrumbs.org","Open Alfredo Llaquet-Alsina’s Crumbs in the browser. The same link appears in the center of the status bar when space permits."},
+    {"Spelling","Ctrl+.","Choose a correction for the word at the caret"},
+    {"Generic mode","Ctrl+Shift+K, M / 0 / 1–4","Apply Main Title, Regular Text, or Title 1 through 4 to the current line"},
     {"Spelling","F8 / Shift+F8","Review next / previous spelling issue"},
     {"Spelling","Ctrl+Shift+D","Open the manuscript dictionary"},
     {"Spelling review","Enter / Alt+A","Apply the replacement / replace all occurrences of the misspelling"},
@@ -108,19 +112,19 @@ constexpr HelpRow shortcuts[] = {
     {"Manuscripts","Ctrl+O / Ctrl+T","Open a manuscript in a tab / start a blank tab. An already-open file activates its existing tab."},
     {"Manuscripts","Ctrl+Tab / Ctrl+Shift+Tab","Next / previous manuscript in tab order"},
     {"Manuscripts","Ctrl+F4 / Ctrl+Shift+T","Close this tab / reopen the last closed manuscript at its previous position"},
-    {"Manuscripts","Ctrl+Shift+N / F10 → Tabs","Open a new window / move the current tab to its own window"},
-    {"Manuscript settings","F10 → Manuscript settings","Turn off automatic general titles or display guillemets literally for this manuscript. Settings travel with its .config file."},
+    {"Manuscripts","Ctrl+Shift+N / Window menu","Open a new window / move the current tab to its own window"},
+    {"Manuscript settings","Tools → Manuscript settings","Turn off automatic general titles or display guillemets literally for this manuscript. Settings travel with its .config file."},
     {"Generic mode","Ctrl+K","Insert an opening or closing guillemet. Wrap or unwrap selected text in italics. Put the caret in the passage to reveal its marks."},
     {"Generic mode","Ctrl+Shift+F9","Show or hide manuscript markup, including section markers and italic delimiters"},
     {"Generic lists","Ctrl+Shift+Enter","Continue a list explicitly. Empty generated item: Enter ends the list. Immediate Backspace removes its prefix."},
-    {"Startup backup","F10 → Compare with startup backup","Read changed paragraphs side by side. F3 / Shift+F3 moves forward / back. F5 updates the comparison."},
+    {"Startup backup","Tools → Compare with startup backup","Read changed paragraphs side by side. F3 / Shift+F3 moves forward / back. F5 updates the comparison."},
     {"Crumb title","Tab to title, Enter","Read or copy the full current crumb title in its own window"},
     {"About","Alt+B","Open the BSD first badge project. Its badge is bundled for offline display."},
     {"Window","Ctrl+S / Ctrl+Shift+S","Save / Save As"},
     {"Window","Alt+W","Close the manuscript window. In Find controls, toggle Wrap"},
     {"Window","Ctrl+Shift+I","Show manuscript statistics. Ctrl+C in the dialog copies the figures"},
-    {"Window","F10, A","Open About Crumb Writer. Enter opens the focused repository link"},
-    {"Menu buttons","F10 / Space, Enter, or Down","F10 opens the document menu. Space, Enter, or Down opens a focused three-line menu button, including Characters and Recurring. Escape closes the menu"},
+    {"Window","Help → About","Open About Crumb Writer. Enter opens the focused repository link"},
+    {"Menu buttons","F10 / Space, Enter, or Down","F10 opens the File menu. Space, Enter, or Down opens a focused three-line menu button, including Characters and Recurring. Escape closes the menu"},
     {"Appearance","Ctrl+,","In Settings, choose Follow desktop, Light, or Dark for the writing area, toolbar, search fields, menus, and dialogs"},
     {"Search fields","Select all, then Backspace","Clear the typed search and keep focus in the field. A filled sidebar, bookmark, or symbol search also has a Clear Search button"},
     {"About","Alt+L","View License offline. Scroll or copy the full terms. Escape returns to About"},
@@ -137,7 +141,7 @@ constexpr HelpRow shortcuts[] = {
     {"Mac synonym lists","Control+I","Add a group from the manuscript selection while Characters or Recurring has focus. Works in its search field or list"},
     {"Mac lists","Backspace","Remove the selected entry in a focused synonym, bookmark, or manuscript dictionary list. In search and edit fields, Backspace edits the text"},
 #endif
-    {"Window","Ctrl+, / F10 / F1","Settings / Document menu / Keyboard Shortcuts"}
+    {"Window","Ctrl+, / F10 / F1","Settings / File menu / Keyboard Shortcuts"}
 };
 }
 
@@ -158,10 +162,36 @@ int Preferences::saveDelay() const
 
 QFont Preferences::manuscriptFont() const
 {
-    const QString family = settings_.value("editor/font-family", "Serif").toString();
+    static const QString preferred = [] {
+#if defined(Q_OS_WIN)
+        const QString face = QStringLiteral("Georgia");
+#elif defined(Q_OS_MACOS)
+        const QString face = QStringLiteral("Charter");
+#else
+        const QString face = QStringLiteral("Noto Serif");
+#endif
+        return QFontDatabase::families().contains(face, Qt::CaseInsensitive) ? face : QStringLiteral("Serif");
+    }();
+    const QString family = settings_.value("editor/font-family", preferred).toString();
     QFont font(family, qBound(6, settings_.value("editor/font-size", 14).toInt(), 96));
     if (family.compare("Serif", Qt::CaseInsensitive) == 0) font.setStyleHint(QFont::Serif);
     return font;
+}
+
+void Preferences::setWritingFont(const QFont &font)
+{
+    settings_.setValue("editor/font-family", font.family());
+    settings_.setValue("editor/font-size", font.pointSize());
+    if (dialog_) {
+        auto *family = dialog_->findChild<QFontComboBox *>("settingsFontFamily");
+        auto *size = dialog_->findChild<QSpinBox *>("settingsFontSize");
+        if (family && size) {
+            const QSignalBlocker guardFamily(family), guardSize(size);
+            family->setCurrentFont(font);
+            size->setValue(font.pointSize());
+        }
+    }
+    if (changed) changed();
 }
 
 QPalette Preferences::applyControlTheme() const
@@ -204,6 +234,7 @@ void Preferences::show(QWidget *parent)
     tabs->addTab(synonymPage(tabs), "&Names");
     outer->addWidget(tabs);
     auto *family = new QFontComboBox(dialog);
+    family->setObjectName("settingsFontFamily");
     family->setCurrentFont(manuscriptFont());
     form->addRow("Font &family", family);
     QObject::connect(family, &QFontComboBox::currentFontChanged, dialog, [this](const QFont &font) {
@@ -211,6 +242,7 @@ void Preferences::show(QWidget *parent)
     });
     auto spin = [&](const QString &caption, const QString &key, int value, int low, int high) {
         auto *field = new QSpinBox(dialog);
+        if (key == "font-size") field->setObjectName("settingsFontSize");
         field->setRange(low, high);
         field->setValue(value);
         form->addRow(caption, field);
@@ -238,7 +270,7 @@ void Preferences::show(QWidget *parent)
     toggle("Make a &backup before editing", "backup");
     toggle("Save &live while typing", "live-save");
     spin("Save &interval (seconds)", "save-delay", saveDelay(), 1, 30);
-    toggle("&Reopen the last manuscript at startup", "reopen-last");
+    toggle("&Restore open windows and tabs at startup", "reopen-last");
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, dialog);
     outer->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::close);

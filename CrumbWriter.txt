@@ -1,9 +1,94 @@
 Crumb Writer
 ============
 
-Version 3.0. Programmed by ChatGPT for Alfredo Llaquet-Alsina.
+Version 3.1. Created and directed by Alfredo Llaquet-Alsina. Implemented by ChatGPT.
 
-Version 3.0 source map and maintenance notes
+Version 3.1 implementation guide
+--------------------------------
+
+Software Project Working Rules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Use a single agent throughout a project. Design for human developers and
+future AI maintainers. Give each component a recognizable purpose and make
+its behavior, dependencies and decisions explicit enough to change safely
+with limited surrounding context. Favor meaningful modularity, consistent
+conventions and traceability. Avoid unnecessary abstraction, fragmentation
+and duplication. Keep extensive, navigable project documentation current in
+the same change as the code. Explain the requirements, architecture,
+rationale, conventions and verification. After implementation and testing,
+review the work against the original specification. Correct substantive
+defects, omissions and inconsistencies. Finish after that review and the
+documentation update, without speculative or purely stylistic changes.
+
+Menus, writing tools and editing
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+windowcommands.cpp builds File, Edit, View, Format, Navigate, Tools, Window
+and Help, retaining the writing toolbar. formattingtoolbar.cpp synchronizes
+Font, size and Style with the active document. In Generic mode the first
+line offers Main Title or Regular Text. Subsequent lines offer Regular Text
+or Title 1 through Title 4. Use Ctrl+Shift+K followed by M, 0 or 1–4.
+ManuscriptOptions changes the heading marker and saves explicit first-line
+title detection in the manuscript's .config. The native text remains portable.
+In normal view heading-marker rows and on-screen heading underlines are
+hidden. Ctrl+Shift+F9 reveals them. editorviewport.cpp measures the shaped
+title and scales the repeated marker glyphs to its displayed width.
+
+Generic mode initially hides Characters. View > Characters remembers a choice
+in each mode. Recurring is independent. Right-clicking a list entry selects
+the clicked row and opens its applicable commands. Ctrl+. uses SpellCheck's
+word-at-caret lookup and offers Hunspell suggestions for that occurrence.
+F8 retains the normal spelling review. The dictionary actually loaded is en_US.
+editorinput.cpp preserves a run of inter-word spaces during an edit and
+normalizes it when the caret leaves. Ctrl+Left/Right stop on both sides of an
+em dash connecting words. genericlist.cpp records a generated prefix so an
+explicitly typed or pasted marker can replace the proposal once.
+
+Documents and sessions
+~~~~~~~~~~~~~~~~~~~~~~
+Use + beside the tabs or double-click unused space on the strip to open a
+blank document. workspacestate.cpp records tab order, active tab, named file
+or private recovery path, selection and scroll in the local settings.
+application.cpp restores windows on cold start; documents supplied on the
+command line still activate their own tabs. A missing file produces a notice.
+Closing through File > Quit preserves windows together. Keeping an untitled
+draft waits for its latest text and companions. Explicitly discarding it
+removes its recovery record.
+
+File > Import makes a new editable untitled manuscript. fileconversion.cpp
+owns the dialogs and encoding preview. documentformats.cpp handles strict
+GLib character conversion, fixed-width text, PDF and Qt document formats.
+officeformats.cpp reads Office XML directly from ZIP entries and writes DOCX.
+rtfimport.cpp reads RTF and pdfimport-macos.mm uses system PDFKit. Other
+platforms run pdftotext as a separate process. Scans need OCR. formatprose.cpp
+translates the editor's heading levels, body type and italics into formatted
+copies. File > Export supports DOCX, ODT, PDF, HTML and plain text in a chosen
+encoding. The 80-column option wraps text and doubles a single space after a
+period. Export uses a temporary file and commits only on success.
+
+Help, licenses and packaging
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Help > Crumb Writer Help reads the embedded README by topic. Help > Licenses
+includes the project license, component credits, Unicode and artwork notices
+and the original notices installed alongside bundled tools and data. NOTICE.md
+identifies the distinct terms for Hunspell, SCOWL, MyThes, WordNet, Qt, GLib,
+libarchive and Poppler. Windows staging checks ownership of each bundled
+binary and collects its notices and matching source. macOS collects the
+deployed Qt frameworks and Homebrew dylibs. The release publishes matching
+sources, recipes and checksums. The project Unlicense applies to original work.
+
+The OpenBSD 8.0 amd64 release uses the native ports tree. The port lives in
+packaging/openbsd/port. Its source distfile includes the tracked project
+sources and pinned US English word data with original notices. Before a
+release, stage the final files in Git and run this command at the repository
+root to update the ports checksum:
+
+    python3 packaging/openbsd/dist.py --update-distinfo /tmp/crumbwriter-dist
+
+The OpenBSD job verifies the 8.0 ports archive with signify, builds the
+native package with make package and exercises the installed editor in a
+fresh 8.0 VM. See README for installation and compilation commands.
+
+Source map and maintenance notes
 --------------------------------------------
 
 For manuscript syntax and examples see “Writing novels and other prose in
@@ -107,7 +192,7 @@ filenames. tests/test-release-assets.py checks the versioned download links.
 For a change to a control or window, exercise its real keyboard and mouse
 entry points, inspect a light and a dark capture on the affected native
 platforms, correct defects and repeat the focused views. Shared controls
-also require cross-platform checks. Version 3.0 adds the tab strip, active
+also require cross-platform checks. Version 3.0 introduced the tab strip, active
 panel switching, the full crumb title, Manuscript Settings, the backup
 comparison, About artwork and new markup views to this review. Exercise
 resize and scrolling on a 25,092-crumb file, reload older hyphen manuscripts
@@ -131,15 +216,15 @@ Installing the FreeBSD and Linux release packages
 
 Use the package for the target OS, release series and architecture. Every
 installer carries its version. The README links directly to the exact assets
-under releases/download/v3.0/. Release checks exercise FreeBSD 15.1, 14.4,
+under releases/download/v3.1/. Release checks exercise FreeBSD 15.1, 14.4,
 and 14.5 (the latter two share one binary), Ubuntu 24.04 and 26.04, and
 Debian 13. The install commands below assume a local download for amd64.
 
-    FreeBSD 15.x   pkg install ./crumbwriter-3.0-FreeBSD-15-amd64.pkg
-    FreeBSD 14.x   pkg install ./crumbwriter-3.0-FreeBSD-14-amd64.pkg
-    Ubuntu 24.04   sudo apt install ./crumbwriter_3.0-ubuntu24.04_amd64.deb
-    Ubuntu 26.04   sudo apt install ./crumbwriter_3.0-ubuntu26.04_amd64.deb
-    Debian 13      sudo apt install ./crumbwriter_3.0-debian13_amd64.deb
+    FreeBSD 15.x   pkg install ./crumbwriter-3.1-FreeBSD-15-amd64.pkg
+    FreeBSD 14.x   pkg install ./crumbwriter-3.1-FreeBSD-14-amd64.pkg
+    Ubuntu 24.04   sudo apt install ./crumbwriter_3.1-ubuntu24.04_amd64.deb
+    Ubuntu 26.04   sudo apt install ./crumbwriter_3.1-ubuntu26.04_amd64.deb
+    Debian 13      sudo apt install ./crumbwriter_3.1-debian13_amd64.deb
 
 On FreeBSD run pkg as root. For an update, close the editor, download the
 new asset and repeat the install command with its filename. apt remove
@@ -155,7 +240,7 @@ release, source, checksums and version-specific license are available at
 https://github.com/AlfredoLlaquet/crumbwriter/releases/latest
 
 Windows 10 version 1903 or later and Windows 11 use
-CrumbWriter-3.0-Windows-x64-Setup.exe on x64 computers. Run Setup as the
+CrumbWriter-3.1-Windows-x64-Setup.exe on x64 computers. Run Setup as the
 desktop account. View License opens the notice during installation.
 Start Crumb Writer from the Start menu or its optional desktop shortcut.
 Setup can also add Crumb Writer to Explorer's Open With for plain-text
@@ -166,7 +251,7 @@ program, use Settings > Apps > Installed apps (Apps & features on Windows
 10). Personal settings, manuscripts, backups and companion files survive
 an update or uninstall.
 
-macOS 15 or later uses CrumbWriter-3.0-macOS-Universal.dmg on both Apple
+macOS 15 or later uses CrumbWriter-3.1-macOS-Universal.dmg on both Apple
 silicon and Intel. Open the disk image, drag Crumb Writer to Applications,
 eject the image and open Crumb Writer from Applications. From the keyboard
 in Finder, select Crumb Writer, press Command+C, press Command+Shift+A to
@@ -181,18 +266,18 @@ Every public installer has a signed GitHub build record (an artifact
 attestation). In its download directory, a signed-in GitHub CLI can identify
 the workflow and source revision that produced this exact file.
 
-    gh attestation verify crumbwriter_3.0-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify crumbwriter-3.0-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-3.0-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-3.0-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter_3.1-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter-3.1-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.1-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.1-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
 
 Use the command for the file downloaded. For a SHA-256 check, compare
 the output of the corresponding command with SHA256SUMS on the same release.
 
-    Get-FileHash .\CrumbWriter-3.0-Windows-x64-Setup.exe -Algorithm SHA256
-    shasum -a 256 CrumbWriter-3.0-macOS-Universal.dmg
-    sha256sum crumbwriter_3.0-ubuntu24.04_amd64.deb
-    sha256 -q crumbwriter-3.0-FreeBSD-15-amd64.pkg
+    Get-FileHash .\CrumbWriter-3.1-Windows-x64-Setup.exe -Algorithm SHA256
+    shasum -a 256 CrumbWriter-3.1-macOS-Universal.dmg
+    sha256sum crumbwriter_3.1-ubuntu24.04_amd64.deb
+    sha256 -q crumbwriter-3.1-FreeBSD-15-amd64.pkg
 
 The Windows installer has no Windows publisher certificate. SmartScreen
 can display an unfamiliar-app or unknown-publisher warning. After verifying
@@ -233,7 +318,7 @@ First installation on FreeBSD
 
 On a FreeBSD 14.x or 15.x desktop, install the packages as root.
 
-    pkg install git pkgconf glib qt6-base hunspell en-hunspell en-mythes
+    pkg install git pkgconf glib qt6-base hunspell en-hunspell en-mythes poppler-utils
 
 Get the source as the desktop account.
 
@@ -261,7 +346,7 @@ The Linux CI job builds and tests on Ubuntu 24.04. The desktop account
 can install these packages and the program with the following commands.
 
     sudo apt update
-    sudo apt install git build-essential pkgconf qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev hunspell-en-us mythes-en-us libxcb-cursor0
+    sudo apt install git build-essential pkgconf qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev libarchive-dev poppler-utils hunspell-en-us mythes-en-us libxcb-cursor0
     git clone https://github.com/AlfredoLlaquet/crumbwriter.git
     cd crumbwriter
     sudo make install
@@ -284,19 +369,18 @@ desktop account.
     git pull --ff-only
 
 Repeat the original make install command with the same account and prefix.
-Launch from the desktop menu. F10, then A, opens About and shows the installed
-version. The command crumbwriter --version also prints "Crumb Writer 3.0".
+Launch from the desktop menu. Help > About Crumb Writer opens About and shows the installed
+version. The command crumbwriter --version also prints "Crumb Writer 3.1".
 
 Opening a manuscript
 ~~~~~~~~~~~~~~~~~~~~
 
 Ctrl+O opens a manuscript. Opening places the caret at the end of its text,
 just before a final newline when present, with the preceding writing visible.
-The default on the next launch is to reopen the last named manuscript. A
+The default on the next launch is to restore the open windows and tabs. A
 first launch and Ctrl+Shift+N open an untitled document. Opening a file that
 is already open raises its existing window at its current writing position.
-An optional filename argument opens that manuscript in preference to the
-last document. Several filenames open tabs in the active window.
+An optional filename argument activates that manuscript after session restoration. Several filenames open tabs in the active window.
 
 Mode and manuscript structure
 -----------------------------
@@ -331,7 +415,8 @@ An unfinished line stays editable. Crumb 1 occupies file line 1, and the
 line number increases with each piece. A title such as "Night Audit #2"
 carries a separate number for one recurring genre.
 
-The default proportional writing font is Serif at 14 points. Headers are
+A fresh installation selects 14-point Georgia on Windows, Charter on macOS,
+or Noto Serif on BSD and Linux, falling back to the available serif family. Headers are
 italic, titles bold and bodies normal. The full editor width is available.
 An ordinary resize, tiling, or moving the sidebar divider rewraps prose.
 There is a gap of about a quarter of a text line between physical crumbs.
@@ -380,10 +465,10 @@ markup follows the manuscript's literal setting. Existing hyphen headings
 naturally enter level two. Each marker belongs to text immediately above.
 
 The general title uses the largest bold face. The four section levels have
-vertical spacing and descending sizes. Levels 1 and 2 use solid underlines;
-levels 3 and 4 are dotted. Level 4 uses body-sized bold type.
-The inactive marker is a 2–3 logical-pixel spacer. The active row uses the
-body font. Ctrl+Shift+F9 shows all markup. The first blank directly after a
+vertical spacing and descending sizes. In markup view levels 1 and 2 use
+solid underlines and levels 3 and 4 use dotted ones. Level 4 uses body-sized
+bold type. Ctrl+Shift+F9 reveals the marker characters and underlines.
+The first blank directly after a
 general title may be compact. Other interior blanks retain their height.
 Ctrl+Shift+4 opens the Titles search. Document order shows an outline,
 alphabetical order disambiguates repeated names using their ancestors, and
@@ -485,15 +570,11 @@ spelling marks, and synonym hints use colors appropriate to the chosen
 palette. Settings offers Follow desktop, Light, Dark, and a manuscript font
 from 6 to 96 points.
 
-The three-line button beside Find opens the document menu (F10). The same
-symbol beside Characters and Recurring opens the actions for that list.
-Space, Enter, or Down opens a focused menu button. Escape closes its menu.
-The toolbar draws its Open, New, Save, Find, and menu symbols using the
-current foreground color. Their shapes scale with the display. This gives
-the document menu a recognizable icon on a desktop with no icon theme.
-On a narrow toolbar the Document menu also appears in the overflow menu.
-F10 opens it at either width. From a Characters or Recurring search field,
-Shift+Tab focuses its menu button.
+F10 opens File in the menu bar. The toolbar carries Open, New, Save, Find,
+Font, writing size and Style. Three-line buttons beside Characters and
+Recurring open those lists' options. From a list search field, Shift+Tab
+focuses its menu button. Space, Enter or Down opens the focused button.
+Escape closes its menu.
 
 Explicit Light or Dark applies to the complete application, including
 popups, the About link, file and color pickers, and confirmations. On
@@ -645,8 +726,8 @@ Navigation and window keys
     Ctrl+O / Ctrl+Shift+N     Open a manuscript / create an untitled window
     Ctrl+S / Ctrl+Shift+S     Save / Save As
     Alt+W                    Close the manuscript window from the manuscript
-    Ctrl+, / F10 / F1         Settings / document menu / keyboard reference
-    F10, then A              About Crumb Writer
+    Ctrl+, / F10 / F1         Settings / File menu / keyboard reference
+    Help > About             About Crumb Writer
     Alt+L (in About)          Show the full license offline
 
 On macOS, Ctrl is the physical Control key and Alt is Option. The standard
@@ -942,8 +1023,8 @@ The center of the footer opens https://www.thecrumbs.org/ in the default
 browser. Its text uses the ordinary foreground in both palettes. The left
 writing status and right mode take priority at narrow widths or during
 a movement or lookup command. Change footer layout only when the link
-actually needs to appear or disappear. F10 > Open TheCrumbs.org also activates it.
-F10 > Set Today’s Count opens a modeless signed-integer editor. Reset to
+actually needs to appear or disappear. Help > Open TheCrumbs.org also activates it.
+Tools > Set Today’s Count opens a modeless signed-integer editor. Reset to
 Zero fills the field; Enter applies the chosen value. Generic words can
 be negative. Crumb totals have zero as their lower bound. Keep adjustments
 separate by local date, manuscript and mode and apply later edit deltas.
@@ -1286,7 +1367,7 @@ Building and publishing the installers
 -------------------------------------
 
 The Windows and Mac jobs use CMake, Ninja, pkg-config, Qt 6 Widgets and
-Network, GLib/GIO, Hunspell and a C11/C++17 toolchain. The CMake project
+Network and XML, GLib/GIO, libarchive, Hunspell and a C11/C++17 toolchain. The CMake project
 reads its version from src/qt/buildinfo.h, the same source used by About.
 From an MSYS2 UCRT64 shell on Windows or a native Mac development shell
 with the matching dependencies, use these commands in the repository.

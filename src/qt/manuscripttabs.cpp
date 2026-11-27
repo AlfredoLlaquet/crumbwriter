@@ -9,6 +9,8 @@
 #include "windowlayout.h"
 
 #include <QApplication>
+#include <QFileInfo>
+#include <QJsonArray>
 #include <QCloseEvent>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -125,6 +127,7 @@ void MainWindow::currentTabChanged()
     updateModeControls();
     sessionChanged(next);
     if (isActiveWindow()) prefs_.remember(next->path());
+    if (workspaceChanged) workspaceChanged(false);
 }
 
 void MainWindow::stepTab(int direction)
@@ -200,7 +203,7 @@ void MainWindow::closeCurrentTab()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    if (allowClose_) { event->accept(); return; }
+    if (allowClose_) { if (workspaceChanged) workspaceChanged(true); event->accept(); return; }
     bool pending = false;
     for (auto *session : sessions_) {
         session->editor_->finishTyping();
@@ -209,6 +212,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
     }
     if (!pending && closeTargets_.isEmpty()) {
         allowClose_ = true;
+        if (workspaceChanged) workspaceChanged(true);
         event->accept();
         return;
     }
@@ -259,7 +263,7 @@ void MainWindow::showCloseDialog()
     box->setTextFormat(Qt::PlainText);
     refreshCloseDialog();
     box->setWindowModality(Qt::NonModal);
-    auto *saveButton = box->addButton(tr("Save and Close"), QMessageBox::AcceptRole);
+    auto *saveButton = box->addButton(closingWindow_ && workspaceChanged && prefs_.enabled("reopen-last") ? tr("Save and Restore Tabs") : tr("Save and Close"), QMessageBox::AcceptRole);
     auto *discard = box->addButton(tr("Discard Unsaved Changes"), QMessageBox::DestructiveRole);
     auto *keep = box->addButton(tr("Keep Editing"), QMessageBox::RejectRole);
     box->setDefaultButton(saveButton);
@@ -283,6 +287,8 @@ void MainWindow::showCloseDialog()
 void MainWindow::cancelClose()
 {
     ++closeAttempt_;
+    if (quitCanceled) quitCanceled();
+    omittedDrafts_.clear();
     const auto targets = closeTargets_;
     closeTargets_.clear();
     discardRevisions_.clear();
@@ -325,14 +331,18 @@ void MainWindow::continueClose()
             // Ask for only one filename at a time. The Save As picker follows
             // this document even if the writer switches tabs before accepting.
             if (s->path().isEmpty()) selectSession(s);
-            s->store_->saveAndClose();
+            s->store_->saveAndClose(closingWindow_ && workspaceChanged && prefs_.enabled("reopen-last"));
         }
         return;
     }
     if (!discarding_) {
         // Earlier documents stayed editable while a later file was saving.
         // Include newer revisions before accepting the window close.
-        for (auto *s : closeTargets_) if (s->needsConfirmation()) closeQueue_.append(s);
+        for (auto *s : closeTargets_) {
+            const bool kept = closingWindow_ && workspaceChanged && prefs_.enabled("reopen-last") &&
+                              s->path().isEmpty() && s->store_->draftIsCurrent() && !s->companionsPending();
+            if (s->needsConfirmation() && !kept) closeQueue_.append(s);
+        }
         if (!closeQueue_.isEmpty()) { continueClose(); return; }
     }
     const auto targets = closeTargets_;
@@ -350,6 +360,7 @@ void MainWindow::continueClose()
         rememberClosed(s);
         removeSession(s);
     }
+    omittedDrafts_.clear();
     if (sessions_.isEmpty()) newTab();
     else restoreEditorFocus();
 }
@@ -358,6 +369,7 @@ void MainWindow::closeReady(ManuscriptSession *session)
 {
     if (closingSession_ != session) return;
     if (discarding_) {
+        if (session->path().isEmpty()) omittedDrafts_.insert(session);
         QString error;
         if (!session->removeDraftConfig(&error)) {
             selectSession(session);

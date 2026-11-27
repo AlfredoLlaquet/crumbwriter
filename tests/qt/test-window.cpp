@@ -21,6 +21,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLayout>
+#include <QMenuBar>
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
@@ -1091,14 +1092,15 @@ void testDialogs(const QTemporaryDir &tmp)
     key(Qt::Key_F10);
     auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
     CHECK(menu);
-    QKeyEvent mnemonic(QEvent::KeyPress, Qt::Key_A, Qt::NoModifier, "a");
-    QApplication::sendEvent(menu, &mnemonic);
+    menu->hide();
+    for (auto *action : window.findChildren<QAction *>())
+        if (action->menuRole() == QAction::AboutRole) action->trigger();
     auto *about = window.findChild<QDialog *>("aboutDialog");
     CHECK(about && until([&] { return about->isActiveWindow(); }) && !about->isModal());
     QStringList labels;
     for (auto *label : about->findChildren<QLabel *>()) labels.append(label->text());
     CHECK(labels.contains(QString("Crumb Writer %1").arg(CrumbWriter::version)));
-    CHECK(labels.join(u' ').contains("Programmed by ChatGPT for Alfredo Llaquet-Alsina"));
+    CHECK(labels.join(u' ').contains("Created and directed by <b>Alfredo Llaquet-Alsina</b>. Implemented by <b>ChatGPT</b>."));
     CHECK(labels.join(u' ').contains(qVersion()));
     auto *link = about->findChild<QLabel *>("repositoryLink");
     CHECK(link && link->hasFocus() && link->text().contains(CrumbWriter::repository));
@@ -1132,23 +1134,26 @@ void testMenuAccess(const QTemporaryDir &tmp)
     window.activateManuscript(false);
     auto *toolbar = window.findChild<QToolBar *>("manuscriptToolbar");
     CHECK(toolbar);
-    auto *documentButton = toolbar->findChild<QToolButton *>("documentMenuButton");
-    CHECK(documentButton);
+    auto *bar = window.findChild<QMenuBar *>("manuscriptMenuBar");
+    CHECK(bar && bar->actions().size() == 8);
+    auto *fileMenu = bar->actions().front()->menu();
+    CHECK(fileMenu && fileMenu->title().contains("File"));
+    const auto path = tmp.filePath("menu-manuscript.txt");
+    write(path, "Book//Crumb 1: Bird: Wings.");
+    CHECK(window.loadDocument(path));
     auto dismissMenu = [](QMenu *menu) {
         QKeyEvent escape(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
         QApplication::sendEvent(menu, &escape);
         CHECK(until([&] { return !menu->isVisible(); }));
     };
-    for (const char *name : {"documentMenuButton", "charactersMenu", "recurringMenu"}) {
+    for (const char *name : {"charactersMenu", "recurringMenu"}) {
         auto *button = window.findChild<QToolButton *>(name);
         CHECK(button && button->menu() && !button->accessibleName().isEmpty());
         // The offscreen plugin can deliver focus-restoration events after a
         // popup has hidden. Establish the editing window before tabbing again.
         window.activateManuscript(false);
         CHECK(until([&] { return window.editor()->hasFocus() && button->isVisible(); }));
-        if (button == documentButton) {
-            button->setFocus(Qt::TabFocusReason);
-        } else {
+        {
             const bool recurring = button->objectName() == "recurringMenu";
             auto *field = window.findChild<QLineEdit *>(recurring ? "recurringSearch" : "charactersSearch");
             key(recurring ? Qt::Key_2 : Qt::Key_1, Qt::ControlModifier | Qt::ShiftModifier);
@@ -1167,21 +1172,11 @@ void testMenuAccess(const QTemporaryDir &tmp)
     }
 
     window.resize(190, 420);
-    CHECK(until([&] { return !documentButton->isVisible(); }));
-    // QWidget actions without a popup representation disappear in narrow tiles.
-    bool reachable = false;
-    for (auto *button : toolbar->findChildren<QToolButton *>()) {
-        if (button->isVisible() && button->menu()) {
-            for (auto *entry : button->menu()->actions())
-                if (entry->menu() == documentButton->menu() && !entry->text().isEmpty()) reachable = true;
-        }
-    }
-    CHECK(reachable);
     window.activateManuscript(false);
     CHECK(until([&] { return window.editor()->hasFocus(); }));
     key(Qt::Key_F10);
-    CHECK(until([&] { return documentButton->menu()->isVisible(); }));
-    dismissMenu(documentButton->menu());
+    CHECK(until([&] { return fileMenu->isVisible(); }));
+    dismissMenu(fileMenu);
     CHECK(window.close());
 }
 }

@@ -7,6 +7,7 @@ import shutil
 from assets import installers, project_version
 
 SOURCE_PACKAGES = {
+    "openbsd-runtime-sources": "crumbwriter-{version}.tar.xz",
     "windows-runtime-sources": "CrumbWriter-{version}-Windows-x64-Sources.tar",
     "macos-runtime-sources-arm64": "CrumbWriter-{version}-macOS-arm64-Sources.tar",
     "macos-runtime-sources-x86_64": "CrumbWriter-{version}-macOS-x86_64-Sources.tar",

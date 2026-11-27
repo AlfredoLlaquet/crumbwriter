@@ -56,6 +56,9 @@ ActivationPaths activationPaths()
 
 WriterApplication::WriterApplication(QObject *parent) : QObject(parent)
 {
+    checkpoint_.setSingleShot(true);
+    checkpoint_.setInterval(600);
+    connect(&checkpoint_, &QTimer::timeout, this, [this] { saveWorkspace(); });
     preferences_.changed = [this] {
         for (const auto &window : windows_) if (window) window->applyPreferences();
     };
@@ -141,7 +144,7 @@ MainWindow *WriterApplication::preferredWindow() const
 {
     const QWidget *active = QApplication::activeWindow();
     for (auto *owner = active; owner; owner = owner->parentWidget()) {
-        for (const auto &window : windows_) if (window && owner == window) return window;
+        for (const auto &window : windows_) if (window && window->isVisible() && owner == window) return window;
     }
     if (lastActive_ && lastActive_->isVisible()) return lastActive_;
     for (auto it = windows_.crbegin(); it != windows_.crend(); ++it)
@@ -157,7 +160,44 @@ MainWindow *WriterApplication::newWindow()
         windows_.removeIf([](const QPointer<MainWindow> &p) { return p.isNull(); });
     });
     window->makeWindow = [this] { return newWindow(); };
+    window->workspaceChanged = [this, window](bool closing) {
+        if (restoring_) return;
+        if (closing) {
+            checkpoint_.stop();
+            saveWorkspace(window);
+            if (quitting_) {
+                closedDuringQuit_.append(window->workspaceState());
+                QTimer::singleShot(0, this, &WriterApplication::closeNextWindow);
+            }
+        } else if (!quitting_ && !checkpoint_.isActive()) checkpoint_.start();
+    };
+    window->quitApplication = [this] {
+        if (!quitting_) { quitting_ = true; closedDuringQuit_.clear(); closeNextWindow(); }
+    };
+    window->quitCanceled = [this] { quitting_ = false; closedDuringQuit_.clear(); };
     return window;
+}
+
+void WriterApplication::closeNextWindow()
+{
+    if (!quitting_) return;
+    if (auto *window = preferredWindow()) window->close();
+}
+
+void WriterApplication::saveWorkspace(MainWindow *closing)
+{
+    if (!preferences_.enabled("reopen-last")) return;
+    QJsonArray layout;
+    for (const auto &state : closedDuringQuit_) layout.append(state);
+    for (const auto &window : windows_) {
+        if (window && window->isVisible() && (window != closing || quitting_))
+            layout.append(window->workspaceState());
+    }
+    if (layout.isEmpty() && closing) layout.append(closing->workspaceState());
+    if (!layout.isEmpty()) {
+        preferences_.settings().setValue("workspace/windows", QJsonDocument(layout).toJson(QJsonDocument::Compact));
+        preferences_.settings().sync();
+    }
 }
 
 void WriterApplication::activate(const QStringList &files)
@@ -171,12 +211,23 @@ void WriterApplication::activate(const QStringList &files)
     };
     if (coldStart) {
         recovered_ = true;
+        restoring_ = true;
+        QStringList missing;
+        const auto layout = QJsonDocument::fromJson(preferences_.settings().value("workspace/windows").toByteArray()).array();
+        if (preferences_.enabled("reopen-last")) {
+            for (const auto &value : layout) {
+                target = newWindow();
+                missing += target->restoreWorkspace(value.toObject());
+            }
+        }
         for (const auto &draft : DocumentStore::recoveryDrafts())
-            destination()->openDocumentInTab(draft, true);
+            if (!MainWindow::findOpen(draft)) destination()->openDocumentInTab(draft, true);
+        if (!missing.isEmpty()) destination()->showNotice(tr("Could not reopen: %1").arg(missing.join(", ")));
+        restoring_ = false;
     }
     if (!files.isEmpty()) {
         for (const QString &path : files) destination()->openDocumentInTab(path);
-    } else if (coldStart && preferences_.enabled("reopen-last") && !last.isEmpty()) {
+    } else if (coldStart && !target && preferences_.enabled("reopen-last") && !last.isEmpty()) {
         destination()->openDocumentInTab(last);
     } else {
         destination()->activateManuscript(false);

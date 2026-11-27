@@ -49,7 +49,7 @@ private:
     bool companionsPending() const;
     bool needsConfirmation() const;
     bool removeDraftConfig(QString *error);
-    enum class CompanionAction { Open, SaveAs, Flush };
+    enum class CompanionAction { Open, SaveAs, Draft, Flush };
     bool updateCompanions(CompanionAction action, const QString &manuscript = {});
 
     MainWindow *host_;

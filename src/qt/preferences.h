@@ -23,6 +23,7 @@ public:
     QString lastDocument() const;
     void remember(const QString &path);
     void show(QWidget *parent);
+    void setWritingFont(const QFont &font);
     std::function<void()> changed;
 private:
     void set(const QString &key, const QVariant &value);

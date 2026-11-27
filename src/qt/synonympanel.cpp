@@ -108,7 +108,7 @@ public:
         auto *remove = action(QStringLiteral("&Delete…\tDelete"), [this] { askDelete(); });
         menu->addSeparator();
         auto *find = action(QStringLiteral("&Find all occurrences\tEnter"), [this] { search_->activateCurrent(); });
-        auto *insert = action(QStringLiteral("&Insert first synonym\tCtrl+Enter"), [this] { search_->activateCurrent(true); });
+        auto *insert = action(QStringLiteral("&Insert at caret\tCtrl+Enter"), [this] { search_->activateCurrent(true); });
         menu->addSeparator();
         auto *reload = action(QStringLiteral("&Reload list\tF5"), [this] { reloadList(); });
         connect(menu, &QMenu::aboutToShow, this, [this, rename, remove, find, insert, reload] {
@@ -134,6 +134,13 @@ public:
         list_->setSizeAdjustPolicy(QAbstractScrollArea::AdjustIgnored);
         list_->installEventFilter(this);
         list_->setModel(model_);
+        list_->setContextMenuPolicy(Qt::CustomContextMenu);
+        connect(list_, &QWidget::customContextMenuRequested, this, [this, menu](QPoint point) {
+            const auto index = list_->indexAt(point);
+            if (!index.isValid()) return;
+            list_->setCurrentIndex(index);
+            menu->popup(list_->viewport()->mapToGlobal(point));
+        });
         search_->activateRow = [this](bool inserting) { return use(inserting); };
         search_->returnToEditor = [this] { if (owner_.returnToEditor) owner_.returnToEditor(); };
         connect(list_, &QListView::activated, this, [this] { search_->activateCurrent(); });
@@ -469,3 +476,5 @@ QStringList SynonymPanel::allAliases() const
             aliases.append(group.aliases);
     return aliases;
 }
+
+void SynonymPanel::showCharacters(bool visible) { characters_->setVisible(visible); }

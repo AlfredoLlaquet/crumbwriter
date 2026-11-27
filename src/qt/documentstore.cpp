@@ -67,7 +67,7 @@ QByteArray manuscriptBytes(const QString &snapshot, int provisionalMarker, bool 
 }
 
 enum class Operation { Save, SaveAs, Draft, Discard };
-enum class Closing { No, Confirming, Saving, Discarding, Done };
+enum class Closing { No, Confirming, Saving, KeepingDraft, Discarding, Done };
 
 struct Request {
     Operation operation = Operation::Save;
@@ -354,6 +354,11 @@ public:
             }
             return;
         }
+        if (closing == Closing::KeepingDraft) {
+            if (draft.isEmpty() || draftRevision != revision) dispatch({Operation::Draft, {}, false, false});
+            else finishClose();
+            return;
+        }
         if (closing == Closing::Saving) {
             if (name.isEmpty())
                 needName();
@@ -403,7 +408,7 @@ public:
                 manuscriptFailed = true;
             message = request.operation == Operation::Draft ? QStringLiteral("Recovery draft failed") :
                                                               QStringLiteral("Save failed");
-            if (closing == Closing::Saving || request.operation == Operation::Discard)
+            if (closing == Closing::Saving || closing == Closing::KeepingDraft || request.operation == Operation::Discard)
                 closing = Closing::No;
         }
         const QString publishedPath = result.recovered || (result.ok && request.operation == Operation::Draft)
@@ -573,11 +578,16 @@ void DocumentStore::keepEditing()
     state->schedule();
 }
 
-void DocumentStore::saveAndClose()
+bool DocumentStore::draftIsCurrent() const
+{
+    return !state->draft.isEmpty() && state->draftRevision == state->revision && !state->busy();
+}
+
+void DocumentStore::saveAndClose(bool keepDraft)
 {
     if (state->closing == Closing::Discarding || state->closing == Closing::Done)
         return;
-    state->closing = Closing::Saving;
+    state->closing = keepDraft && state->name.isEmpty() ? Closing::KeepingDraft : Closing::Saving;
     state->timer.stop();
     state->autoDue = false;
     state->pump();

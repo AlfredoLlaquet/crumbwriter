@@ -117,11 +117,12 @@ void inspectMenu(GuiAudit &audit, QMenu *menu, QWidget *anchor, const QString &i
     settle();
 }
 
-QMenu *documentMenu(MainWindow &window)
+QMenu *topMenu(MainWindow &window, const QString &name)
 {
-    auto *button = window.findChild<QToolButton *>("documentMenuButton");
-    if (button && button->menu()) return button->menu();
-    throw std::runtime_error("Missing Document menu");
+    auto *bar = window.findChild<QMenuBar *>("manuscriptMenuBar");
+    if (bar) for (auto *entry : bar->actions())
+        if (entry->menu() && caption(entry->text()) == name) return entry->menu();
+    throw std::runtime_error(("Missing menu " + name).toStdString());
 }
 
 void editorFocus(MainWindow &window)
@@ -151,14 +152,14 @@ void checkControlFont(GuiAudit &audit, const QFont &testedFont, const QFont &con
 
 void auditMenus(GuiAudit &audit, MainWindow &window)
 {
-    auto *menu = documentMenu(window);
+    auto *menu = topMenu(window, "File");
     key(window.editor(), Qt::Key_F10);
-    waitFor([menu] { return menu->isVisible(); }, "F10 did not show the Document menu");
+    waitFor([menu] { return menu->isVisible(); }, "F10 did not show the File menu");
     audit.capture("document-menu", menu);
     menu->hide();
     for (const QString &name : {QStringLiteral("Edit"), QStringLiteral("Navigate"),
-                                QStringLiteral("View"), QStringLiteral("Tabs")})
-        inspectMenu(audit, action(menu, name)->menu(), &window, "document-menu-" + name.toLower());
+                                QStringLiteral("View"), QStringLiteral("Window")})
+        inspectMenu(audit, topMenu(window, name), &window, "document-menu-" + name.toLower());
 #ifdef Q_OS_MACOS
     auto *bar = window.findChild<QMenuBar *>();
     bool file = false, navigation = false, about = false, settings = false, quit = false;
@@ -166,8 +167,8 @@ void auditMenus(GuiAudit &audit, MainWindow &window)
         for (const auto *top : bar->actions()) {
             const auto *sub = top->menu();
             if (!sub) continue;
-            file |= sub->title() == "File";
-            navigation |= sub->title() == "Navigate";
+            file |= caption(sub->title()) == "File";
+            navigation |= caption(sub->title()) == "Navigate";
             for (const auto *item : sub->actions()) {
                 about |= item->menuRole() == QAction::AboutRole;
                 settings |= item->menuRole() == QAction::PreferencesRole;
@@ -232,7 +233,7 @@ void auditInformation(GuiAudit &audit, MainWindow &window)
     audit.capture("keyboard-shortcuts", help);
     dismiss(help);
 
-    action(documentMenu(window), "About Crumb Writer…")->trigger();
+    action(topMenu(window, "Help"), "About Crumb Writer…")->trigger();
     auto *about = visible<QDialog>(window, "aboutDialog");
     audit.capture("about", about);
     visible<QPushButton>(*about, "viewLicense")->click();
@@ -254,7 +255,7 @@ void auditInformation(GuiAudit &audit, MainWindow &window)
     audit.capture("statistics", stats);
     dismiss(stats);
 
-    action(action(documentMenu(window), "View")->menu(), "Arrange Panels and Columns…")->trigger();
+    action(topMenu(window, "View"), "Arrange Panels and Columns…")->trigger();
     auto *layout = visible<QDialog>(window, "layoutEditor");
     audit.capture("arrange-panels", layout);
     dismiss(layout);
@@ -262,7 +263,7 @@ void auditInformation(GuiAudit &audit, MainWindow &window)
 
 QDialog *openBookmarks(MainWindow &window)
 {
-    action(action(documentMenu(window), "Navigate")->menu(), "Bookmarks…")->trigger();
+    action(topMenu(window, "Navigate"), "Bookmarks…")->trigger();
     return visible<QDialog>(window, "bookmarkWindow");
 }
 
@@ -389,7 +390,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (!menu) return;
         opened = true;
         audit.capture("editor-context-menu", menu);
-        checkControlFont(audit, menu->font(), documentMenu(window)->font(), "The manuscript context menu");
+        checkControlFont(audit, menu->font(), topMenu(window, "Edit")->font(), "The manuscript context menu");
         QMenu *spelling = nullptr;
         for (auto *item : menu->actions())
             if (item->menu() && item->menu()->title() == "Spelling") spelling = item->menu();
@@ -397,7 +398,7 @@ void auditSpelling(GuiAudit &audit, MainWindow &window)
         if (spelling) {
             spelling->popup(menu->mapToGlobal(QPoint(menu->width(), 0)));
             audit.capture("spelling-menu", spelling);
-            checkControlFont(audit, spelling->font(), documentMenu(window)->font(), "The spelling submenu");
+            checkControlFont(audit, spelling->font(), topMenu(window, "Edit")->font(), "The spelling submenu");
             spelling->hide();
         }
         menu->close();
@@ -419,7 +420,7 @@ void auditWritingAids(GuiAudit &audit, MainWindow &window)
 {
     auto *editor = window.editor();
     if (audit.wantsView("manuscript-settings")) {
-        action(documentMenu(window), "Manuscript settings…")->trigger();
+        action(topMenu(window, "Tools"), "Manuscript settings…")->trigger();
         auto *dialog = visible<QDialog>(window, "manuscriptSettingsDialog");
         audit.capture("manuscript-settings", dialog);
         dismiss(dialog);
@@ -436,7 +437,7 @@ void auditWritingAids(GuiAudit &audit, MainWindow &window)
             editor->undo();
             editor->selectRange(anchor, caret, false);
         });
-        action(documentMenu(window), "Compare with startup backup…")->trigger();
+        action(topMenu(window, "Tools"), "Compare with startup backup…")->trigger();
         auto *dialog = visible<QDialog>(window, "backupComparisonDialog");
         auto *changes = visible<QListWidget>(*dialog, "backupChanges");
         audit.require(changes->count() > 0 && changes->currentRow() >= 0,
@@ -457,7 +458,7 @@ void auditWritingAids(GuiAudit &audit, MainWindow &window)
         dismiss(dialog);
     }
     if (audit.wantsView("today-count")) {
-        action(documentMenu(window), "Set Today’s Count…")->trigger();
+        action(topMenu(window, "Tools"), "Set Today’s Count…")->trigger();
         auto *dialog = visible<QDialog>(window, "todayCountDialog");
         visible<QLineEdit>(*dialog, "todayCountValue");
         visible<QPushButton>(*dialog, "resetTodayCount");
@@ -683,7 +684,7 @@ void auditWindows(GuiAudit &audit, MainWindow &window)
         for (auto *dialog : dialogs) if (dialog->isVisible()) dialog->reject();
         settle();
     };
-    inspect({"document-menu", "document-menu-edit", "document-menu-navigate", "document-menu-view", "document-menu-tabs", "macos-menu-bar"},
+    inspect({"document-menu", "document-menu-edit", "document-menu-navigate", "document-menu-view", "document-menu-window", "macos-menu-bar"},
             [&] { auditMenus(audit, window); });
     inspect({"search-and-replace", "search-modes", "recent-searches"}, [&] { auditSearch(audit, window); });
     inspect({"settings-writing", "settings-names", "underline-color"}, [&] { auditSettings(audit, window); });

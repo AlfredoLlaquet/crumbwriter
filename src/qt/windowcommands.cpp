@@ -2,6 +2,7 @@
 #include "manuscriptsession.h"
 #include "manuscriptoptions.h"
 #include <QTabWidget>
+#include <QTabBar>
 #include "wordtools.h"
 #include "bookmarks.h"
 #include "commandicons.h"
@@ -22,9 +23,8 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMouseEvent>
-#ifdef Q_OS_MACOS
 #include <QMenuBar>
-#endif
+#include <QShortcut>
 #include <QRegularExpression>
 #include <QSplitter>
 #include <QTextBlock>
@@ -32,32 +32,6 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QWidgetAction>
-
-namespace {
-// QToolBar drops addWidget() actions from its overflow menu. Supply a button
-// for the toolbar and let the overflow menu use the action's ordinary submenu.
-class DocumentMenuAction final : public QWidgetAction {
-public:
-    DocumentMenuAction(QMenu *documentMenu, QToolBar *bar) : QWidgetAction(bar)
-    {
-        setText("Document menu");
-        setToolTip("Document menu (F10)");
-        setIcon(CommandIcons::icon(CommandIcons::Symbol::Menu, bar));
-        setMenu(documentMenu);
-    }
-
-protected:
-    QWidget *createWidget(QWidget *parent) override
-    {
-        if (!qobject_cast<QToolBar *>(parent)) return nullptr;
-        auto *button = CommandIcons::menuButton(parent, text(), toolTip());
-        button->setObjectName("documentMenuButton");
-        button->setMenu(menu());
-        return button;
-    }
-};
-
-}
 
 void MainWindow::buildToolbar(QVBoxLayout *layout)
 {
@@ -81,34 +55,40 @@ void MainWindow::buildToolbar(QVBoxLayout *layout)
          [this] { active_->save(false); });
     tool("Find", Symbol::Find, "Find forward (Ctrl+F)",
          [this] { active_->search_->find(false); });
-    menu_ = new QMenu("Document", this);
-    auto *menuAction = new DocumentMenuAction(menu_, bar);
-    bar->addAction(menuAction);
-    menuButton_ = qobject_cast<QToolButton *>(bar->widgetForAction(menuAction));
+    buildFormattingTools(bar);
     layout->addWidget(bar);
 }
 
 void MainWindow::buildMenu()
 {
+    menuBar_ = new QMenuBar(this);
+    menuBar_->setObjectName("manuscriptMenuBar");
+    layout()->setMenuBar(menuBar_);
+    fileMenu_ = menuBar_->addMenu(tr("&File"));
+    auto *edit = menuBar_->addMenu(tr("&Edit"));
+    auto *view = menuBar_->addMenu(tr("&View"));
+    auto *format = menuBar_->addMenu(tr("F&ormat"));
+    auto *nav = menuBar_->addMenu(tr("&Navigate"));
+    auto *tools = menuBar_->addMenu(tr("&Tools"));
+    auto *tabMenu = menuBar_->addMenu(tr("W&indow"));
+    auto *help = menuBar_->addMenu(tr("&Help"));
     auto add = [this](QMenu *menu, const QString &name, const QString &keys, auto fn) {
         auto *action = menu->addAction(keys.isEmpty() ? name : name + "\t" + keys);
         connect(action, &QAction::triggered, this, fn);
         return action;
     };
-    add(menu_, "Open…", "Ctrl+O", [this] { active_->chooseFile(false); });
-    add(menu_, "New tab", "Ctrl+T", [this] { newTab(); });
-    add(menu_, "New window", "Ctrl+Shift+N", [this] { newWindow()->activateManuscript(false); });
-    auto *tabMenu = menu_->addMenu(tr("&Tabs"));
+    add(fileMenu_, "Open…", "Ctrl+O", [this] { active_->chooseFile(false); });
+    add(tabMenu, "New tab", "Ctrl+T", [this] { newTab(); });
+    add(tabMenu, "New window", "Ctrl+Shift+N", [this] { newWindow()->activateManuscript(false); });
     add(tabMenu, tr("Next tab"), "Ctrl+Tab", [this] { stepTab(1); });
     add(tabMenu, tr("Previous tab"), "Ctrl+Shift+Tab", [this] { stepTab(-1); });
     add(tabMenu, tr("Move tab to new window"), {}, [this] { moveTabToNewWindow(); });
     add(tabMenu, tr("Close tab"), "Ctrl+F4", [this] { closeCurrentTab(); });
     reopenAction_ = add(tabMenu, tr("Reopen closed tab"), "Ctrl+Shift+T", [this] { reopenClosedTab(); });
     reopenAction_->setEnabled(false);
-    appendAction_ = add(menu_, "New crumb", "Ctrl+N", [this] { active_->appendCrumb(); });
-    add(menu_, "Save", "Ctrl+S", [this] { active_->save(false); });
-    add(menu_, "Save As…", "Ctrl+Shift+S", [this] { active_->save(true); });
-    auto *edit = menu_->addMenu("Edit");
+    appendAction_ = add(fileMenu_, "New crumb", "Ctrl+N", [this] { active_->appendCrumb(); });
+    add(fileMenu_, "Save", "Ctrl+S", [this] { active_->save(false); });
+    add(fileMenu_, "Save As…", "Ctrl+Shift+S", [this] { active_->save(true); });
     add(edit, "Undo", "Ctrl+Z", [this] { active_->editor_->undo(); });
     add(edit, "Redo", "Ctrl+Shift+Z", [this] { active_->editor_->redo(); });
     crumbOnlyActions_ << add(edit, "Copy lowercase header", "Ctrl+1", [this] { active_->editor_->copyHeader(); active_->editor_->setFocus(); });
@@ -116,19 +96,19 @@ void MainWindow::buildMenu()
     deleteAction_ = add(edit, "Delete current crumb", "Ctrl+Y", [this] { active_->editor_->deleteCrumb(); active_->editor_->setFocus(); });
     add(edit, "Delete word or space", "Ctrl+W", [this] { active_->editor_->deleteWord(); active_->editor_->setFocus(); });
     add(edit, "Select word at caret", "Ctrl+2", [this] { active_->words_->selectWord(); });
-    add(edit, "Offline Thesaurus…", "F7", [this] { active_->words_->showThesaurus(); });
+    add(tools, tr("Correct Word at Caret"), "Ctrl+.", [this] { active_->spelling_->correctAtCaret(); });
+    add(tools, "Offline Thesaurus…", "F7", [this] { active_->words_->showThesaurus(); });
     genericOnlyActions_ << add(edit, tr("Continue list"), "Ctrl+Shift+Enter", [this] { active_->editor_->continueList(); });
     genericOnlyActions_ << add(edit, tr("Insert guillemet or toggle italics"), "Ctrl+K", [this] { active_->editor_->toggleGuillemets(); });
-    auto *web = edit->addMenu("Look Up in Merriam-Webster");
+    auto *web = tools->addMenu("Look Up in Merriam-Webster");
     add(web, "Dictionary", "Ctrl+Shift+L, D", [this] { active_->words_->openWeb(WordTools::Reference::Dictionary); });
     add(web, "Dictionary synonyms", "Ctrl+Shift+L, S", [this] { active_->words_->openWeb(WordTools::Reference::Synonyms); });
     add(web, "Thesaurus", "Ctrl+Shift+L, T", [this] { active_->words_->openWeb(WordTools::Reference::Thesaurus); });
     add(edit, "Insert Symbol…", "Ctrl+U", [this] { active_->openSymbols(); });
     add(edit, "Complete Name", "F5", [this] { active_->editor_->setFocus(); active_->synonymWriting_->complete(); });
-    add(edit, "Next spelling issue…", "F8", [this] { active_->spelling_->next(false); });
-    add(edit, "Previous spelling issue…", "Shift+F8", [this] { active_->spelling_->next(true); });
-    add(edit, "Manuscript dictionary…", "Ctrl+Shift+D", [this] { active_->spelling_->showDictionary(); });
-    auto *nav = menu_->addMenu("Navigate");
+    add(tools, "Next spelling issue…", "F8", [this] { active_->spelling_->next(false); });
+    add(tools, "Previous spelling issue…", "Shift+F8", [this] { active_->spelling_->next(true); });
+    add(tools, "Manuscript dictionary…", "Ctrl+Shift+D", [this] { active_->spelling_->showDictionary(); });
 #ifdef Q_OS_MACOS
     const QString motionKeys = "Ctrl+Shift+Space";
     const QString bookmarkKeys = "Ctrl+Shift+B";
@@ -162,8 +142,6 @@ void MainWindow::buildMenu()
     add(nav, "Search visit history", "Ctrl+Shift+3", [this] { focusNavigation(false); });
     indexAction_ = add(nav, "Search genres", "Ctrl+Shift+4", [this] { focusNavigation(true); });
     sortAction_ = add(nav, "Change genre order", "Shift+F7", [this] { active_->side_->toggleGenreOrder(); });
-    menu_->addSeparator();
-    auto *view = menu_->addMenu("&View");
     add(view, "Show or Hide Navigation", "F9", [this] { showSidebar(rightPane_->isHidden()); });
     add(view, "Show or Hide Synonym Lists", "Shift+F9", [this] {
         showPanel(leftPane_, leftPane_->isHidden(), synonymWidth_);
@@ -175,51 +153,65 @@ void MainWindow::buildMenu()
     genericOnlyActions_ << markupAction_;
     add(view, "Arrange Panels and Columns…", "Ctrl+Shift+F10", [this] { layouts_->arrange(this); });
     add(view, "Restore Default Layouts", {}, [this] { layouts_->restoreDefaults(); });
-    add(menu_, tr("Manuscript settings…"), {}, [this] { active_->options_->showSettings(); });
-    add(menu_, tr("Compare with startup backup…"), {}, [this] { active_->options_->showBackupComparison(); });
-    add(menu_, "Manuscript statistics…", "Ctrl+Shift+I", [this] { active_->showStatistics(); });
-    add(menu_, "Set Today’s Count…", {}, [this] { active_->side_->showTodayCountDialog(); });
-    add(menu_, "Settings…", "Ctrl+,", [this] { prefs_.show(this); });
-    add(menu_, "Keyboard Shortcuts…", "F1", [this] { showShortcutHelp(this); });
-    add(menu_, "Open TheCrumbs.org", {}, [this] { openCrumbsWebsite(); });
-    add(menu_, "&About Crumb Writer…", {}, [this] { showAbout(); });
+    add(tools, tr("Manuscript settings…"), {}, [this] { active_->options_->showSettings(); });
+    add(tools, tr("Compare with startup backup…"), {}, [this] { active_->options_->showBackupComparison(); });
+    add(tools, "Manuscript statistics…", "Ctrl+Shift+I", [this] { active_->showStatistics(); });
+    add(tools, "Set Today’s Count…", {}, [this] { active_->side_->showTodayCountDialog(); });
+    auto *settings = add(tools, "Settings…", "Ctrl+,", [this] { prefs_.show(this); });
+    settings->setMenuRole(QAction::PreferencesRole);
 #ifdef Q_OS_MACOS
-    add(menu_, "Close window", "Cmd+W", [this] { close(); });
-    // Keep the same F10 menu as the other desktops. Finder users also get
-    // a native File menu and the standard application-menu roles.
-    auto *bar = new QMenuBar(this);
-    bar->setNativeMenuBar(true);
-    layout()->setMenuBar(bar);
-    auto *file = bar->addMenu("File");
-    auto native = [this](QMenu *menu, const QString &name, QKeySequence shortcut,
-                         auto fn, QAction::MenuRole role = QAction::NoRole) {
-        auto *action = new QAction(name, menu);
-        action->setMenuRole(role);
-        action->setShortcut(shortcut);
-        connect(action, &QAction::triggered, this, fn);
-        menu->addAction(action);
+    settings->setShortcut(QKeySequence(Qt::META | Qt::Key_Comma));
+#endif
+    add(help, "Keyboard Shortcuts…", "F1", [this] { showShortcutHelp(this); });
+    add(help, "Open TheCrumbs.org", {}, [this] { openCrumbsWebsite(); });
+    add(help, "&About Crumb Writer…", {}, [this] { showAbout(); })->setMenuRole(QAction::AboutRole);
+    add(fileMenu_, tr("Import…"), {}, [this] { importDocument(); });
+    add(fileMenu_, tr("Export…"), {}, [this] { exportDocument(); });
+    add(help, tr("Crumb Writer Help"), {}, [this] { showHelp(); });
+    add(help, tr("Licenses…"), {}, [this] { showHelp(true); });
+    add(tabMenu, tr("Close window"), "Alt+W", [this] { close(); });
+    auto *quit = add(fileMenu_, tr("Quit Crumb Writer"), {}, [this] { if (quitApplication) quitApplication(); else QApplication::closeAllWindows(); });
+    quit->setMenuRole(QAction::QuitRole);
+    charactersAction_ = add(view, tr("Characters"), {}, [this] {
+        const bool generic = editor()->model().isGeneric();
+        prefs_.settings().setValue(generic ? "panels/generic-characters" : "panels/crumb-characters", charactersAction_->isChecked());
+        if (prefs_.changed) prefs_.changed();
+        updateModeControls();
+    });
+    charactersAction_->setCheckable(true);
+    auto *styles = format->addMenu(tr("Style"));
+    for (int value = -1; value <= 4; ++value) {
+        const QString name = value < 0 ? tr("Main Title") : value == 0 ? tr("Regular Text") : tr("Title %1").arg(value);
+        auto *action = styles->addAction(name);
+        action->setShortcut(QKeySequence(QStringLiteral("Ctrl+Shift+K, %1").arg(value < 0 ? QStringLiteral("M") : QString::number(value))));
+        connect(action, &QAction::triggered, this, [this, value] { applyLineStyle(value); });
+        styleActions_.append(action);
+    }
+#ifdef Q_OS_MACOS
+    // Physical Command shortcuts reach the same actions as the menu and toolbar.
+    auto command = [this](int key, auto fn) {
+        auto *shortcut = new QShortcut(QKeySequence(key), this);
+        connect(shortcut, &QShortcut::activated, this, fn);
     };
-    // AA_MacDontSwapCtrlAndMeta assigns physical Command to Meta. Bind it
-    // explicitly even when a theme supplies PC-style StandardKey defaults.
-    native(file, "New Tab", Qt::META | Qt::Key_T, [this] { newTab(); });
-    native(file, "Reopen Closed Tab", Qt::META | Qt::SHIFT | Qt::Key_T, [this] { reopenClosedTab(); });
-    native(file, "New Window", Qt::META | Qt::Key_N, [this] { newWindow()->activateManuscript(false); });
-    native(file, "Open…", Qt::META | Qt::Key_O, [this] { active_->chooseFile(false); });
-    native(file, "Save", Qt::META | Qt::Key_S, [this] { active_->save(false); });
-    native(file, "Save As…", Qt::META | Qt::SHIFT | Qt::Key_S, [this] { active_->save(true); });
-    native(file, "Close Window", Qt::META | Qt::Key_W, [this] { close(); });
-    native(file, "Settings…", Qt::META | Qt::Key_Comma, [this] { prefs_.show(this); }, QAction::PreferencesRole);
-    native(file, "About Crumb Writer", {}, [this] { showAbout(); }, QAction::AboutRole);
-    native(file, "Quit Crumb Writer", Qt::META | Qt::Key_Q, [] { QApplication::closeAllWindows(); }, QAction::QuitRole);
-    native(bar->addMenu("Navigate"), "Find…", Qt::META | Qt::Key_F, [this] { active_->search_->find(false); });
-#else
-    add(menu_, "Close window", "Alt+W", [this] { close(); });
+    command(Qt::META | Qt::Key_T, [this] { newTab(); });
+    command(Qt::META | Qt::SHIFT | Qt::Key_T, [this] { reopenClosedTab(); });
+    command(Qt::META | Qt::Key_N, [this] { newWindow()->activateManuscript(false); });
+    command(Qt::META | Qt::Key_O, [this] { active_->chooseFile(false); });
+    command(Qt::META | Qt::Key_S, [this] { active_->save(false); });
+    command(Qt::META | Qt::SHIFT | Qt::Key_S, [this] { active_->save(true); });
+    command(Qt::META | Qt::Key_W, [this] { close(); });
+    command(Qt::META | Qt::Key_F, [this] { active_->search_->find(false); });
+    quit->setShortcut(QKeySequence(Qt::META | Qt::Key_Q));
 #endif
 }
 
 void MainWindow::updateModeControls()
 {
     const bool generic = active_->editor_->model().isGeneric();
+    const bool visible = prefs_.settings().value(generic ? "panels/generic-characters" : "panels/crumb-characters", !generic).toBool();
+    charactersAction_->setChecked(visible);
+    active_->synonyms_->showCharacters(visible);
+    syncFormattingTools();
     mode_->setText(generic ? "Generic mode" : "Crumb mode");
     mode_->setToolTip("The first line selects Crumb mode when it contains // outside a URL.");
     fitFooter();
@@ -246,6 +238,13 @@ void MainWindow::focusNavigation(bool titlesOrGenres)
 bool MainWindow::eventFilter(QObject *watched, QEvent *e)
 {
     if (!active_) return false;
+    if (watched == tabs_ && e->type() == QEvent::MouseButtonDblClick) {
+        const auto *mouse = static_cast<QMouseEvent *>(e);
+        if (mouse->button() == Qt::LeftButton && mouse->position().y() <= tabs_->tabBar()->geometry().bottom()) {
+            newTab();
+            return true;
+        }
+    }
     if (e->type() == QEvent::WindowActivate) {
         auto *dialog = qobject_cast<QDialog *>(watched);
         if (dialog && dialog->isWindow()) {
@@ -273,13 +272,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     }
     if (e->type() != QEvent::KeyPress) return false;
     auto *key = static_cast<QKeyEvent *>(e);
-#ifdef Q_OS_MACOS
-    if (watched == menu_ && key->key() == Qt::Key_A && !key->modifiers()) {
-        menu_->hide();
-        showAbout();
-        return true;
-    }
-#endif
+
     auto *widget = qobject_cast<QWidget *>(watched);
     if (!widget || widget->window() != this) return false;
     const auto keys = key->modifiers() & ~Qt::KeypadModifier;
@@ -323,6 +316,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
         case Qt::Key_2: if (widget == active_->editor_) { active_->words_->selectWord(); return true; } break;
         case Qt::Key_O: active_->chooseFile(false); return true;
         case Qt::Key_S: active_->save(false); return true;
+        case Qt::Key_Period: if (widget == editor()) { active_->spelling_->correctAtCaret(); return true; } break;
         case Qt::Key_Comma: prefs_.show(this); return true;
         case Qt::Key_B: active_->bookmarks_->addCurrent(); return true;
         case Qt::Key_N: active_->appendCrumb(); return true;
@@ -367,8 +361,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
         case Qt::Key_F1: showShortcutHelp(this); return true;
         case Qt::Key_F9: showSidebar(rightPane_->isHidden()); return true;
         case Qt::Key_F10: {
-            auto *anchor = menuButton_->isVisible() ? static_cast<QWidget *>(menuButton_) : menuButton_->parentWidget();
-            menu_->popup(anchor->mapToGlobal(QPoint(0, anchor->height())));
+            menuBar_->setFocus();
+            menuBar_->setActiveAction(fileMenu_->menuAction());
+            fileMenu_->popup(menuBar_->mapToGlobal(menuBar_->actionGeometry(fileMenu_->menuAction()).bottomLeft()));
             return true;
         }
         default: break;

@@ -87,6 +87,8 @@ jobs:
           subject-path: |
             dist/*.deb
             dist/*.pkg
+            dist/*.tgz
+            dist/*.tar.xz
             dist/*-Setup.exe
             dist/*.dmg
             dist/SHA256SUMS

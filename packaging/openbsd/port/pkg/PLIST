@@ -1,0 +1,31 @@
+@bin bin/crumbwriter
+share/applications/org.thecrumbs.CrumbWriter.desktop
+share/crumbwriter/
+share/crumbwriter/dictionaries/
+share/crumbwriter/dictionaries/en_US.aff
+share/crumbwriter/dictionaries/en_US.dic
+share/crumbwriter/thesaurus/
+share/crumbwriter/thesaurus/th_en_US_new.dat
+share/crumbwriter/thesaurus/th_en_US_new.idx
+share/doc/crumbwriter/
+share/doc/crumbwriter/COPYING-BSD-first
+share/doc/crumbwriter/COPYING-MyThes
+share/doc/crumbwriter/CrumbWriter.txt
+share/doc/crumbwriter/LICENSE
+share/doc/crumbwriter/NOTICE.md
+share/doc/crumbwriter/third-party/
+share/doc/crumbwriter/third-party/MyThes/
+share/doc/crumbwriter/third-party/MyThes/COPYING
+share/doc/crumbwriter/third-party/MyThes/WordNet_license.txt
+share/doc/crumbwriter/third-party/MyThes/WordNet_readme.txt
+share/doc/crumbwriter/third-party/SCOWL/
+share/doc/crumbwriter/third-party/SCOWL/README_en_US.txt
+share/icons/hicolor/128x128/apps/org.thecrumbs.CrumbWriter.png
+share/icons/hicolor/16x16/apps/org.thecrumbs.CrumbWriter.png
+share/icons/hicolor/24x24/apps/org.thecrumbs.CrumbWriter.png
+share/icons/hicolor/256x256/apps/org.thecrumbs.CrumbWriter.png
+share/icons/hicolor/32x32/apps/org.thecrumbs.CrumbWriter.png
+share/icons/hicolor/48x48/apps/org.thecrumbs.CrumbWriter.png
+share/icons/hicolor/64x64/apps/org.thecrumbs.CrumbWriter.png
+@tag update-desktop-database
+@tag gtk-update-icon-cache %D/share/icons/hicolor

@@ -68,6 +68,7 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
             const bool saved = store_->path().isEmpty() ? options_->carryToPath(path, &configError)
                                                         : options_->copyToDraft(path, &configError);
             if (!saved) showNotice(configError);
+            if (store_->path().isEmpty()) updateCompanions(CompanionAction::Draft, path);
         }
         if (path == store_->path()) {
             if (ManuscriptPath::same(path, pendingSavePath_)) pendingSavePath_.clear();
@@ -95,7 +96,7 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
     words_->onNotice = [this](const QString &message) { showNavigationStatus(message); };
     connectWritingTools();
     editor_->model().onDailyCountError = [this](const QString &error) { showNotice(error); };
-    store_->onChanged = [this] { changed(); };
+    store_->onChanged = [this] { changed(); if (host_->workspaceChanged) host_->workspaceChanged(false); };
     store_->onError = [this](const QString &error) {
         pendingSavePath_.clear();
         if (host_->closingSession_ == this) {
@@ -122,7 +123,7 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
     side_->jumpTo = [this](int pos) { jump(pos); };
     search_->recordOrigin = [this](const QTextCursor &c) { trail_.remember(c); };
     editor_->model().observe(this, [this](const CrumbChange &change) {
-        if (change.modeChanged && host_->active_ == this) host_->updateModeControls();
+        if ((change.modeChanged || change.titlesChanged) && host_->active_ == this) host_->updateModeControls();
         if (!loading_ && (change.textChanged || change.markerConfirmed)) {
             store_->markEdited();
             bookmarks_->refresh();
@@ -130,6 +131,8 @@ ManuscriptSession::ManuscriptSession(MainWindow *host, Preferences &preferences,
         }
     });
     connect(editor_, &QPlainTextEdit::cursorPositionChanged, this, [this] {
+        if (host_->active_ == this) host_->syncFormattingTools();
+        if (host_->workspaceChanged && !loading_) host_->workspaceChanged(false);
         if (!loading_ && host_->active_ == this && host_->isActiveWindow()) prefs_.remember(store_->path());
     });
 
@@ -185,7 +188,7 @@ bool ManuscriptSession::load(const QString &name, bool recovery)
         const QString dailyError = editor_->model().openDailyCount(recovery ? name : store_->path());
         if (!dailyError.isEmpty()) showNotice(dailyError);
         side_->reset();
-        updateCompanions(CompanionAction::Open, store_->path());
+        updateCompanions(CompanionAction::Open, recovery ? name : store_->path());
         if (recovery) showNotice("Recovered an unsaved manuscript. Use Save As to give it a filename.");
         prefs_.remember(store_->path());
     } else {
@@ -227,10 +230,12 @@ bool ManuscriptSession::needsConfirmation() const
 bool ManuscriptSession::removeDraftConfig(QString *error)
 {
     if (configDraft_.isEmpty()) return true;
-    const QString sidecar = configDraft_ + QStringLiteral(".config");
-    if (QFileInfo::exists(sidecar) && !QFile::remove(sidecar)) {
-        *error = tr("Could not remove the private recovery settings file %1.").arg(sidecar);
-        return false;
+    for (const auto *suffix : {".config", ".characters", ".recurring", ".dictionary", ".bookmarks"}) {
+        const auto sidecar = configDraft_ + QLatin1String(suffix);
+        if (QFileInfo::exists(sidecar) && !QFile::remove(sidecar)) {
+            *error = tr("Could not remove the private recovery companion %1.").arg(sidecar);
+            return false;
+        }
     }
     configDraft_.clear();
     return true;

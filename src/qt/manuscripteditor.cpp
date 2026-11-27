@@ -42,12 +42,12 @@ public:
         const bool beforeHeading = compactSeparators && next.isValid() && model &&
                                    model->headingLevel(next.blockNumber()) > 0;
         const qreal headingGap = beforeHeading ? sectionSpacing : 0;
-        if (compactSeparators && !revealMarkers && block.blockNumber() != activeLine &&
+        if (compactSeparators && !revealMarkers &&
             model && model->paragraphRole(block.blockNumber()) == ParagraphRole::TitleMarker &&
             block.layout()->preeditAreaText().isEmpty()) {
             // Fix the row's advance explicitly: font hinting alone gives a
             // different minimum line height on each platform.
-            bounds.setHeight(markerHeight + headingGap +
+            bounds.setHeight(1 + headingGap +
                              (next.isValid() ? 0 : document()->documentMargin()));
             return bounds;
         }
@@ -146,7 +146,7 @@ public:
         for (size_t i = 0; i < chapterTitles_.size(); ++i) {
             chapterTitles_[i].setFont(scaledFont(font, sizes[i]));
             chapterTitles_[i].setFontWeight(QFont::Bold);
-            chapterTitles_[i].setUnderlineStyle(lines[i]);
+            chapterTitles_[i].setUnderlineStyle(editor_->showManuscriptMarkup() ? lines[i] : QTextCharFormat::NoUnderline);
         }
         auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
         const qreal writingHeight = QFontMetricsF(font, layout->paintDevice()).height();
@@ -236,9 +236,16 @@ protected:
             const int line = currentBlock().blockNumber();
             const auto role = model_.paragraphRole(line);
             const auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
-            const bool hidden = role == ParagraphRole::TitleMarker && line != layout->activeLine &&
-                                !editor_->showManuscriptMarkup();
-            setFormat(0, text.size(), hidden ? marker_ : writingFormat(role, model_.headingLevel(line)));
+            auto format = writingFormat(role, model_.headingLevel(line));
+            if (role == ParagraphRole::TitleMarker) {
+                if (!editor_->showManuscriptMarkup()) format = marker_;
+                else if (line != layout->activeLine) {
+                    // The viewport paints the repeated glyphs to the actual title width.
+                    format.setForeground(Qt::transparent);
+                    format.setFontLetterSpacing(1);
+                }
+            }
+            setFormat(0, text.size(), format);
             applyGuillemets(text);
             underlineWebLinks(text);
             return;
@@ -429,8 +436,10 @@ void ManuscriptEditor::setShowManuscriptMarkup(bool show)
     showManuscriptMarkup_ = show;
     static_cast<CrumbLayout *>(document()->documentLayout())->revealMarkers = show;
     if (model_->isGeneric()) {
+        highlighter_->updateTypography();
         highlighter_->updateGuillemetCaret();
         highlighter_->rehighlight();
+        viewport()->update();
     }
 }
 
@@ -471,7 +480,7 @@ void ManuscriptEditor::onCursorMoved()
     if (!editing_ && !replaying_) {
         vi_->abandon();
         finishTyping();
-        if (!pendingSpace_.isNull() && textCursor().position() != pendingSpace_.position())
+        if (!pendingSpace_.isNull() && !insidePendingSpaces(textCursor().position()))
             trimPending();
         clearVirtual();
     }
@@ -511,7 +520,7 @@ void ManuscriptEditor::selectRange(int anchor, int position, bool center)
     auto cursor = at(anchor);
     cursor.setPosition(clampPosition(position), QTextCursor::KeepAnchor);
     finishTyping();
-    if (!pendingSpace_.isNull() && cursor.position() != pendingSpace_.position())
+    if (!pendingSpace_.isNull() && !insidePendingSpaces(cursor.position()))
         trimPending();
     clearVirtual();
     clearAlignment();
@@ -753,6 +762,25 @@ void ManuscriptEditor::moveTo(int position, bool extend)
 bool ManuscriptEditor::moveByControlKey(int key, bool extend)
 {
     switch (key) {
+    case Qt::Key_Left: case Qt::Key_Right: {
+        const bool right = key == Qt::Key_Right;
+        const auto current = textCursor();
+        auto destination = current;
+        destination.movePosition(right ? QTextCursor::NextWord : QTextCursor::PreviousWord);
+        const int from = current.position(), to = destination.position();
+        const int step = right ? 1 : -1;
+        for (int pos = from + step; right ? pos <= to : pos >= to; pos += step) {
+            for (const int dash : {pos - 1, pos}) {
+                if (dash > 0 && document()->characterAt(dash) == QChar(0x2014) &&
+                    document()->characterAt(dash - 1).isLetterOrNumber() &&
+                    document()->characterAt(dash + 1).isLetterOrNumber()) {
+                    moveTo(pos, extend);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
     case Qt::Key_Up: case Qt::Key_Down:
         navigate(key == Qt::Key_Up, false, extend);
         return true;

@@ -17,6 +17,7 @@ public:
     bool openManuscript(const QString &path, QString *error = nullptr);
     bool saveAs(const QString &path, QString *error = nullptr);
     bool flush(QString *error = nullptr);
+    void showCharacters(bool visible);
     bool hasPending() const;
     QStringList allAliases() const;
     void setGenres(const QStringList &genres);

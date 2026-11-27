@@ -2,6 +2,8 @@
 #define CRUMBWRITER_MAINWINDOW_H
 
 #include <QHash>
+#include <QJsonObject>
+#include <QSet>
 #include <QPointer>
 #include <QWidget>
 #include <functional>
@@ -14,6 +16,11 @@ class QDialog;
 class QGridLayout;
 class QLabel;
 class QMenu;
+class QMenuBar;
+class QFontComboBox;
+class QSpinBox;
+class QComboBox;
+class QToolBar;
 class QMessageBox;
 class QSplitter;
 class QTabWidget;
@@ -23,6 +30,7 @@ class WindowLayouts;
 
 class MainWindow final : public QWidget {
     friend class ManuscriptSession;
+    friend class WriterApplication;
 public:
     explicit MainWindow(Preferences &preferences, QWidget *parent = nullptr);
     ~MainWindow() override;
@@ -41,6 +49,11 @@ public:
     void showNotice(const QString &message);
     ManuscriptEditor *editor() const;
     std::function<MainWindow *()> makeWindow;
+    std::function<void(bool closing)> workspaceChanged;
+    std::function<void()> quitApplication;
+    std::function<void()> quitCanceled;
+    QJsonObject workspaceState() const;
+    QStringList restoreWorkspace(const QJsonObject &state);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -51,6 +64,12 @@ protected:
 private:
     void buildToolbar(QVBoxLayout *layout);
     void buildMenu();
+    void buildFormattingTools(QToolBar *bar);
+    void syncFormattingTools();
+    void applyLineStyle(int style);
+    void importDocument();
+    void exportDocument();
+    void showHelp(bool licenses = false);
     void updateModeControls();
     void focusNavigation(bool titlesOrGenres);
     void focusSynonyms(bool recurring);
@@ -95,8 +114,13 @@ private:
     QLabel *mode_ = nullptr;
     QLabel *notice_ = nullptr;
     QWidget *noticeBar_ = nullptr;
-    QMenu *menu_ = nullptr;
-    QToolButton *menuButton_ = nullptr;
+    QMenuBar *menuBar_ = nullptr;
+    QMenu *fileMenu_ = nullptr;
+    QFontComboBox *fontFamily_ = nullptr;
+    QSpinBox *fontSize_ = nullptr;
+    QComboBox *lineStyle_ = nullptr;
+    QList<QAction *> styleActions_;
+    QAction *charactersAction_ = nullptr;
     QAction *appendTool_ = nullptr, *appendAction_ = nullptr, *copyAction_ = nullptr;
     QAction *deleteAction_ = nullptr, *goToNumberAction_ = nullptr, *indexAction_ = nullptr, *sortAction_ = nullptr;
     QAction *reopenAction_ = nullptr, *markupAction_ = nullptr;
@@ -107,6 +131,7 @@ private:
     quint64 closeAttempt_ = 0;
     QHash<ManuscriptSession *, quint64> discardRevisions_;
     ManuscriptSession *closingSession_ = nullptr;
+    QSet<ManuscriptSession *> omittedDrafts_;
     bool closingWindow_ = false, discarding_ = false, allowClose_ = false;
     int sidebarWidth_ = 230, synonymWidth_ = 190;
 };

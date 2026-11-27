@@ -44,7 +44,7 @@ def build_deb(stage, work, destination, version):
         raise ValueError(f"Unexpected dpkg-shlibdeps result: {deps}")
     runtime = deps.removeprefix("shlibs:Depends=")
     # Dependencies loaded as plugins or data never appear in the executable's ELF table.
-    runtime += ", qt6-qpa-plugins, qt6-wayland, libxcb-cursor0, hunspell-en-us, mythes-en-us"
+    runtime += ", qt6-qpa-plugins, qt6-wayland, libxcb-cursor0, hunspell-en-us, mythes-en-us, poppler-utils"
     files = [file for file in installed_files(stage) if "DEBIAN" not in file.relative_to(stage).parts]
     size = sum((file.stat().st_size + 1023) // 1024 for file in files)
     control = stage / "DEBIAN"
@@ -65,7 +65,7 @@ def build_pkg(stage, work, destination, version):
     meta = work / "metadata"
     meta.mkdir(exist_ok=True)
     dependencies = {}
-    for name in ("qt6-base", "qt6-wayland", "glib", "hunspell", "en-hunspell", "en-mythes"):
+    for name in ("qt6-base", "qt6-wayland", "glib", "hunspell", "en-hunspell", "en-mythes", "poppler-utils"):
         origin, installed_version = output("pkg", "query", "%o %v", name).split()
         dependencies[name] = {"origin": origin, "version": installed_version}
     manifest = {

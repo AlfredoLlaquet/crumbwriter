@@ -25,7 +25,10 @@ def stage_msys(destination, prefix, sources):
         raise RuntimeError(f"Missing MSYS2 package database under {root}")
 
     # The same owner may install several Qt plugins with different subdirectories.
-    needed = {item.name.casefold() for item in destination.rglob("*") if item.suffix.lower() == ".dll"}
+    needed = {item.name.casefold() for item in destination.rglob("*") if item.suffix.lower() == ".dll" or item.name.lower() == "pdftotext.exe"}
+    data_paths = {file.relative_to(destination).as_posix() for file in (destination / "share/poppler").rglob("*") if file.is_file()}
+    if not data_paths:
+        raise RuntimeError("Missing Poppler encoding data in the Windows stage")
     if not needed:
         raise RuntimeError("The Windows stage has no runtime DLLs")
     packages = defaultdict(list)
@@ -36,9 +39,10 @@ def stage_msys(destination, prefix, sources):
         listing = pacman_fields(directory / "files").get("FILES", [])
         owned = [
             f for f in listing if f.startswith(prefix.name + "/")
-            and f.lower().endswith(".dll") and PurePosixPath(f).name.casefold() in needed
+            and PurePosixPath(f).name.casefold() in needed
         ]
-        if not owned:
+        owned_data = [f for f in listing if f.removeprefix(prefix.name + "/") in data_paths]
+        if not owned and not owned_data:
             continue
         fields = pacman_fields(directory / "desc")
         name = fields["NAME"][0]
@@ -49,9 +53,11 @@ def stage_msys(destination, prefix, sources):
         key = (base, version)
         packages[key].append((name, listing))
         files[key].update(PurePosixPath(f).name.casefold() for f in owned)
+        files[key].update(f.removeprefix(prefix.name + '/') for f in owned_data)
+    needed.update(data_paths)
     found = set().union(*files.values())
     if needed - found:
-        raise RuntimeError("Unidentified staged DLLs: " + ", ".join(sorted(needed - found)))
+        raise RuntimeError("Unidentified staged runtime files: " + ", ".join(sorted(needed - found)))
 
     lines = []
     for (base, version), pkgs in sorted(packages.items()):

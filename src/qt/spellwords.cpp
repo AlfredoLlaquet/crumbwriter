@@ -56,7 +56,7 @@ QString packagedDictionaryDirectory()
 #elif defined(Q_OS_WIN)
     return QCoreApplication::applicationDirPath() + "/dictionaries";
 #else
-    return {};
+    return QDir::cleanPath(QCoreApplication::applicationDirPath() + "/../share/crumbwriter/dictionaries");
 #endif
 }
 

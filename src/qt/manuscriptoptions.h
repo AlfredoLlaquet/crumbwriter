@@ -19,6 +19,7 @@ public:
     bool copyToDraft(const QString &draft, QString *error = nullptr);
     std::function<void()> onChanged;
     bool pending() const { return config_.hasPending(); }
+    bool setLineStyle(int style, QString *error);
     void showSettings();
     void showBackupComparison();
 

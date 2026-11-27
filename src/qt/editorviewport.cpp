@@ -5,6 +5,7 @@
 #include <QtCore/QTimer>
 #include <QtGui/QAbstractTextDocumentLayout>
 #include <QtGui/QMouseEvent>
+#include "genericparagraph.h"
 #include <QtGui/QPainter>
 #include <QtGui/QTextBlock>
 #include <QtGui/QTextLayout>
@@ -85,6 +86,32 @@ void ManuscriptEditor::paintEvent(QPaintEvent *event)
             paintCrumbBackground(p);
         }
         QPlainTextEdit::paintEvent(event);
+        if (showManuscriptMarkup() && model_->isGeneric()) {
+            QPainter painter(viewport());
+            painter.setClipRect(event->rect());
+            painter.setFont(font());
+            painter.setPen(palette().text().color());
+            const QFontMetricsF metrics(font(), viewport());
+            for (auto block = firstVisibleBlock(); block.isValid(); block = block.next()) {
+                const auto bounds = blockBoundingGeometry(block).translated(contentOffset());
+                if (bounds.top() > event->rect().bottom()) break;
+                if (bounds.bottom() < event->rect().top() || block.blockNumber() == activeLine_ ||
+                    model_->paragraphRole(block.blockNumber()) != ParagraphRole::TitleMarker) continue;
+                const auto title = block.previous();
+                const auto *lines = title.layout();
+                qreal width = 0;
+                for (int i = 0; i < lines->lineCount(); ++i)
+                    width = qMax(width, lines->lineAt(i).naturalTextWidth());
+                const QString marks(GenericParagraph::markerLength(title.text(), literalGuillemets()), block.text().front());
+                const qreal advance = metrics.horizontalAdvance(marks);
+                if (advance <= 0 || width <= 0) continue;
+                painter.save();
+                painter.translate(bounds.left() + document()->documentMargin(), bounds.top() + metrics.ascent());
+                painter.scale(width / advance, 1);
+                painter.drawText(QPointF(), marks);
+                painter.restore();
+            }
+        }
     }
     if (rows_ && hasFocus()) {
         QPainter p(viewport());

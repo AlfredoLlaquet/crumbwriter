@@ -94,7 +94,7 @@ protected:
 private:
     friend class ViSelection;
     enum class Alignment { Visible, Center, Top };
-    enum class Input { Typed, Paste, Erase, Replacement };
+    enum class Input { Typed, Paste, Erase, WholeWord, Replacement };
     enum class EditRun { None, Typing, Backspace, Delete };
     class AppendUndoItem;
     QString removedSelection(const QTextCursor &cursor) const;
@@ -107,6 +107,7 @@ private:
     bool moveByControlKey(int key, bool extend);
     void copyField(bool header);
     void onCursorMoved();
+    bool insidePendingSpaces(int position) const;
     void trimPending(bool joinPrevious = true);
     void replayEdit(bool forward);
     void trackSeparator(const QTextCursor &cursor);
@@ -116,7 +117,7 @@ private:
     void showPreedit(QInputMethodEvent *event);
     void removeByKey(bool backward, bool byWord);
     void beginInputBlock(QTextCursor &cursor, EditRun run);
-    void eraseSelection(QTextCursor cursor, EditRun run = EditRun::None);
+    void eraseSelection(QTextCursor cursor, EditRun run = EditRun::None, bool wholeWord = false);
     void insertSelection(const QString &text, Input kind);
     bool replaceAt(QTextCursor &cursor, const QString &text, Input kind);
     void recordEditForHash(QTextCursor &cursor, const QString &text);

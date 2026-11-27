@@ -377,10 +377,8 @@ int main(int argc, char **argv)
         check(button && button->menu() && button->menu()->palette().window() == dark.window(),
               "panel actions menus use the dark window color");
     }
-    auto *documentMenu = window.findChild<QToolButton *>("documentMenuButton");
-    check(documentMenu && documentMenu->menu(), "document menu");
-    for (auto *action : documentMenu->menu()->actions())
-        if (action->text().contains("About Crumb Writer")) action->trigger();
+    for (auto *action : window.findChildren<QAction *>())
+        if (action->menuRole() == QAction::AboutRole) action->trigger();
     auto *dialog = window.findChild<QDialog *>("aboutDialog");
     auto *link = dialog ? dialog->findChild<QLabel *>("repositoryLink") : nullptr;
     until([&] { return link && dialog->isVisible() && dialog->palette().base() == dark.base() &&

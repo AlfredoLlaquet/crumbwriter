@@ -36,7 +36,8 @@ public:
     void saveAs(const QString &path, bool backup, bool closeAfter = false);
     void beginCloseConfirmation();
     void keepEditing();
-    void saveAndClose();
+    void saveAndClose(bool keepDraft = false);
+    bool draftIsCurrent() const;
     void discardAndClose();
 
     // A canceled Save As dialog calls keepEditing(). On Save As success,
