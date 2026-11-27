@@ -71,6 +71,7 @@ def relocate_homebrew(app, record, cpu):
     frameworks = app / "Contents/Frameworks"
     frameworks.mkdir(parents=True, exist_ok=True)
     originals = {}
+    install_names = {}
     pending = [(main, main)]
     while pending:
         original, staged = pending.pop()
@@ -85,17 +86,25 @@ def relocate_homebrew(app, record, cpu):
                            if p.is_file() and p.resolve().is_relative_to(cellar)), None)
             if source is None:
                 continue
-            if source.name in originals and originals[source.name] != source:
-                raise ValueError(f"Conflicting package libraries: {originals[source.name]} and {source}")
-            if source.name not in originals:
-                originals[source.name] = source
-                target = frameworks / source.name
+            if source not in install_names:
+                # Use the library's ABI install name, shared across compatible
+                # patch releases, while retaining the exact source keg for each CPU.
+                dylib_id = output("otool", "-arch", cpu, "-D", source).strip().splitlines()[-1]
+                install_names[source] = Path(dylib_id).name
+            library_name = install_names[source]
+            if not library_name.endswith(".dylib"):
+                raise ValueError(f"Invalid dylib install name for {source}: {library_name}")
+            if library_name in originals and originals[library_name] != source:
+                raise ValueError(f"Conflicting package libraries: {originals[library_name]} and {source}")
+            if library_name not in originals:
+                originals[library_name] = source
+                target = frameworks / library_name
                 shutil.copy2(source, target)
                 target.chmod(0o755)
                 pending.append((source, target))
-            edits += ["-change", name, "@executable_path/../Frameworks/" + source.name]
+            edits += ["-change", name, "@executable_path/../Frameworks/" + library_name]
         if original != main:
-            edits += ["-id", "@rpath/" + original.name]
+            edits += ["-id", "@rpath/" + staged.name]
         if edits:
             run("install_name_tool", *edits, staged)
 

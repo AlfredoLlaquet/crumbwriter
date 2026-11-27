@@ -16,8 +16,9 @@ def deploy(destination, prefix):
     bin_dir = prefix / "bin"
     libraries = {p.name.casefold(): p for p in bin_dir.glob("*.dll")}
     system_dir = Path(os.environ["SystemRoot"]) / "System32"
-    converter = destination / "pdftotext.exe"
-    shutil.copy2(bin_dir / converter.name, converter)
+    converter = destination / "crumbwriter-pdftext.exe"
+    if not converter.is_file():
+        raise FileNotFoundError(converter)
     shutil.copytree(prefix / 'share/poppler', destination / 'share/poppler', dirs_exist_ok=True)
     pending = deque([executable, converter])
     plugin_dir = prefix / "share" / "qt6" / "plugins"

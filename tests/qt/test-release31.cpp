@@ -109,7 +109,9 @@ void formats(const QDir &tmp)
         auto text = importFile(path, kind, {}, &error);
         check(error.isEmpty() && text.contains("A Book") && text.contains("Division") && text.contains("* one"),
               QString(suffix) + ": " + error + " / " + text);
-        if (kind != Format::Pdf)
+        if (kind == Format::Pdf)
+            check(text.trimmed().endsWith("* one"), "PDF must contain only the manuscript text");
+        else
             check(text.contains(QStringLiteral("Division\n========")) && text.contains(QStringLiteral("An «italic» word.")),
                   QString(suffix) + ": heading and emphasis / " + text);
     }

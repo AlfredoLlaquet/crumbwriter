@@ -1,7 +1,8 @@
 """Identify the actual DLLs selected by the Windows packager from pacman's database."""
 
 from collections import defaultdict
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+import shutil
 from urllib.error import HTTPError
 
 from source_files import Notices, archive_notices, download, notice_filename
@@ -25,7 +26,7 @@ def stage_msys(destination, prefix, sources):
         raise RuntimeError(f"Missing MSYS2 package database under {root}")
 
     # The same owner may install several Qt plugins with different subdirectories.
-    needed = {item.name.casefold() for item in destination.rglob("*") if item.suffix.lower() == ".dll" or item.name.lower() == "pdftotext.exe"}
+    needed = {item.name.casefold() for item in destination.rglob("*") if item.suffix.lower() == ".dll"}
     data_paths = {file.relative_to(destination).as_posix() for file in (destination / "share/poppler").rglob("*") if file.is_file()}
     if not data_paths:
         raise RuntimeError("Missing Poppler encoding data in the Windows stage")
@@ -59,7 +60,12 @@ def stage_msys(destination, prefix, sources):
     if needed - found:
         raise RuntimeError("Unidentified staged runtime files: " + ", ".join(sorted(needed - found)))
 
-    lines = []
+    project = Path(__file__).resolve().parents[2]
+    helper = sources / "crumbwriter-pdftext"
+    helper.mkdir(parents=True, exist_ok=True)
+    for path in ("src/windows/pdftext.cpp", "packaging/windows/PDF-HELPER.txt", "LICENSE"):
+        shutil.copy2(project / path, helper)
+    lines = ["crumbwriter-pdftext.exe  Windows PDF reader\n  Complete helper source and build command: crumbwriter-pdftext/"]
     for (base, version), pkgs in sorted(packages.items()):
         key = f"{base}-{version}"
         notices = Notices(destination / "third-party" / key)

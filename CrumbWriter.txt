@@ -61,8 +61,11 @@ GLib character conversion, fixed-width text, PDF and Qt document formats.
 officeformats.cpp reads Office XML directly from ZIP entries, writes Word
 paragraph styles and emits ODT with conventional ZIP headers so desktop
 readers can recognize its media type and open its contents.
-rtfimport.cpp reads RTF and pdfimport-macos.mm uses system PDFKit. Other
-platforms run pdftotext as a separate process. Scans need OCR. formatprose.cpp
+rtfimport.cpp reads RTF and pdfimport-macos.mm uses system PDFKit. BSD and
+Linux run pdftotext. Windows launches its separate Poppler C++ helper in the
+application directory so that Poppler can find its maps by relative paths,
+including when the installation directory contains non-ASCII characters. Scans need OCR. PDF export lays out the manuscript on printable pages without
+adding running page numbers to the writer's text. formatprose.cpp
 translates the editor's heading levels, body type and italics into formatted
 copies. File > Export supports DOCX, ODT, PDF, HTML and plain text in a chosen
 encoding. The 80-column option wraps text and doubles a single space after a
@@ -74,10 +77,12 @@ Help > Crumb Writer Help reads the embedded README by topic. Help > Licenses
 includes the project license, component credits, Unicode and artwork notices
 and the original notices installed alongside bundled tools and data. NOTICE.md
 identifies the distinct terms for Hunspell, SCOWL, MyThes, WordNet, Qt, GLib,
-libarchive and Poppler. Windows staging checks ownership of each bundled
+libarchive and Poppler. The external PDF reader takes a file handle opened by Qt,
+so Unicode manuscript paths reach the converter on all supported Windows systems. Windows staging checks ownership of each bundled
 binary and collects its notices and matching source. macOS collects the
 deployed Qt frameworks and Homebrew dylibs, including the exact libarchive
-keg used for Office document conversion. For locally cached Homebrew bottles,
+keg used for Office document conversion. The universal app merges each dylib
+under its ABI install name so that each CPU can use its own patch release. For locally cached Homebrew bottles,
 match the installed recipe to its published revision before archiving tap
 patches. Windows also includes the original Inno Setup license. The release publishes matching
 sources, recipes and checksums. The project Unlicense applies to original work.

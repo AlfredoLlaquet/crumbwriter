@@ -2,6 +2,7 @@
 #include "genericparagraph.h"
 #include "manuscripteditor.h"
 
+#include <QAbstractTextDocumentLayout>
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
@@ -105,18 +106,26 @@ QString decode(const QByteArray &input, const QString &encoding, QString *error)
 #ifndef Q_OS_MACOS
 QString fromPdf(const QString &path, QString *error)
 {
+    QProcess process;
 #ifdef Q_OS_WIN
-    QString program = QCoreApplication::applicationDirPath() + "/pdftotext.exe";
-    if (!QFileInfo::exists(program)) program = QStandardPaths::findExecutable("pdftotext");
+    const QString program = QCoreApplication::applicationDirPath() + "/crumbwriter-pdftext.exe";
+    process.setWorkingDirectory(QCoreApplication::applicationDirPath());
+    const QStringList arguments;
 #else
     const QString program = QStandardPaths::findExecutable("pdftotext");
+    const QStringList arguments{"-enc", "UTF-8", "-nopgbrk", "-", "-"};
 #endif
-    if (program.isEmpty()) { *error = QObject::tr("The pdftotext converter is unavailable."); return {}; }
-    QProcess process;
-    process.start(program, {"-enc", "UTF-8", "-nopgbrk", QFileInfo(path).absoluteFilePath(), "-"});
-    if (!process.waitForFinished(120000) || process.exitStatus() != QProcess::NormalExit || process.exitCode()) {
+    if (!QFileInfo::exists(program)) { *error = QObject::tr("The PDF text converter is unavailable."); return {}; }
+    process.setStandardInputFile(QFileInfo(path).absoluteFilePath());
+    process.start(program, arguments);
+    if (!process.waitForStarted() || !process.waitForFinished(120000)) {
+        *error = QObject::tr("Could not run the PDF converter. %1").arg(process.errorString());
         if (process.state() != QProcess::NotRunning) { process.kill(); process.waitForFinished(); }
-        *error = QObject::tr("Could not extract PDF text. %1").arg(QString::fromLocal8Bit(process.readAllStandardError()));
+        return {};
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode()) {
+        const auto diagnostic = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
+        *error = QObject::tr("PDF conversion failed (exit code %1). %2").arg(process.exitCode()).arg(diagnostic).trimmed();
         return {};
     }
     return QString::fromUtf8(process.readAllStandardOutput());
@@ -179,7 +188,11 @@ bool exportFile(const QString &path, Format format, const TextOptions &options, 
             QPdfWriter pdf(&target);
             pdf.setCreator("Crumb Writer");
             pdf.setPageSize(QPageSize(QPageSize::A4));
+            pdf.setPageMargins(QMarginsF(20, 20, 20, 20), QPageLayout::Millimeter);
+            doc->documentLayout()->setPaintDevice(&pdf);
+            doc->setPageSize(QSizeF(pdf.width(), pdf.height()));
             doc->print(&pdf);
+            doc->documentLayout()->setPaintDevice(nullptr);
             break;
         }
         default: ok = false;

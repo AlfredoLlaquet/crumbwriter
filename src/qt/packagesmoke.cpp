@@ -84,7 +84,7 @@ int runPackageSmokeTest()
         return fail("The integrated guide or third-party notices are missing.");
     QString conversionError;
     window.editor()->loadText("A Book\n=====\nA short PDF proof.");
-    const auto pdf = directory.filePath("proof.pdf");
+    const auto pdf = directory.filePath(QStringLiteral("Prova Núria 東京.pdf"));
     if (!DocumentFormats::exportFile(pdf, DocumentFormats::Format::Pdf, {}, window.editor(), &conversionError) ||
         !DocumentFormats::importFile(pdf, DocumentFormats::Format::Pdf, {}, &conversionError).contains("short PDF proof"))
         return fail("Installed PDF export or text extraction failed. " + conversionError);

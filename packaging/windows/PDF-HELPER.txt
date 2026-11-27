@@ -1,0 +1,17 @@
+Crumb Writer's Windows PDF text reader
+
+The editor runs crumbwriter-pdftext.exe as a separate process. It passes the
+PDF through standard input and reads UTF-8 text from standard output. The
+installation includes Poppler's encoding maps under share/poppler.
+
+The Windows source download includes this file, pdftext.cpp, the project's
+Unlicense, and the exact MSYS2 Poppler source, patches and build recipes.
+The reader linked with Poppler is distributed under Poppler's GPL terms.
+Its original notices are installed in the third-party directory.
+
+In an MSYS2 UCRT64 terminal with GCC, pkgconf and Poppler installed, build
+the reader from the directory containing pdftext.cpp with this command.
+
+c++ -std=c++17 -O2 pdftext.cpp -o crumbwriter-pdftext.exe $(pkg-config --cflags --libs poppler-cpp)
+
+The project's CMake build also creates and installs the reader automatically.
