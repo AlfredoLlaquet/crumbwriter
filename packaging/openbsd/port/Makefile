@@ -17,7 +17,7 @@ CONFIGURE_ARGS = -DBUILD_TESTING=OFF
 NO_TEST =	Yes
 
 post-install:
-	${INSTALL_DATA_DIR} ${PREFIX}/share/crumbwriter/{dictionaries,thesaurus}
+	${INSTALL_DATA_DIR} ${PREFIX}/share/crumbwriter/dictionaries ${PREFIX}/share/crumbwriter/thesaurus
 	${INSTALL_DATA} ${WRKSRC}/word-data/dictionaries/* ${PREFIX}/share/crumbwriter/dictionaries/
 	${INSTALL_DATA} ${WRKSRC}/word-data/thesaurus/* ${PREFIX}/share/crumbwriter/thesaurus/
 .for component in MyThes SCOWL

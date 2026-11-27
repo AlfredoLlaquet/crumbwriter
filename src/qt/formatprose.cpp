@@ -3,13 +3,15 @@
 #include "guillemetmarkup.h"
 #include "manuscripteditor.h"
 #include "manuscripttext.h"
+#include <QFontInfo>
 #include <QTextList>
 
 namespace DocumentFormats {
 std::unique_ptr<QTextDocument> formattedDocument(ManuscriptEditor *editor)
 {
     auto result = std::make_unique<QTextDocument>();
-    const auto font = editor->font();
+    auto font = editor->font();
+    font.setFamily(QFontInfo(font).family());
     result->setDefaultFont(font);
     QTextCursor cursor(result.get());
     bool first = true;

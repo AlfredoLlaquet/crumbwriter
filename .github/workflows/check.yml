@@ -150,7 +150,7 @@ jobs:
       - name: Install build and test dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev libarchive-dev poppler-utils hunspell-en-us mythes-en-us dpkg-dev \
+          sudo apt-get install -y qt6-base-dev qt6-wayland libglib2.0-dev libhunspell-dev libarchive-dev poppler-utils hunspell-en-us mythes-en-us dpkg-dev libreoffice-writer \
             libxcb-cursor0 xvfb xauth weston xdotool dbus-daemon openbox x11-utils
       - name: Build
         id: build
@@ -159,6 +159,16 @@ jobs:
         env:
           QT_QPA_PLATFORM: xcb
         run: xvfb-run -a make check
+      - name: Open formatted exports in LibreOffice Writer
+        run: |
+          samples="$RUNNER_TEMP/office-samples"
+          QT_QPA_PLATFORM=offscreen ./tests/qt/test-release31 --export-samples "$samples"
+          for ext in odt docx; do
+            mkdir -p "$samples/$ext"
+            libreoffice --headless --convert-to pdf --outdir "$samples/$ext" "$samples/Book.$ext"
+            pdftotext "$samples/$ext/Book.pdf" "$samples/$ext/extracted.txt"
+            grep -F 'italic word.' "$samples/$ext/extracted.txt"
+          done
       - name: Check light and dark windows on native X11
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         timeout-minutes: 6

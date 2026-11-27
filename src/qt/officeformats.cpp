@@ -1,5 +1,8 @@
 #include "documentformats.h"
+#include <QBuffer>
 #include <QDomDocument>
+#include <QtEndian>
+#include <cstring>
 #include <QFile>
 #include <QHash>
 #include <QRegularExpression>
@@ -45,6 +48,47 @@ Parts readParts(const QString &path, const QStringList &wanted, QString *error)
     return parts;
 }
 
+// The ODF type detector in LibreOffice needs a conventional seekable ZIP.
+// libarchive emits streaming data descriptors. Its central directory already
+// contains the finalized checksums and sizes for building ordinary local headers.
+bool finishOdtZip(QIODevice *output, const QByteArray &zip)
+{
+    constexpr int endSize = 22, centralSize = 46, localSize = 30;
+    if (zip.size() < endSize) return false;
+    auto end = zip.right(endSize);
+    if (!end.startsWith("PK\005\006")) return false;
+    const auto u32 = [](const char *p) { return qFromLittleEndian<quint32>(p); };
+    const auto u16 = [](const char *p) { return qFromLittleEndian<quint16>(p); };
+    const qint64 directoryAt = u32(end.constData() + 16);
+    const qint64 directoryBytes = u32(end.constData() + 12);
+    if (directoryAt + directoryBytes != zip.size() - endSize) return false;
+    auto directory = zip.mid(directoryAt, directoryBytes);
+    qsizetype pos = 0;
+    while (pos < directory.size()) {
+        if (directory.size() - pos < centralSize) return false;
+        char *entry = directory.data() + pos;
+        if (std::memcmp(entry, "PK\001\002", 4)) return false;
+        const qint64 offset = u32(entry + 42), compressed = u32(entry + 20);
+        if (offset + localSize > directoryAt) return false;
+        const char *local = zip.constData() + offset;
+        if (std::memcmp(local, "PK\003\004", 4)) return false;
+        const auto headerSize = localSize + u16(local + 26) + u16(local + 28);
+        if (offset + headerSize + compressed > directoryAt) return false;
+        auto header = zip.mid(offset, headerSize);
+        std::memcpy(header.data() + 14, entry + 16, 12);
+        const auto flags = quint16(u16(entry + 8) & ~0x0008);
+        qToLittleEndian(flags, header.data() + 6);
+        qToLittleEndian(flags, entry + 8);
+        qToLittleEndian(quint32(output->pos()), entry + 42);
+        if (output->write(header) != header.size() ||
+            output->write(local + headerSize, compressed) != compressed) return false;
+        pos += centralSize + u16(entry + 28) + u16(entry + 30) + u16(entry + 32);
+    }
+    qToLittleEndian(quint32(output->pos()), end.data() + 16);
+    return pos == directory.size() && output->write(directory) == directory.size() &&
+           output->write(end) == end.size();
+}
+
 bool writeParts(QIODevice *output, const Parts &parts, QString *error)
 {
     std::unique_ptr<archive, decltype(&archive_write_free)> zip(archive_write_new(), archive_write_free);
@@ -53,7 +97,10 @@ bool writeParts(QIODevice *output, const Parts &parts, QString *error)
     auto write = [](archive *, void *device, const void *data, size_t size) -> la_ssize_t {
         return static_cast<QIODevice *>(device)->write(static_cast<const char *>(data), size);
     };
-    bool ok = archive_write_open(zip.get(), output, nullptr, write, nullptr) == ARCHIVE_OK;
+    const bool odt = parts.contains("mimetype");
+    QBuffer packed;
+    if (odt) packed.open(QIODevice::WriteOnly);
+    bool ok = archive_write_open(zip.get(), odt ? &packed : output, nullptr, write, nullptr) == ARCHIVE_OK;
     auto names = parts.keys();
     if (names.removeOne("mimetype")) names.prepend("mimetype");
     for (const auto &name : names) {
@@ -70,6 +117,7 @@ bool writeParts(QIODevice *output, const Parts &parts, QString *error)
             archive_write_data(zip.get(), it.value().constData(), it.value().size()) == it.value().size();
     }
     ok = archive_write_close(zip.get()) == ARCHIVE_OK && ok;
+    if (ok && odt) ok = finishOdtZip(output, packed.data());
     if (!ok) *error = QObject::tr("Could not write the Office archive.");
     return ok;
 }
@@ -291,6 +339,18 @@ bool writeDocx(QIODevice *target, const QTextDocument &document, QString *error)
     QXmlStreamWriter styles(&styleBytes);
     styles.writeStartElement("w:styles");
     styles.writeNamespace(wordNs, "w");
+    styles.writeStartElement("w:style");
+    styles.writeAttribute("w:type", "paragraph");
+    styles.writeAttribute("w:default", "1");
+    styles.writeAttribute("w:styleId", "Normal");
+    property(styles, "name", "Normal");
+    styles.writeStartElement("w:rPr");
+    styles.writeEmptyElement("w:rFonts");
+    styles.writeAttribute("w:ascii", document.defaultFont().family());
+    styles.writeAttribute("w:hAnsi", document.defaultFont().family());
+    property(styles, "sz", QString::number(qRound(document.defaultFont().pointSizeF() * 2)));
+    styles.writeEndElement();
+    styles.writeEndElement();
     for (int i = 0; i <= 4; ++i) {
         const QString id = i ? "Heading" + QString::number(i) : QStringLiteral("Title");
         styles.writeStartElement("w:style");

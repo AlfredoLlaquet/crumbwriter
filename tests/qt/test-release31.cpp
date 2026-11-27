@@ -8,6 +8,7 @@
 #include <QClipboard>
 #include <QComboBox>
 #include <QDialog>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFontDatabase>
@@ -92,7 +93,7 @@ void editing()
     check(ed.manuscriptText() == "1. one\n8. eight\n9. nine", ed.manuscriptText());
 }
 
-void formats(const QTemporaryDir &tmp)
+void formats(const QDir &tmp)
 {
     using namespace DocumentFormats;
     ManuscriptEditor ed;
@@ -280,8 +281,14 @@ int main(int argc, char **argv)
     qputenv("XDG_DATA_HOME", QFile::encodeName(tmp.filePath("data")));
     QApplication app(argc, argv);
     check(tmp.isValid(), "temporary directory");
+    if (app.arguments().size() == 3 && app.arguments().at(1) == "--export-samples") {
+        const QDir samples(app.arguments().at(2));
+        check(samples.mkpath("."), samples.path());
+        formats(samples);
+        return 0;
+    }
     editing();
-    formats(tmp);
+    formats(QDir(tmp.path()));
     controls(tmp);
     restoredDraft(tmp);
     return 0;

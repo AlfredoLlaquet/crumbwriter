@@ -29,6 +29,7 @@ jobs:
         run: |
           test "$(uname -m)" = "${{ matrix.cpu }}"
           brew install glib hunspell libarchive pkgconf ninja
+          if [[ $(uname -m) == arm64 ]]; then brew reinstall --force-bottle glib; fi
           python3 -m venv "$RUNNER_TEMP/aqt"
           "$RUNNER_TEMP/aqt/bin/python" -m pip install 'aqtinstall==3.3.0'
           "$RUNNER_TEMP/aqt/bin/aqt" install-qt mac desktop 6.8.3 clang_64 --archives qtbase --outputdir "$RUNNER_TEMP/Qt"

@@ -22,6 +22,7 @@ jobs:
           copyback: false
           prepare: |
             set -eu
+            pkg_add cmake-core ninja qt6-qtbase glib2 libarchive hunspell poppler-utils desktop-file-utils gtk4-update-icon-cache xz
             cd /tmp
             ftp -o SHA256.sig https://cdn.openbsd.org/pub/OpenBSD/8.0/SHA256.sig
             ftp -o ports.tar.gz https://cdn.openbsd.org/pub/OpenBSD/8.0/ports.tar.gz

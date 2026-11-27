@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from source_files import Notices, archive_notices, download, notice_filename, source_archive
 
@@ -75,6 +75,7 @@ def matching_patch_revision(keg, recipe):
     registry = "homebrew/core/" + name.replace("@", "/")
     token = read_json(f"https://ghcr.io/token?scope=repository:{registry}:pull&service=ghcr.io")["token"]
     headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.oci.image.index.v1+json"}
+    installed_body = formula_body(recipe)
     with tempfile.TemporaryDirectory() as tmp:
         candidate = Path(tmp) / recipe.name
         for tag in tags:
@@ -89,15 +90,32 @@ def matching_patch_revision(keg, recipe):
             source = urlsplit(metadata["org.opencontainers.image.source"]).path
             path = source.split(f"/blob/{revision}/", 1)[-1]
             download(f"https://raw.githubusercontent.com/Homebrew/homebrew-core/{revision}/{path}", candidate)
-            if formula_body(candidate) == formula_body(recipe):
+            if formula_body(candidate) == installed_body:
                 return revision, {}
         # A locally compiled keg can match the official current recipe exactly.
         if version == keg.name:
             revision = info["tap_git_head"]
             download(f"https://raw.githubusercontent.com/Homebrew/homebrew-core/{revision}/{info['ruby_source_path']}",
                      candidate, info["ruby_source_checksum"]["sha256"])
-            if formula_body(candidate) == formula_body(recipe):
+            if formula_body(candidate) == installed_body:
                 return revision, info.get("local_patch_checksums", {})
+        # Older runner images can retain bottles whose version tag has since
+        # been rebuilt. Only accept a historical recipe when its complete
+        # build instructions still match the ones shipped in the installed keg.
+        path = info["ruby_source_path"]
+        query = urlencode({"path": path, "per_page": 100})
+        history = read_json("https://api.github.com/repos/Homebrew/homebrew-core/commits?" + query)
+        for commit in history:
+            revision = commit["sha"]
+            url = f"https://raw.githubusercontent.com/Homebrew/homebrew-core/{revision}/{path}"
+            try:
+                download(url, candidate)
+            except HTTPError as error:
+                if error.code == 404:
+                    continue
+                raise
+            if formula_body(candidate) == installed_body:
+                return revision, {}
     raise ValueError(f"Cannot identify the Homebrew source revision for {recipe}")
 
 
