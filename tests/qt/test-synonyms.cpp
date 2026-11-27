@@ -152,7 +152,7 @@ void pane(const QString &dir)
     cursor.setPosition(editor.toPlainText().indexOf("then"));
     editor.setTextCursor(cursor);
     panel.insertSynonym = [&](const QString &s) { editor.insertPlainText(s); editor.setFocus(); };
-    panel.returnToEditor = [&] { editor.setFocus(); };
+    panel.returnToEditor = [&] { window.activateWindow(); editor.setFocus(); };
     int jumped = -1;
     QString selected;
     panel.jumpToMatch = [&](int start, int end) {
@@ -207,8 +207,9 @@ void pane(const QString &dir)
           "Ctrl+Enter lists each saved spelling in original order");
     key(choices, Qt::Key_Down);
     key(choices, Qt::Key_Return);
-    check(search->text().isEmpty() && editor.toPlainText().contains("🦋 Zed then") && editor.hasFocus(),
-          "an alternate spelling replaces the saved selection and returns focus");
+    check(search->text().isEmpty() && editor.toPlainText().contains("🦋 Zed then"),
+          "an alternate spelling replaces the saved selection");
+    check(waitFor([&] { return editor.hasFocus(); }), "confirming a synonym returns keyboard focus");
 
     panel.focusRecurring();
     check(thingSearch->hasFocus() && thingSearch->placeholderText() == "Search recurring", "shortcut focuses recurring search");

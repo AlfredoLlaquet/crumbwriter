@@ -304,17 +304,18 @@ def session(app, run):
             if review in windows().values():
                 key(review, 'Escape')
             key(beta, 'ctrl+Next')
-            for chord, alias, first_name in [('ctrl+shift+1', 'blue cap', 'Captain, Widgets'),
-                                             ('ctrl+shift+2', 'pebblepost', 'Planet Pebble')]:
+            for chord, alias, keys, chosen in [('ctrl+shift+1', 'blue cap', ['Down', 'Return'], 'Blue Cap'),
+                                               ('ctrl+shift+2', 'pebblepost', ['Return'], 'Planet Pebble')]:
                 key(beta, chord)
                 output('xdotool', 'type', '--clearmodifiers', '--delay', '24', alias)
                 key(beta, 'ctrl+Return')
+                output('xdotool', 'key', '--clearmodifiers', '--delay', '60', *keys)
                 key(beta, 'ctrl+s')
-                second_text += first_name
-                wait_for(f'first synonym inserted at the last paragraph via {chord}',
+                second_text += chosen
+                wait_for(f'chosen synonym inserted at the last paragraph via {chord}',
                          lambda: second.read_text() == second_text + '\n')
                 unchanged()
-            print('Both synonym searches selected and inserted their first names from the keyboard.', flush=True)
+            print('Both sidebar searches inserted the chosen names from the keyboard.', flush=True)
             key(beta, 'alt+w')
             clients.remove(beta)
             wait_for('closing the extra manuscript retiles the others', lambda: tiles(clients, screen))

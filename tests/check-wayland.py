@@ -157,7 +157,7 @@ def check(app, run):
         keyboard("key", "--clearmodifiers", "ctrl+shift+4")
         keyboard("type", "--clearmodifiers", "moon")
         keyboard("key", "--clearmodifiers", "Return", "ctrl+space")
-        keyboard("type", "--clearmodifiers", "j2")
+        keyboard("type", "--clearmodifiers", "j")  # The next visible paragraph follows the folded heading.
         keyboard("key", "--clearmodifiers", "Return")
         keyboard("type", "--clearmodifiers", "Lunar ")
         save_and_check(prose.replace("The Moon\n--------\n", "Lunar "))

@@ -50,6 +50,14 @@ void key(QWidget *widget, int code, Qt::KeyboardModifiers modifiers = {}, const 
     QApplication::processEvents();
 }
 
+bool receivesFocus(QWidget *widget)
+{
+    QElapsedTimer clock;
+    clock.start();
+    while (!widget->hasFocus() && clock.elapsed() < 5000) { QApplication::processEvents(); QThread::msleep(5); }
+    return widget->hasFocus();
+}
+
 void leftClick(QWidget *widget, const QPoint &pos)
 {
     // A real pointer travels from the popup trigger to its menu item.
@@ -167,6 +175,7 @@ void controls(const QTemporaryDir &tmp)
         w.activateManuscript(false);
         check(w.loadDocument(path), path);
         auto *ed = w.editor();
+        check(receivesFocus(ed), "the opened manuscript owns keyboard focus before testing controls");
         ed->jumpTo(0, false);
         auto *style = w.findChild<QComboBox *>("lineStyle");
         auto *characters = w.findChild<QListView *>("charactersList");
@@ -184,11 +193,10 @@ void controls(const QTemporaryDir &tmp)
         for (auto *a : entryMenu->actions()) {
             if (a->text().contains("Insert at caret")) {
                 check(a->isEnabled(), "sidebar insertion available");
-                a->trigger();
+                leftClick(entryMenu, entryMenu->actionGeometry(a).center());
                 break;
             }
         }
-        entryMenu->hide();
         check(ed->manuscriptText().startsWith("Zoe"), "insert the selected entry at the manuscript caret");
         ed->undo();
         ed->jumpTo(0, false);
@@ -203,10 +211,7 @@ void controls(const QTemporaryDir &tmp)
         key(popup(), Qt::Key_Escape);
         check(ed->textCursor().selectedText() == "A" && ed->manuscriptText().startsWith("A Book"),
               "canceling preserves the original text and selection");
-        QElapsedTimer focusWait;
-        focusWait.start();
-        while (!ed->hasFocus() && focusWait.elapsed() < 1500) { QApplication::processEvents(); QThread::msleep(5); }
-        check(ed->hasFocus(), "canceling restores keyboard focus to the manuscript");
+        check(receivesFocus(ed), "canceling restores keyboard focus to the manuscript");
         auto *recurring = w.findChild<QListView *>("recurringList");
         clickRow(recurring, 0);
         auto *choices = popup();
@@ -297,8 +302,9 @@ void controls(const QTemporaryDir &tmp)
         check(newFile->text().section('\t', 0, 0) == "New File", "File begins with New File");
         newFile->trigger();
         QApplication::processEvents();
-        check(w.tabCount() == 4 && w.editor() != ed && w.path().isEmpty() && w.editor()->manuscriptText().isEmpty() &&
-              w.editor()->hasFocus(), "File > New File focuses a fresh untitled tab in the same window");
+        check(w.tabCount() == 4 && w.editor() != ed && w.path().isEmpty() && w.editor()->manuscriptText().isEmpty(),
+              "File > New File opens a fresh untitled tab in the same window");
+        check(receivesFocus(w.editor()), "File > New File returns keyboard focus to the new manuscript");
         for (auto *action : w.findChildren<QAction *>()) {
             if (action->text() == "Crumb Writer Help") action->trigger();
         }

@@ -59,6 +59,7 @@ void MainWindow::newTab()
     if (!closeTargets_.isEmpty()) cancelClose();
     static int nextUntitled = 1;
     addSession(new ManuscriptSession(this, prefs_, nextUntitled++));
+    restoreEditorFocus();
 }
 
 bool MainWindow::openDocumentInTab(const QString &name, bool recovery)

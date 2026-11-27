@@ -35,6 +35,8 @@ jobs:
           "$RUNNER_TEMP/aqt/bin/aqt" install-qt mac desktop 6.8.3 clang_64 --archives qtbase --outputdir "$RUNNER_TEMP/Qt"
       - name: Build, deploy, and test the native app
         id: build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           bash packaging/macos/build.sh "$RUNNER_TEMP/Qt/6.8.3/macos" "$RUNNER_TEMP/build" "$RUNNER_TEMP/assets"
       - name: Check light and dark windows on the native macOS desktop

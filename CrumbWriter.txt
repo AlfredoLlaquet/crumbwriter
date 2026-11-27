@@ -53,7 +53,8 @@ Documents and sessions
 ~~~~~~~~~~~~~~~~~~~~~~
 File > New File, Window > New Tab and Ctrl+T focus a blank untitled tab in
 the current window. The + button and a double-click on unused tab space
-run the same command. workspacestate.cpp records tab order, active tab, named file
+run the same command. Opening a tab restores keyboard focus after a menu
+closes. workspacestate.cpp records tab order, active tab, named file
 or private recovery path, selection and scroll in the local settings.
 application.cpp restores windows on cold start; documents supplied on the
 command line still activate their own tabs. A missing file produces a notice.
@@ -88,7 +89,8 @@ so Unicode manuscript paths reach the converter on all supported Windows systems
 binary and collects its notices and matching source. macOS collects the
 deployed Qt frameworks and Homebrew dylibs, including the exact libarchive
 keg used for Office document conversion. The universal app merges each dylib
-under its ABI install name so that each CPU can use its own patch release. For locally cached Homebrew bottles,
+under its ABI install name so that each CPU can use its own patch release. The native build uses its read-only GitHub token for formula-history requests.
+For locally cached Homebrew bottles,
 match the installed recipe to its published revision before archiving tap
 patches. Windows also includes the original Inno Setup license. The release publishes matching
 sources, recipes and checksums. The project Unlicense applies to original work.
@@ -1457,7 +1459,10 @@ window with recognized aliases on every paragraph and checks the actual text
 and caret. The editor, search and Vi tests exercise movement, clipboard and
 replacement across folded headings, including undo and terminal headings.
 Window tests cover keyboard and mouse synonym choices, cancellation, both
-sidebar menus, toolbar spacing and the File menu's blank tab.
+sidebar menus, toolbar spacing and the File menu's blank tab. The native
+Wayland test selects from a heading into the next visible paragraph and
+checks the saved UTF-8 bytes after replacing the selection. The KDE Plasma
+keyboard test confirms both the primary name and an alternative in tiled windows.
 The installed-package smoke test verifies the embedded symbol
 catalog by searching for U+2661.
 The layout suite opens two manuscripts under simulated tiling and reopens

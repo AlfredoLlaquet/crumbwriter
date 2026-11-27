@@ -236,6 +236,8 @@ private:
                     });
                 });
                 const auto rect = list_->visualRect(list_->currentIndex());
+                // Qt returns to the focus widget it saved when the popup opened.
+                if (owner_.returnToEditor) owner_.returnToEditor();
                 choices->popup(list_->viewport()->mapToGlobal(rect.bottomLeft()));
                 choices->setActiveAction(choices->actions().first());
             }

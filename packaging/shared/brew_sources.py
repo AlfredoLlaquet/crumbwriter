@@ -1,6 +1,7 @@
 """Archive the recipes and sources of bottles whose dylibs went into the app."""
 
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -104,7 +105,9 @@ def matching_patch_revision(keg, recipe):
         # build instructions still match the ones shipped in the installed keg.
         path = info["ruby_source_path"]
         query = urlencode({"path": path, "per_page": 100})
-        history = read_json("https://api.github.com/repos/Homebrew/homebrew-core/commits?" + query)
+        api_token = os.environ.get("GITHUB_TOKEN")
+        api_headers = {"Authorization": "Bearer " + api_token} if api_token else {}
+        history = read_json("https://api.github.com/repos/Homebrew/homebrew-core/commits?" + query, api_headers)
         for commit in history:
             revision = commit["sha"]
             url = f"https://raw.githubusercontent.com/Homebrew/homebrew-core/{revision}/{path}"
