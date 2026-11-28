@@ -72,8 +72,13 @@ int main(int argc, char **argv)
     editor.loadText(text);
     check(options.resetForPath(path, &error), "open missing optional settings");
     check(!QFile::exists(path + ".config"), "opening defaults leaves the directory uncluttered");
-    write(path + ".config", "# author note\nfuture-setting=keep\n");
+    write(path + ".config", "# author note\nfuture-setting=keep\ndisable-general-title=true\n");
     check(options.resetForPath(path, &error), "load future settings and author comment");
+    editor.loadText("\n====\nBody.");
+    options.setLineStyle(0);
+    check(editor.manuscriptText() == "\n====\nBody.", "Regular Text preserves a literal marker after a blank line");
+    editor.loadText("Explicit.\n=\nBody.");
+    check(editor.model().paragraphRole(0) == ParagraphRole::DocumentTitle, "legacy sidecar cannot suppress an explicit heading");
     options.showSettings();
     auto *dialog = editor.findChild<QDialog *>("manuscriptSettingsDialog");
     auto *literal = dialog->findChild<QCheckBox *>("literalGuillemets");
@@ -91,7 +96,7 @@ int main(int argc, char **argv)
     write(copy + ".config", "An external editor wrote this\n");
     options.showSettings();
     dialog = editor.findChild<QDialog *>("manuscriptSettingsDialog");
-    dialog->findChild<QCheckBox *>("disableGeneralTitle")->setChecked(true);
+    dialog->findChild<QCheckBox *>("literalGuillemets")->setChecked(false);
     dialog->findChild<QDialogButtonBox *>()->button(QDialogButtonBox::Save)->click();
     check(dialog->isVisible() && read(copy + ".config") == "An external editor wrote this\n", "conflicting settings survive a failed save");
     dialog->reject();

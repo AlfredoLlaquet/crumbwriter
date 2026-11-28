@@ -586,8 +586,6 @@ bool NavigationPanel::openGenreOrTitle(bool occurrences)
             const auto block = target.value<QTextBlock>();
             if (!block.isValid()) return false;
             jumpTo(block.position());
-            if (editor_->model().paragraphRole(block.blockNumber()) == ParagraphRole::DocumentTitle)
-                editor_->topCurrentCrumb();
         }
     } else if (occurrences) {
         return genreOccurrences && genreOccurrences(item->text(0));

@@ -90,8 +90,7 @@ void MainWindow::syncFormattingTools()
 
 void MainWindow::applyLineStyle(int style)
 {
-    QString error;
-    if (!active_->options_->setLineStyle(style, &error) && !error.isEmpty()) showNotice(error);
+    active_->options_->setLineStyle(style);
     syncFormattingTools();
     editor()->setFocus();
 }

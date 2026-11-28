@@ -24,12 +24,11 @@ std::unique_ptr<QTextDocument> formattedDocument(ManuscriptEditor *editor)
         QTextBlockFormat paragraph;
         QTextCharFormat style;
         style.setFont(font);
-        int level = 0;
-        if (generic && rec.role == ParagraphRole::DocumentTitle) level = 1;
-        else if (generic && rec.role == ParagraphRole::ChapterTitle) level = rec.headingLevel + 1;
+        const int level = generic ? rec.headingLevel : 0;
         if (level) {
-            constexpr double scales[] = {1.7, 1.48, 1.30, 1.16, 1.0};
-            style.setFontPointSize(font.pointSizeF() * scales[level - 1]);
+            const qreal scale = rec.role == ParagraphRole::DocumentTitle
+                ? GenericParagraph::mainTitleScale : GenericParagraph::titleScales[level - 1];
+            style.setFontPointSize(font.pointSizeF() * scale);
             style.setFontWeight(QFont::Bold);
             paragraph.setHeadingLevel(level);
             paragraph.setTopMargin(font.pointSizeF() * .45);
@@ -83,10 +82,9 @@ QString fromRichText(const QTextDocument &document)
         if (italic) line += u'»';
         const int level = block.blockFormat().headingLevel();
         if (level > 1 && lines.isEmpty()) lines << QString();
-        const bool first = lines.isEmpty();
         lines << line;
         if (level && !line.isEmpty())
-            lines << QString(GenericParagraph::markerLength(line), QStringLiteral("=-~.").at(first ? 0 : qBound(0, level - 2, 3)));
+            lines << QString(GenericParagraph::markerLength(line), QStringLiteral("=-~.").at(qBound(0, level - 1, 3)));
     }
     return lines.join(u'\n');
 }

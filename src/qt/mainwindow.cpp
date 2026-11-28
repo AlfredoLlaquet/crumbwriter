@@ -250,7 +250,7 @@ void MainWindow::fitFooter()
     const int side = qMax(status_->fontMetrics().horizontalAdvance(status_->text()) + 12,
                           mode_->sizeHint().width());
     const bool fits = website_->sizeHint().width() + 2 * side + 12 <= width()
-                      && active_ && !editor()->viSelectionActive() && !active_->webLookupPending_;
+                      && active_ && !editor()->viSelectionActive() && !active_->commandPending();
     if (fits == !website_->isHidden()) return;
     website_->setVisible(fits);
     footer_->setColumnStretch(2, fits ? 1 : 0);

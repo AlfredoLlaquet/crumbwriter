@@ -325,10 +325,10 @@ void manuscriptOutput(const QString &path)
         CHECK(f.error.isEmpty() && contents(path) == expected && f.text == live);
     };
     const QString title = QStringLiteral("e\u0301 👩‍🚀!");
-    save(title + "\n-\nProse.\n\nSecond heading\n------------------\n\n",
-         title.toUtf8() + "\n----\nProse.\n\nSecond heading\n--------------\n");
+    save(title + "\n=\nProse.\n\nSecond heading\n------------------\n\n",
+         title.toUtf8() + "\n====\nProse.\n\nSecond heading\n--------------\n");
     save("Book//Leaf 1: A: Body.\n-\n\n", "Book//Leaf 1: A: Body.\n-\n");
-    save("Read https://example.org\n-\nText.\n\n", "Read https://example.org\n------------------------\nText.\n");
+    save("Read https://example.org\n-\nText.\n\n", "Read https://example.org\n-\nText.\n");
     save("Heading\n  -\nBody.\n\t\n", "Heading\n -\nBody.\n");
     save("\n-\n-\nLast", "\n-\n-\nLast\n");
     save(" \t \n\n", {});
@@ -342,14 +342,14 @@ void manuscriptOutput(const QString &path)
     // with exactly the same editor text, just as a caret movement does.
     f.provisionalMarker = 1;
     f.store.configureLiveSave(true, 1);
-    f.edit("Heading\n-- \nChildren\n~\n");
+    f.edit("Heading\n== \nChildren\n~\n");
     WAIT_FOR(f.store, f.error, !f.store.isDirty() && !f.store.isSaving());
-    CHECK(contents(path) == "Heading\n--\nChildren\n~~~~~~~~\n");
+    CHECK(contents(path) == "Heading\n==\nChildren\n~~~~~~~~\n");
     f.provisionalMarker = -1;
     f.store.markEdited();
     WAIT_FOR(f.store, f.error, !f.store.isDirty() && !f.store.isSaving());
-    CHECK(contents(path) == "Heading\n-------\nChildren\n~~~~~~~~\n");
-    CHECK(f.text == "Heading\n-- \nChildren\n~\n");
+    CHECK(contents(path) == "Heading\n=======\nChildren\n~~~~~~~~\n");
+    CHECK(f.text == "Heading\n== \nChildren\n~\n");
 }
 
 void rejectUnrepresentableSnapshot(const QString &path)

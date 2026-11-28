@@ -1,9 +1,9 @@
 Crumb Writer
 ============
 
-Version 3.2. Created and directed by Alfredo Llaquet-Alsina. Implemented by ChatGPT.
+Version 3.3. Created and directed by Alfredo Llaquet-Alsina. Implemented by ChatGPT.
 
-Version 3.2 implementation guide
+Version 3.3 implementation guide
 --------------------------------
 
 Software Project Working Rules
@@ -27,10 +27,14 @@ and Help, retaining the writing toolbar. formattingtoolbar.cpp synchronizes
 Font, size and Style with the active document. Separate layout groups keep six
 logical pixels between each label and control and extra space before Style. In Generic mode the first
 line offers Main Title or Regular Text. Subsequent lines offer Regular Text
-or Title 1 through Title 4. Use Ctrl+Shift+K followed by M, 0 or 1–4. The editor handles the chord
-in the active document and cancels it when focus leaves.
-ManuscriptOptions changes the heading marker and saves explicit first-line
-title detection in the manuscript's .config. The native text remains portable.
+or Title 1 through Title 4. Use Ctrl+Shift+K followed by M, 0 or 1–4. Both
+M and 1 apply Main Title on line one. ManuscriptOptions writes or removes
+the heading marker as one undoable edit. The manuscript text carries the style.
+manuscriptcommands.cpp handles both Style and Merriam-Webster choices for
+the active session. It accepts a Qt keypress or an input-method commit before
+the manuscript processes text. Preedit and modifier releases leave the choice
+pending. Escape, switching tabs or leaving the editor cancels it. Background
+saves and status updates preserve the prompt.
 In normal view heading-marker rows and on-screen heading underlines are
 hidden. manuscripteditor.cpp folds each confirmed marker as a zero-height
 QTextBlock with no cursor stop. manuscripttext.cpp maps visible text offsets
@@ -151,8 +155,8 @@ filenames. tests/test-release-assets.py checks the versioned download links.
 
 * manuscriptoptions.cpp shares TextCompanion’s lock, baseline check and
   atomic write. A manuscript named Harbor.txt can use Harbor.txt.config,
-  a UTF-8 key=value file. disable-general-title=true and literal-guillemets=true
-  independently override the defaults (both false). Blank lines, comments
+  a UTF-8 key=value file. literal-guillemets=true displays the marks literally.
+  The legacy disable-general-title setting has no effect. Blank lines, comments
   and unknown keys are preserved on ordinary edits. Opening defaults creates
   no file. Save As and draft handling keep options beside the relevant text.
   Changing options reinterprets the active editor and outline immediately.
@@ -236,15 +240,15 @@ Installing the FreeBSD and Linux release packages
 
 Use the package for the target OS, release series and architecture. Every
 installer carries its version. The README links directly to the exact assets
-under releases/download/v3.2/. Release checks exercise FreeBSD 15.1, 14.4,
+under releases/download/v3.3/. Release checks exercise FreeBSD 15.1, 14.4,
 and 14.5 (the latter two share one binary), Ubuntu 24.04 and 26.04, and
 Debian 13. The install commands below assume a local download for amd64.
 
-    FreeBSD 15.x   pkg install ./crumbwriter-3.2-FreeBSD-15-amd64.pkg
-    FreeBSD 14.x   pkg install ./crumbwriter-3.2-FreeBSD-14-amd64.pkg
-    Ubuntu 24.04   sudo apt install ./crumbwriter_3.2-ubuntu24.04_amd64.deb
-    Ubuntu 26.04   sudo apt install ./crumbwriter_3.2-ubuntu26.04_amd64.deb
-    Debian 13      sudo apt install ./crumbwriter_3.2-debian13_amd64.deb
+    FreeBSD 15.x   pkg install ./crumbwriter-3.3-FreeBSD-15-amd64.pkg
+    FreeBSD 14.x   pkg install ./crumbwriter-3.3-FreeBSD-14-amd64.pkg
+    Ubuntu 24.04   sudo apt install ./crumbwriter_3.3-ubuntu24.04_amd64.deb
+    Ubuntu 26.04   sudo apt install ./crumbwriter_3.3-ubuntu26.04_amd64.deb
+    Debian 13      sudo apt install ./crumbwriter_3.3-debian13_amd64.deb
 
 On FreeBSD run pkg as root. For an update, close the editor, download the
 new asset and repeat the install command with its filename. apt remove
@@ -260,7 +264,7 @@ release, source, checksums and version-specific license are available at
 https://github.com/AlfredoLlaquet/crumbwriter/releases/latest
 
 Windows 10 version 1903 or later and Windows 11 use
-CrumbWriter-3.2-Windows-x64-Setup.exe on x64 computers. Run Setup as the
+CrumbWriter-3.3-Windows-x64-Setup.exe on x64 computers. Run Setup as the
 desktop account. View License opens the notice during installation.
 Start Crumb Writer from the Start menu or its optional desktop shortcut.
 Setup can also add Crumb Writer to Explorer's Open With for plain-text
@@ -271,7 +275,7 @@ program, use Settings > Apps > Installed apps (Apps & features on Windows
 10). Personal settings, manuscripts, backups and companion files survive
 an update or uninstall.
 
-macOS 15 or later uses CrumbWriter-3.2-macOS-Universal.dmg on both Apple
+macOS 15 or later uses CrumbWriter-3.3-macOS-Universal.dmg on both Apple
 silicon and Intel. Open the disk image, drag Crumb Writer to Applications,
 eject the image and open Crumb Writer from Applications. From the keyboard
 in Finder, select Crumb Writer, press Command+C, press Command+Shift+A to
@@ -286,18 +290,18 @@ Every public installer has a signed GitHub build record (an artifact
 attestation). In its download directory, a signed-in GitHub CLI can identify
 the workflow and source revision that produced this exact file.
 
-    gh attestation verify crumbwriter_3.2-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify crumbwriter-3.2-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-3.2-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
-    gh attestation verify CrumbWriter-3.2-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter_3.3-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify crumbwriter-3.3-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.3-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
+    gh attestation verify CrumbWriter-3.3-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
 
 Use the command for the file downloaded. For a SHA-256 check, compare
 the output of the corresponding command with SHA256SUMS on the same release.
 
-    Get-FileHash .\CrumbWriter-3.2-Windows-x64-Setup.exe -Algorithm SHA256
-    shasum -a 256 CrumbWriter-3.2-macOS-Universal.dmg
-    sha256sum crumbwriter_3.2-ubuntu24.04_amd64.deb
-    sha256 -q crumbwriter-3.2-FreeBSD-15-amd64.pkg
+    Get-FileHash .\CrumbWriter-3.3-Windows-x64-Setup.exe -Algorithm SHA256
+    shasum -a 256 CrumbWriter-3.3-macOS-Universal.dmg
+    sha256sum crumbwriter_3.3-ubuntu24.04_amd64.deb
+    sha256 -q crumbwriter-3.3-FreeBSD-15-amd64.pkg
 
 The Windows installer has no Windows publisher certificate. SmartScreen
 can display an unfamiliar-app or unknown-publisher warning. After verifying
@@ -390,7 +394,7 @@ desktop account.
 
 Repeat the original make install command with the same account and prefix.
 Launch from the desktop menu. Help > About Crumb Writer opens About and shows the installed
-version. The command crumbwriter --version also prints "Crumb Writer 3.2".
+version. The command crumbwriter --version also prints "Crumb Writer 3.3".
 
 Opening a manuscript
 ~~~~~~~~~~~~~~~~~~~~
@@ -462,17 +466,17 @@ The editor wraps each line to the available width. These six file lines
 form the worked example in the reader guide.
 
     The Harbor of Borrowed Tides
-
+    ============================
     The Night Clerk
     ---------------
     At dusk the harbor clerk signed for a tide that had arrived in six wooden crates.
     By dawn the water had learned the shape of the pier.
 
-The first nonblank paragraph on file line one becomes the general title if
-it has no ASCII period, if all its cased letters are uppercase, or if its
-next line is blank or is a confirmed heading marker. The per-manuscript
-option Disable general title detection lets line one open directly with prose.
-An explicit marker can then give that paragraph an ordinary heading level.
+A confirmed = marker directly beneath file line one makes that line Main
+Title. A level-one heading anywhere else is Title 1. An unmarked opening is
+regular text regardless of case, punctuation or neighboring blank lines.
+Applying Main Title explicitly to a previously inferred title writes the marker.
+Other marker characters on the second file line remain literal.
 
 GenericParagraph recognizes a row of matching ASCII characters starting in
 column one. The characters =, -, ~ and . mean levels 1 through 4. One mark
@@ -484,16 +488,17 @@ number of visible graphemes in its heading, including spaces; guillemet
 markup follows the manuscript's literal setting. Existing hyphen headings
 naturally enter level two. Each marker belongs to text immediately above.
 
-The general title uses the largest bold face. The four section levels have
-vertical spacing and descending sizes. In markup view levels 1 and 2 use
-solid underlines and levels 3 and 4 use dotted ones. Level 4 uses body-sized
-bold type. Ctrl+Shift+F9 reveals the marker characters and underlines.
-The first blank directly after a
-general title may be compact. Other interior blanks retain their height.
-Ctrl+Shift+4 opens the Titles search. Document order shows an outline,
-alphabetical order disambiguates repeated names using their ancestors, and
-the general title opens at the top of the viewport. The active heading
-follows typing or navigation without taking keyboard focus.
+The Main Title uses the existing 1.70-times writing font size. Its weight,
+markup underline, spacing rules, navigation and outline level all follow
+Title 1. The four levels use sizes of 1.48, 1.30, 1.16 and 1.00 times the
+writing font. Ctrl+Shift+F9 reveals solid underlines for levels 1–2 and
+dotted ones for levels 3–4. Blank writing lines keep their ordinary height.
+Ctrl+Shift+4 opens Titles. Document order shows the heading hierarchy.
+Alphabetical order disambiguates repeated names using their ancestors.
+The active heading follows navigation without taking keyboard focus.
+Formatted exports use outline level 1 for both the Main Title and Title 1,
+with the larger type on the Main Title. Imports map external heading ranks
+to the corresponding manuscript markers.
 
 A publishing script can map the book title to h1, chapters to h2, and each
 ordinary line to a paragraph in HTML. In the example grep -nF 'six wooden
@@ -1368,9 +1373,8 @@ The model uses each edited range from QTextDocument. A same-line change
 reparses that line, and a genre edit revisits affected successor warnings.
 A change to physical line numbering reuses the parsed records for unaffected
 text. Header lookups use duplicate-aware sorted positions, and genre
-completion finds the nearest earlier occurrence. In Generic mode, physical
-the next ASCII marker line sets the heading level. The first line also uses the
-general-title rules, including an immediately following blank. An ordinary edit can
+completion finds the nearest earlier occurrence. In Generic mode the next confirmed ASCII marker sets the heading level.
+A level-one heading on file line one receives the Main Title name and size. An ordinary edit can
 change the role of an adjacent paragraph. Changing the first-line mode
 reclassifies the manuscript and updates the outline, statistics, status bar,
 search labels, and editor formatting. Each manuscript session owns its mode.
@@ -1463,6 +1467,10 @@ sidebar menus, toolbar spacing and the File menu's blank tab. The native
 Wayland test selects from a heading into the next visible paragraph and
 checks the saved UTF-8 bytes after replacing the selection. The KDE Plasma
 keyboard test confirms both the primary name and an alternative in tiled windows.
+It also drives both command prefixes from a real desktop keyboard. Window
+tests deliver ordinary keypresses and input-method preedits and commits, and
+capture the requested lookup URL locally. Model and editor tests check the
+first-line title moving between positions, ordinary blank rows and legacy files.
 The installed-package smoke test verifies the embedded symbol
 catalog by searching for U+2661.
 The layout suite opens two manuscripts under simulated tiling and reopens
@@ -1589,8 +1597,9 @@ The resize test also types into the last of 25,092 generic paragraphs.
 The native Wayland check changes a manuscript to Generic mode, searches the
 chapter outline from the keyboard, accepts j2 and writes over the selection.
 
-For Generic mode, compare an all-uppercase first line with periods, a first
-line followed by a blank, a marked chapter and an unmarked paragraph between blanks.
+For Generic mode, verify that an unmarked first line stays regular text even
+when uppercase or followed by a blank. Mark it with = and compare its outline
+rank and larger type with a later Title 1. Check periods and interior blanks.
 Add and remove the first-line delimiter and edit either neighbor of a heading.
 Try a first-line URL containing // and check that its file opens as Generic.
 Check the daily net after deletion, Undo, a same-day reopen and a new local

@@ -109,6 +109,7 @@ void MainWindow::currentTabChanged()
     if (layouts_) layouts_->releaseManuscriptPanels();
     if (active_) {
         auto *old = active_;
+        old->cancelCommand();
         old->searchOpen_ = !old->search_->isHidden();
         old->search_->setParent(old->parkedPanels_);
         old->side_->setParent(old->parkedPanels_);

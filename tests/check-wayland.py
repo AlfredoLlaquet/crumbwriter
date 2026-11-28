@@ -160,7 +160,11 @@ def check(app, run):
         keyboard("type", "--clearmodifiers", "j")  # The next visible paragraph follows the folded heading.
         keyboard("key", "--clearmodifiers", "Return")
         keyboard("type", "--clearmodifiers", "Lunar ")
-        save_and_check(prose.replace("The Moon\n--------\n", "Lunar "))
+        revised = prose.replace("The Moon\n--------\n", "Lunar ")
+        save_and_check(revised)
+        keyboard("key", "--clearmodifiers", "--delay", "80", "ctrl+shift+k", "2")
+        heading = "Lunar A goose counted."
+        save_and_check(revised.replace(heading, heading + "\n" + "-" * len(heading)))
         print("Generic mode navigated to a chapter by keyboard and accepted a two-paragraph movement.", flush=True)
         keyboard("key", "--clearmodifiers", "alt+w")
         if editor.wait(timeout=8) != 0:

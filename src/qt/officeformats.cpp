@@ -132,6 +132,13 @@ QString attr(const QDomElement &e, const QString &key)
     }
     return {};
 }
+int wordHeadingLevel(const QDomElement &outline)
+{
+    bool ok;
+    const int level = attr(outline, "val").toInt(&ok);
+    return ok && level >= 0 && level < 9 ? level + 1 : 0;
+}
+
 QDomElement child(const QDomElement &parent, const QString &name)
 {
     for (auto e = parent.firstChildElement(); !e.isNull(); e = e.nextSiblingElement())
@@ -225,12 +232,12 @@ void paragraphs(const QDomElement &node, bool odt, OfficeStyles &styles, QTextCu
         const auto properties = child(node, "pPr");
         const QString style = attr(child(properties, "pStyle"), "val");
         int heading = styles.heading.value(style);
-        if (!heading && style.compare("Title", Qt::CaseInsensitive) == 0) heading = 1;
+        if (!styles.heading.contains(style) && style.compare("Title", Qt::CaseInsensitive) == 0) heading = 1;
         static const QRegularExpression levelPattern("^Heading\\s*([1-9])$", QRegularExpression::CaseInsensitiveOption);
         const auto match = levelPattern.match(style);
-        if (!heading && match.hasMatch()) heading = match.captured(1).toInt() + 1;
+        if (!styles.heading.contains(style) && match.hasMatch()) heading = match.captured(1).toInt();
         const auto outline = child(properties, "outlineLvl");
-        if (!outline.isNull()) heading = attr(outline, "val").toInt() + 2;
+        if (!outline.isNull()) heading = wordHeadingLevel(outline);
         fmt.setHeadingLevel(qBound(0, heading, 6));
         const auto num = child(properties, "numPr");
         if (!num.isNull()) {
@@ -276,7 +283,7 @@ QString fromOffice(const QString &path, bool odt, QString *error)
                 if (level) styles.heading[name] = level;
             } else {
                 const auto outline = child(child(e, "pPr"), "outlineLvl");
-                if (!outline.isNull()) styles.heading[attr(e, "styleId")] = attr(outline, "val").toInt() + 2;
+                if (!outline.isNull()) styles.heading[attr(e, "styleId")] = wordHeadingLevel(outline);
             }
         } else if (tag == "list-style" && !child(e, "list-level-style-bullet").isNull()) styles.bulletLists.insert(attr(e, "name"));
         else if (tag == "num") styles.listDefinitions[attr(e, "numId")] = attr(child(e, "abstractNumId"), "val");
@@ -310,7 +317,7 @@ bool writeDocx(QIODevice *target, const QTextDocument &document, QString *error)
         const int level = block.blockFormat().headingLevel();
         if (level) {
             xml.writeStartElement("w:pPr");
-            property(xml, "pStyle", level == 1 ? QStringLiteral("Title") : "Heading" + QString::number(level-1));
+            property(xml, "pStyle", "Heading" + QString::number(level));
             xml.writeEmptyElement("w:spacing");
             xml.writeAttribute("w:before", QString::number(qRound(block.blockFormat().topMargin() * 15)));
             xml.writeEndElement();
@@ -351,12 +358,14 @@ bool writeDocx(QIODevice *target, const QTextDocument &document, QString *error)
     property(styles, "sz", QString::number(qRound(document.defaultFont().pointSizeF() * 2)));
     styles.writeEndElement();
     styles.writeEndElement();
-    for (int i = 0; i <= 4; ++i) {
-        const QString id = i ? "Heading" + QString::number(i) : QStringLiteral("Title");
+    for (int i = 1; i <= 4; ++i) {
+        const QString id = "Heading" + QString::number(i);
         styles.writeStartElement("w:style");
         styles.writeAttribute("w:type","paragraph"); styles.writeAttribute("w:styleId",id);
         property(styles,"name",id);
-        if (i) { styles.writeStartElement("w:pPr"); property(styles,"outlineLvl",QString::number(i-1)); styles.writeEndElement(); }
+        styles.writeStartElement("w:pPr");
+        property(styles, "outlineLvl", QString::number(i - 1));
+        styles.writeEndElement();
         styles.writeEndElement();
     }
     styles.writeEndDocument();

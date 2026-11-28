@@ -75,18 +75,18 @@ Alfredo’s collection is one example of what that plain text file can become. I
 
 ## Download Crumb Writer
 
-Choose the package for your operating system and processor. The filenames and links below all refer to **version 3.2**. For a newer edition, open the [latest release](https://github.com/AlfredoLlaquet/crumbwriter/releases/latest).
+Choose the package for your operating system and processor. The filenames and links below all refer to **version 3.3**. For a newer edition, open the [latest release](https://github.com/AlfredoLlaquet/crumbwriter/releases/latest).
 
 | Intended compatibility | Release checks | Download |
 | --- | --- | --- |
-| FreeBSD 15.x, amd64 | 15.1 | [crumbwriter-3.2-FreeBSD-15-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/crumbwriter-3.2-FreeBSD-15-amd64.pkg) |
-| FreeBSD 14.x, amd64 | 14.4 and 14.5 | [crumbwriter-3.2-FreeBSD-14-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/crumbwriter-3.2-FreeBSD-14-amd64.pkg) |
-| OpenBSD 8.0, amd64 | 8.0 | [crumbwriter-3.2.tgz](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/crumbwriter-3.2.tgz) |
-| Ubuntu 24.04 LTS, amd64 | 24.04 | [crumbwriter_3.2-ubuntu24.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/crumbwriter_3.2-ubuntu24.04_amd64.deb) |
-| Ubuntu 26.04 LTS, amd64 | 26.04 | [crumbwriter_3.2-ubuntu26.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/crumbwriter_3.2-ubuntu26.04_amd64.deb) |
-| Debian 13, amd64 | 13 (trixie) | [crumbwriter_3.2-debian13_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/crumbwriter_3.2-debian13_amd64.deb) |
-| Windows 10 version 1903 or later and Windows 11, x64 | Windows Server 2025 (x64) and Windows 11 on Arm (x64 emulation) | [CrumbWriter-3.2-Windows-x64-Setup.exe](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/CrumbWriter-3.2-Windows-x64-Setup.exe) |
-| macOS 15 or later, Apple silicon and Intel | macOS 15 on both CPU architectures | [CrumbWriter-3.2-macOS-Universal.dmg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/CrumbWriter-3.2-macOS-Universal.dmg) |
+| FreeBSD 15.x, amd64 | 15.1 | [crumbwriter-3.3-FreeBSD-15-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/crumbwriter-3.3-FreeBSD-15-amd64.pkg) |
+| FreeBSD 14.x, amd64 | 14.4 and 14.5 | [crumbwriter-3.3-FreeBSD-14-amd64.pkg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/crumbwriter-3.3-FreeBSD-14-amd64.pkg) |
+| OpenBSD 8.0, amd64 | 8.0 | [crumbwriter-3.3.tgz](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/crumbwriter-3.3.tgz) |
+| Ubuntu 24.04 LTS, amd64 | 24.04 | [crumbwriter_3.3-ubuntu24.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/crumbwriter_3.3-ubuntu24.04_amd64.deb) |
+| Ubuntu 26.04 LTS, amd64 | 26.04 | [crumbwriter_3.3-ubuntu26.04_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/crumbwriter_3.3-ubuntu26.04_amd64.deb) |
+| Debian 13, amd64 | 13 (trixie) | [crumbwriter_3.3-debian13_amd64.deb](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/crumbwriter_3.3-debian13_amd64.deb) |
+| Windows 10 version 1903 or later and Windows 11, x64 | Windows Server 2025 (x64) and Windows 11 on Arm (x64 emulation) | [CrumbWriter-3.3-Windows-x64-Setup.exe](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/CrumbWriter-3.3-Windows-x64-Setup.exe) |
+| macOS 15 or later, Apple silicon and Intel | macOS 15 on both CPU architectures | [CrumbWriter-3.3-macOS-Universal.dmg](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/CrumbWriter-3.3-macOS-Universal.dmg) |
 
 Crumb Writer uses Qt 6. On FreeBSD and Linux you can run it on a desktop such as GNOME or Xfce, under a standalone X11 window manager, or with a Wayland compositor.
 
@@ -105,10 +105,10 @@ The bundled libraries, spelling dictionary, and WordNet thesaurus data have thei
 **First installation.** Download the FreeBSD package above for a 64-bit Intel or AMD computer running FreeBSD 15.x or 14.x. From the directory containing the download, run the following as root. The leading `./` tells `pkg` to install the file you downloaded. It obtains dependencies from your configured FreeBSD repositories.
 
 ~~~sh
-pkg install ./crumbwriter-3.2-FreeBSD-15-amd64.pkg
+pkg install ./crumbwriter-3.3-FreeBSD-15-amd64.pkg
 ~~~
 
-On FreeBSD 14.x, use `crumbwriter-3.2-FreeBSD-14-amd64.pkg` in the install command.
+On FreeBSD 14.x, use `crumbwriter-3.3-FreeBSD-14-amd64.pkg` in the install command.
 
 Open the desktop application launcher, type **Crumb Writer**, and press **Enter**. Press **Ctrl+O** to open a document. The next time you start the editor, it restores your open windows and tabs. **Help → About Crumb Writer** shows the installed version.
 
@@ -119,8 +119,8 @@ Open the desktop application launcher, type **Crumb Writer**, and press **Enter*
 Download the OpenBSD package into its own folder and verify it with the release checksum or attestation. Open a terminal in that folder. As root, run the first command for a new installation or the second for an update. Only that folder is trusted for the independently distributed package. OpenBSD supplies the signed dependencies from its usual mirror.
 
 ~~~sh
-env TRUSTED_PKG_PATH="$PWD" PKG_PATH=installpath pkg_add "$PWD/crumbwriter-3.2.tgz"
-env TRUSTED_PKG_PATH="$PWD" PKG_PATH=installpath pkg_add -u "$PWD/crumbwriter-3.2.tgz"
+env TRUSTED_PKG_PATH="$PWD" PKG_PATH=installpath pkg_add "$PWD/crumbwriter-3.3.tgz"
+env TRUSTED_PKG_PATH="$PWD" PKG_PATH=installpath pkg_add -u "$PWD/crumbwriter-3.3.tgz"
 ~~~
 
 Launch **Crumb Writer** from the application menu or run `crumbwriter` in a graphical session. To remove the package, run `pkg_delete crumbwriter` as root.
@@ -131,10 +131,10 @@ Launch **Crumb Writer** from the application menu or run `crumbwriter` in a grap
 
 ~~~sh
 sudo apt update
-sudo apt install ./crumbwriter_3.2-ubuntu24.04_amd64.deb
+sudo apt install ./crumbwriter_3.3-ubuntu24.04_amd64.deb
 ~~~
 
-For Ubuntu 26.04, use `crumbwriter_3.2-ubuntu26.04_amd64.deb` in the command. On Debian 13, use `crumbwriter_3.2-debian13_amd64.deb`.
+For Ubuntu 26.04, use `crumbwriter_3.3-ubuntu26.04_amd64.deb` in the command. On Debian 13, use `crumbwriter_3.3-debian13_amd64.deb`.
 
 Open **Crumb Writer** from the desktop application menu. Use **Ctrl+O** to open a file and **F1** for the searchable keyboard guide.
 
@@ -162,19 +162,19 @@ The installer has no Windows publisher certificate. SmartScreen may display **Wi
 GitHub Actions creates a signed build record, called an **artifact attestation**, for every downloadable package and the checksum list. With GitHub CLI installed and signed in, run the command for the file just downloaded, in the folder containing it.
 
 ~~~text
-gh attestation verify crumbwriter-3.2-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter-3.2-FreeBSD-14-amd64.pkg --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter-3.2.tgz --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter_3.2-ubuntu26.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter_3.2-debian13_amd64.deb --repo AlfredoLlaquet/crumbwriter
-gh attestation verify crumbwriter_3.2-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
-gh attestation verify CrumbWriter-3.2-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
-gh attestation verify CrumbWriter-3.2-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter-3.3-FreeBSD-15-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter-3.3-FreeBSD-14-amd64.pkg --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter-3.3.tgz --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter_3.3-ubuntu26.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter_3.3-debian13_amd64.deb --repo AlfredoLlaquet/crumbwriter
+gh attestation verify crumbwriter_3.3-ubuntu24.04_amd64.deb --repo AlfredoLlaquet/crumbwriter
+gh attestation verify CrumbWriter-3.3-Windows-x64-Setup.exe --repo AlfredoLlaquet/crumbwriter
+gh attestation verify CrumbWriter-3.3-macOS-Universal.dmg --repo AlfredoLlaquet/crumbwriter
 ~~~
 
 A successful check identifies the repository, build workflow, and source revision that produced the downloaded bytes. Windows SmartScreen and Apple Gatekeeper make their own decisions when opening the program. [GitHub CLI verification guide](https://cli.github.com/manual/gh_attestation_verify)
 
-For a quick integrity check, download the checksum list for the same release and compare the 64 hexadecimal characters beside your filename with your local result. On FreeBSD, run `sha256 -q crumbwriter-3.2-FreeBSD-15-amd64.pkg`. On Ubuntu, run `sha256sum crumbwriter_3.2-ubuntu24.04_amd64.deb`. On macOS, run `shasum -a 256 CrumbWriter-3.2-macOS-Universal.dmg`. In Windows PowerShell, use `Get-FileHash .\CrumbWriter-3.2-Windows-x64-Setup.exe -Algorithm SHA256`. [Version 3.2 checksums](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.2/SHA256SUMS)
+For a quick integrity check, download the checksum list for the same release and compare the 64 hexadecimal characters beside your filename with your local result. On FreeBSD, run `sha256 -q crumbwriter-3.3-FreeBSD-15-amd64.pkg`. On Ubuntu, run `sha256sum crumbwriter_3.3-ubuntu24.04_amd64.deb`. On macOS, run `shasum -a 256 CrumbWriter-3.3-macOS-Universal.dmg`. In Windows PowerShell, use `Get-FileHash .\CrumbWriter-3.3-Windows-x64-Setup.exe -Algorithm SHA256`. [Version 3.3 checksums](https://github.com/AlfredoLlaquet/crumbwriter/releases/download/v3.3/SHA256SUMS)
 
 The repository uses GitHub’s **immutable releases**. When a release is published with this setting, GitHub locks the tag to its source commit and locks the attached files. The signed build record independently lets a reader verify the downloaded bytes. [GitHub’s immutable release guide](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases)
 
@@ -232,7 +232,7 @@ PKG_PATH=https://cdn.openbsd.org/pub/OpenBSD/8.0/packages/amd64/ pkg_add git cma
 The command uses the signed packages built for the release ports tree. On a machine already using updated stable libraries, use its matching OpenBSD 8.0 stable ports tree (CVS tag OPENBSD_8_0). Clone the matching Crumb Writer release as your desktop account. From the checkout, run the remaining commands as root to install the port under `mystuff`, compile the editor and install the resulting package. The port fetches the versioned source archive, checks its digest and installs the spelling and thesaurus data.
 
 ~~~sh
-git clone --branch v3.2 https://github.com/AlfredoLlaquet/crumbwriter.git
+git clone --branch v3.3 https://github.com/AlfredoLlaquet/crumbwriter.git
 cd crumbwriter
 mkdir -p /usr/ports/mystuff/editors/crumbwriter
 cp -R packaging/openbsd/port/. /usr/ports/mystuff/editors/crumbwriter/
@@ -300,14 +300,14 @@ Here are the first six lines of `Harbor.txt`.
 
 ~~~text
 The Harbor of Borrowed Tides
-
+============================
 The Night Clerk
 ---------------
 At dusk the harbor clerk signed for a tide that had arrived in six wooden crates.
 By dawn the water had learned the shape of the pier.
 ~~~
 
-**Giving the document a title.** The editor shows the first line in its largest bold type if that line contains text and meets any one of four conditions. It has no period, its letters are all uppercase, a blank line follows it, or a heading marker follows it. A marker lets you use a title such as *Mrs. Dalloway* and start your first paragraph directly below the marker. If you leave a blank line directly under a general title, it appears as a narrow gap.
+**Giving the document a title.** Put a line of `=` characters directly below the first line, or choose **Main Title** from **Style**. This is a Title 1 at the beginning of the file and uses the editor’s largest font. Moving that heading down gives it the usual Title 1 size. An unmarked first line is regular text, whatever its capitalization or punctuation. Blank lines use ordinary spacing throughout the document. If an older manuscript relied on automatic title detection, choose **Main Title** once to mark it.
 
 **Organizing a book.** Write the heading on its own line. On the following line, type one of these characters at the left edge.
 
@@ -320,15 +320,15 @@ By dawn the water had learned the shape of the pier.
 
 One character is enough. When you leave the marker line, the editor repeats that character to match the visible length of the heading, including spaces. *The Night Clerk* takes 15 hyphens. Accents and emoji count as the characters you see. While you’re on the line, you can still type a hyphen, a space, and `Buy coffee` to make a list item, even if the editor saves in the meantime. A marker contains only repetitions of its own character. A period at the end of a sentence stays part of the sentence.
 
-Use the toolbar’s **Style** list or **Format → Style** to change the current line. On line one, choose **Main Title** or **Regular Text**. On later lines, choose **Regular Text** or **Title 1** through **Title 4**. Press **Ctrl+Shift+K**, release it, then press **M**, **0**, or **1–4**, respectively. Choosing Regular Text on the first line also turns off automatic main-title detection for this document.
+Use the toolbar’s **Style** list or **Format → Style** to change the current line. On line one, choose **Main Title** or **Regular Text**. On later lines, choose **Regular Text** or **Title 1** through **Title 4**. Press **Ctrl+Shift+K**, release it, then press **M**, **0**, or **1–4**, respectively. On line one, **1** also applies Main Title. Type the heading text before applying its style. The status bar shows the available keys while the editor waits for your choice. **Escape** cancels. Choosing Regular Text removes the heading marker.
 
 In the normal writing view, headings use size, weight and spacing. A confirmed marker takes up no line in the editor. The caret moves directly from the heading to the next paragraph, and selecting, copying or searching across them includes only the writing. The saved text keeps the marker. **View → Show manuscript markup** (**Ctrl+Shift+F9**) reveals the marker rows, italic delimiters and the on-screen heading underlines. Once you leave a marker row, its repeated characters span the visible width of the heading, including in a proportional font. Link and spelling underlines keep their usual meanings. Each empty line in the body leaves one line of space. A paragraph surrounded by blank lines stays ordinary prose. A blank line you just opened at the end stays available for typing through an autosave.
 
-**Writing in italics.** Enclose a passage in guillemets, the angled quotation marks in `«the other moon»`. The words appear in italics. You can see the marks while the cursor is in the passage, and they disappear from view when you move away. **Ctrl+K** inserts the opening or closing mark. With text selected, it adds or removes the pair in one undo step. Each pair belongs to one paragraph. If you use guillemets for dialogue, open **Manuscript Settings** and select **Display guillemets literally**. The same dialog offers **Disable general title detection**, which lets the first paragraph remain ordinary prose unless you give it a heading marker. Both choices travel with the document in `Harbor.txt.config`.
+**Writing in italics.** Enclose a passage in guillemets, the angled quotation marks in `«the other moon»`. The words appear in italics. You can see the marks while the cursor is in the passage, and they disappear from view when you move away. **Ctrl+K** inserts the opening or closing mark. With text selected, it adds or removes the pair in one undo step. Each pair belongs to one paragraph. If you use guillemets for dialogue, open **Manuscript Settings** and select **Display guillemets literally**. This setting travels with the document in `Harbor.txt.config`.
 
 **Writing lists.** Start a new paragraph after `1. Buy coffee` and it begins with `2. `. Bullets, lettered lists, Roman numerals, and multilevel lists such as `1.9.` → `1.10.` continue the same way. Press **Enter** on an empty item to end the list, or **Backspace** immediately after creating it to remove the suggested prefix. You can edit any prefix. An ordinary sentence beginning with *I* stays prose. Use **Continue list** (**Ctrl+Shift+Enter**) when you mean to start a list and the first item could be read either way. If you type the proposed marker yourself or paste an item that already begins with a marker, the line gets one prefix. Pasting an explicitly numbered item keeps its supplied number.
 
-**Finding your place.** **Ctrl+Up** and **Ctrl+Down** move between visible manuscript lines. **Tab** and **Shift+Tab** jump between headings. **Ctrl+Shift+4** focuses **Titles**. Type part of a title and press **Enter** to go there. **Shift+F7** switches between document order and alphabetical order. Document order shows the headings as a tree. Alphabetical order shows a flat index with parent headings for context. The outline follows the section you’re writing. Choosing the general title brings it to the top of the writing area. **End of document** is the last entry in either order and takes you to the end of the last paragraph. **Ctrl+Shift+3** searches the full text of visited paragraphs, which appear under their opening words. The right panel shows the day’s net word count. Deleting 150 more words than you add shows −150.
+**Finding your place.** **Ctrl+Up** and **Ctrl+Down** move between visible manuscript lines. **Tab** and **Shift+Tab** jump between headings. **Ctrl+Shift+4** focuses **Titles**. Type part of a title and press **Enter** to go there. **Shift+F7** switches between document order and alphabetical order. Document order shows the headings as a tree. Alphabetical order shows a flat index with parent headings for context. The outline follows the section you’re writing. The main title and other Title 1 headings appear at the same level. **End of document** is the last entry in either order and takes you to the end of the last paragraph. **Ctrl+Shift+3** searches the full text of visited paragraphs, which appear under their opening words. The right panel shows the day’s net word count. Deleting 150 more words than you add shows −150.
 
 **Using the file outside the editor.** To find the passage about the crates, run this command in the folder containing the book.
 
@@ -511,7 +511,7 @@ Double-click or press **Ctrl+2** to select a word. In `notwithstanding—not`, e
 
 Press **F7** to look up the selection or the word at the cursor in the offline English thesaurus. Scroll through the alternatives by meaning, choose one with the arrow keys, and press **Enter** to replace the original wording in one undo step. **Ctrl+C** copies the alternative, **Ctrl+L** looks up another word, and **Escape** closes the window. For a word such as `doctor`, choose the meaning you intend before picking an alternative.
 
-For Merriam-Webster in your browser, select a phrase or put the cursor on a word. Press **Ctrl+Shift+L**, release the keys, then press **D** for the dictionary, **S** for the entry’s synonyms section, or **T** for the thesaurus. **Escape** cancels the lookup. You can also choose the destination under **Tools → Look Up in Merriam-Webster**. Only these web lookups send the word or phrase to the website.
+For Merriam-Webster in your browser, select a phrase or put the cursor on a word. Press **Ctrl+Shift+L**, release the keys, then press **D** for the dictionary, **S** for the entry’s synonyms section, or **T** for the thesaurus. The status bar shows the three choices until you choose one or press **Escape**. You can also choose the destination under **Tools → Look Up in Merriam-Webster**. Only these web lookups send the word or phrase to the website.
 
 ## Statistics and daily count
 

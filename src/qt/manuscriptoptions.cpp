@@ -14,7 +14,6 @@
 #include <QVBoxLayout>
 
 namespace {
-const QByteArray disableTitleKey("disable-general-title");
 const QByteArray literalQuotesKey("literal-guillemets");
 
 QString documentLabel(const DocumentStore *store)
@@ -67,7 +66,6 @@ ManuscriptOptions::ManuscriptOptions(ManuscriptEditor *editor, DocumentStore *st
 void ManuscriptOptions::apply()
 {
     editor_->setLiteralGuillemets(enabled(config_.bytes(), literalQuotesKey));
-    editor_->model().setGeneralTitleDisabled(enabled(config_.bytes(), disableTitleKey));
 }
 
 bool ManuscriptOptions::resetForPath(const QString &path, QString *error)
@@ -101,29 +99,26 @@ bool ManuscriptOptions::copyToDraft(const QString &draft, QString *error)
 }
 
 // -1 is the main title, 0 ordinary prose, and 1–4 section headings.
-bool ManuscriptOptions::setLineStyle(int style, QString *error)
+void ManuscriptOptions::setLineStyle(int style)
 {
     auto &model = editor_->model();
-    if (!model.isGeneric() || editor_->isReadOnly()) return false;
+    if (!model.isGeneric() || editor_->isReadOnly()) return;
     auto caret = editor_->textCursor();
     auto block = caret.block();
     if (model.paragraphRole(block.blockNumber()) == ParagraphRole::TitleMarker) block = block.previous();
     const bool first = block.blockNumber() == 0;
+    if (first && style == 1) style = -1;
     if (style < -1 || style > 4 || (first && style > 0) || (!first && style == -1) ||
-        (style && !GenericParagraph::canHaveMarker(block.text()))) return false;
-    if (first) {
-        const auto updated = setFlag(config_.bytes(), disableTitleKey, style == 0);
-        if (updated != config_.bytes() && !config_.write(updated, error)) return false;
-        apply();
-    }
+        (style && !GenericParagraph::canHaveMarker(block.text()))) return;
     const auto next = block.next();
-    const bool marker = next.isValid() && GenericParagraph::markerLevel(next.text());
+    const bool marker = next.isValid() && GenericParagraph::canHaveMarker(block.text()) &&
+        GenericParagraph::markerAllowed(block.blockNumber(), GenericParagraph::markerLevel(next.text()));
+    if (!style && !marker) return;
     QTextCursor edit(block);
     edit.movePosition(QTextCursor::EndOfBlock);
     edit.beginEditBlock();
     if (marker) {
-        edit.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
-        edit.movePosition(QTextCursor::EndOfBlock, QTextCursor::KeepAnchor);
+        edit.setPosition(next.position() + next.length() - 1, QTextCursor::KeepAnchor);
         edit.removeSelectedText();
     }
     if (style) {
@@ -136,7 +131,6 @@ bool ManuscriptOptions::setLineStyle(int style, QString *error)
     if (caret.block() != block) caret = QTextCursor(block);
     editor_->setTextCursor(caret);
     if (onChanged) onChanged();
-    return true;
 }
 
 void ManuscriptOptions::showSettings()
@@ -153,13 +147,9 @@ void ManuscriptOptions::showSettings()
         context->setTextFormat(Qt::PlainText);
         context->setWordWrap(true);
         layout->addWidget(context);
-        auto *disable = new QCheckBox(tr("&Disable general title detection"), dialog);
         auto *literal = new QCheckBox(tr("Display &guillemets literally"), dialog);
-        disable->setObjectName("disableGeneralTitle");
         literal->setObjectName("literalGuillemets");
-        disable->setChecked(enabled(config_.bytes(), disableTitleKey));
         literal->setChecked(enabled(config_.bytes(), literalQuotesKey));
-        layout->addWidget(disable);
         layout->addWidget(literal);
         auto *error = new QLabel(dialog);
         error->setTextFormat(Qt::PlainText);
@@ -169,10 +159,9 @@ void ManuscriptOptions::showSettings()
         auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, dialog);
         layout->addWidget(buttons);
         connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
-        connect(buttons, &QDialogButtonBox::accepted, dialog, [this, dialog, disable, literal, error] {
+        connect(buttons, &QDialogButtonBox::accepted, dialog, [this, dialog, literal, error] {
             const bool literalChanged = editor_->literalGuillemets() != literal->isChecked();
-            auto bytes = setFlag(config_.bytes(), disableTitleKey, disable->isChecked());
-            bytes = setFlag(bytes, literalQuotesKey, literal->isChecked());
+            const auto bytes = setFlag(config_.bytes(), literalQuotesKey, literal->isChecked());
             QString message;
             const bool changed = bytes != config_.bytes();
             if (changed && !config_.write(bytes, &message)) {
@@ -195,7 +184,7 @@ void ManuscriptOptions::showSettings()
             if (changed && onChanged) onChanged();
             dialog->accept();
         });
-        disable->setFocus();
+        literal->setFocus();
     }
     settings_->show();
     settings_->raise();

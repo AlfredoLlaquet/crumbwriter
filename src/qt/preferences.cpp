@@ -113,7 +113,7 @@ constexpr HelpRow shortcuts[] = {
     {"Manuscripts","Ctrl+Tab / Ctrl+Shift+Tab","Next / previous manuscript in tab order"},
     {"Manuscripts","Ctrl+F4 / Ctrl+Shift+T","Close this tab / reopen the last closed manuscript at its previous position"},
     {"Manuscripts","Ctrl+Shift+N / Window menu","Open a new window / move the current tab to its own window"},
-    {"Manuscript settings","Tools → Manuscript settings","Turn off automatic general titles or display guillemets literally for this manuscript. Settings travel with its .config file."},
+    {"Manuscript settings","Tools → Manuscript settings","Choose whether to display guillemets literally for this manuscript. Settings travel with its .config file."},
     {"Generic mode","Ctrl+K","Insert an opening or closing guillemet. Wrap or unwrap selected text in italics. Put the caret in the passage to reveal its marks."},
     {"Generic mode","Ctrl+Shift+F9","Show or hide manuscript markup, including section markers and italic delimiters"},
     {"Generic lists","Ctrl+Shift+Enter","Continue a list explicitly. Empty generated item: Enter ends the list. Immediate Backspace removes its prefix."},

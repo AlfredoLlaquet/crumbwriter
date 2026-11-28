@@ -25,7 +25,7 @@ void TitleOutline::rebuild(QTreeWidget *tree, const CrumbModel &model, const QTe
     tree->setIndentation(tree->fontMetrics().horizontalAdvance(u'M') + 2);
     tree->setExpandsOnDoubleClick(false);
     struct Ancestor { QTreeWidgetItem *item = nullptr; QString name; };
-    std::array<Ancestor, 5> hierarchy{}; // General title, then levels 1–4.
+    std::array<Ancestor, 4> hierarchy{};
     const auto lines = model.titleLines();
     QList<QTreeWidgetItem *> flat;
     if (!hierarchical) flat.reserve(lines.size());
@@ -40,7 +40,7 @@ void TitleOutline::rebuild(QTreeWidget *tree, const CrumbModel &model, const QTe
         item->setData(0, Qt::UserRole, QVariant::fromValue(document->findBlockByNumber(line)));
         QStringList path;
         QTreeWidgetItem *parent = nullptr;
-        for (int i = 0; i < level; ++i) {
+        for (int i = 0; i < level - 1; ++i) {
             if (hierarchy[i].item) {
                 path.append(hierarchy[i].name);
                 parent = hierarchy[i].item;
@@ -50,11 +50,10 @@ void TitleOutline::rebuild(QTreeWidget *tree, const CrumbModel &model, const QTe
                       QObject::tr("%1  ·  %2").arg(name, path.join(QStringLiteral(" › "))));
         path.append(name);
         item->setToolTip(0, path.join(QStringLiteral(" › ")));
-        item->setData(0, Qt::AccessibleDescriptionRole, level
-            ? QObject::tr("Level %1 heading. %2").arg(level).arg(item->toolTip(0))
-            : QObject::tr("General title"));
-        hierarchy[level] = {item, name};
-        std::fill(hierarchy.begin() + level + 1, hierarchy.end(), Ancestor{});
+        item->setData(0, Qt::AccessibleDescriptionRole, line == 0
+            ? QObject::tr("Main Title") : QObject::tr("Level %1 heading. %2").arg(level).arg(item->toolTip(0)));
+        hierarchy[level - 1] = {item, name};
+        std::fill(hierarchy.begin() + level, hierarchy.end(), Ancestor{});
         if (hierarchical) {
             if (parent) parent->addChild(item);
             else tree->addTopLevelItem(item);

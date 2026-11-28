@@ -49,7 +49,8 @@ QByteArray manuscriptBytes(const QString &snapshot, int provisionalMarker, bool 
     for (qsizetype start = 0; start < text.size(); ++lineNumber) {
         const auto end = text.indexOf(u'\n', start);
         const auto line = text.mid(start, end - start);
-        if (lineNumber != provisionalMarker && GenericParagraph::markerLevel(line) &&
+        if (lineNumber != provisionalMarker &&
+            GenericParagraph::markerAllowed(lineNumber - 1, GenericParagraph::markerLevel(line)) &&
             GenericParagraph::canHaveMarker(previous)) {
             const auto length = GenericParagraph::markerLength(previous, literalGuillemets);
             if (length != line.size()) {

@@ -31,6 +31,11 @@ public:
     bool load(const QString &path, bool recovery);
 
 private:
+    enum class CommandPrefix { None, Style, WebLookup };
+    bool commandPending() const { return commandPrefix_ != CommandPrefix::None; }
+    bool handleCommandInput(QEvent *event);
+    void finishCommand(QChar choice);
+    void cancelCommand();
     void connectWritingTools();
     void applyPreferences(const QPalette &palette);
     void changed();
@@ -74,7 +79,7 @@ private:
     QString configDraft_; // Private draft whose .config travels to the eventual named manuscript.
     bool configPromotionFailed_ = false;
     bool loading_ = false;
-    bool webLookupPending_ = false;
+    CommandPrefix commandPrefix_ = CommandPrefix::None;
     bool searchOpen_ = false;
     int openingCaret_ = -1;
 };

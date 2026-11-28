@@ -12,7 +12,7 @@
 class QTextDocument;
 class QTextBlock;
 
-enum class ParagraphRole { Body, Blank, DocumentTitle, ChapterTitle, TitleMarker, TitleSpacer };
+enum class ParagraphRole { Body, Blank, DocumentTitle, ChapterTitle, TitleMarker };
 
 // Line numbers are zero-based. All columns are relative UTF-16 offsets, just
 // like QTextBlock and QTextCursor. Each end is exclusive.
@@ -90,7 +90,6 @@ public:
     bool isGeneric() const;
     ParagraphRole paragraphRole(int line) const;
     int headingLevel(int line) const;
-    void setGeneralTitleDisabled(bool disabled);
     void deferTypedMarker(const QTextBlock &block);
     int provisionalMarkerLine() const;
     void confirmMarkerOutside(int caretLine);

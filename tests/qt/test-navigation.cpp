@@ -173,7 +173,7 @@ int main(int argc, char **argv)
     check(history->topLevelItemCount() == 4, "redo brings back the new visits");
 
     const QString longParagraph = QString(95, u'x') + QStringLiteral("🦋 the hidden word.");
-    const QString novel = "Night Inventory\nA crow passed.\n\nWind\n----\n" + longParagraph +
+    const QString novel = "Night Inventory\n===============\nA crow passed.\nWind\n----\n" + longParagraph +
                           "\nThe seat was empty.\n\nDawn\n----\nA visitor knocked.\nNo one answered.\n\nWind\n----\nThe bell rang.";
     editor.loadText(novel);
     panel.reset();
@@ -248,7 +248,7 @@ int main(int argc, char **argv)
     panel.reset();
     editor.startViSelection();
     key(&editor, Qt::Key_J, {}, "j");
-    key(&editor, Qt::Key_3, {}, "3");
+    key(&editor, Qt::Key_2, {}, "2");
     check(editor.textCursor().blockNumber() == 3 && displayedNames(history) == QStringList{"Night Inventory"},
           "live movement previews leave visit history intact");
     key(&editor, Qt::Key_Escape);
@@ -256,7 +256,7 @@ int main(int argc, char **argv)
           "canceling a movement creates no visit");
     editor.startViSelection();
     key(&editor, Qt::Key_J, {}, "j");
-    key(&editor, Qt::Key_3, {}, "3");
+    key(&editor, Qt::Key_2, {}, "2");
     key(&editor, Qt::Key_Return);
     check(displayedNames(history) == QStringList{"Wind", "Night Inventory"},
           "accepting a movement records only the committed destination");
@@ -274,16 +274,16 @@ int main(int argc, char **argv)
     check(today->parentWidget()->height() < crumbInformationHeight,
           "Generic mode gives the freed information-panel space to its navigation lists");
 
-    editor.loadText("The book\nPreface.\nPart A\n======\nChapter A\n---------\nSection A\n~~~~~~~~~\n"
+    editor.loadText("The book\n========\nPart A\n======\nChapter A\n---------\nSection A\n~~~~~~~~~\n"
                     "Detail A\n........\nSome text.\nPart B\n======\nChapter A\n---------\nLast.");
     if (!order->isChecked()) panel.toggleGenreOrder();
     auto *book = list->topLevelItem(0);
-    auto *part = book->child(0);
+    auto *part = list->topLevelItem(1);
     auto *chapter = part->child(0);
     auto *section = chapter->child(0);
     auto *detail = section->child(0);
-    check(book->childCount() == 2 && detail->text(0) == "Detail A" && list->topLevelItemCount() == 2,
-          "the four real heading levels nest below the general title and the end command stays last");
+    check(book->childCount() == 0 && detail->text(0) == "Detail A" && list->topLevelItemCount() == 4,
+          "the main title and other level-one headings are peers with subheadings at their own levels");
     window.activateWindow();
     app.processEvents();
     editor.setFocus();
@@ -298,17 +298,16 @@ int main(int argc, char **argv)
           "a title search reveals a match inside a closed branch without moving the manuscript caret");
     key(genreSearch, Qt::Key_Escape);
     panel.toggleGenreOrder();
-    check(list->currentItem()->text(0).contains("Detail A  ·  The book › Part A › Chapter A › Section A"),
+    check(list->currentItem()->text(0).contains("Detail A  ·  Part A › Chapter A › Section A"),
           "alphabetical view supplies visible parent context");
     panel.focusGenres();
     genreSearch->setText("The book");
     check(list->currentItem()->text(0) == "The book", "a parent context does not mask a title match");
     key(genreSearch, Qt::Key_Return);
-    check(editor.textCursor().position() == 0 && editor.verticalScrollBar()->value() == 0 &&
-          editor.cursorRect().top() < editor.fontMetrics().height(),
-          "activating the general title places it at the top of the viewport");
+    check(editor.textCursor().position() == 0 && editor.hasFocus(),
+          "the main title uses ordinary heading navigation");
 
-    editor.loadText("The «Moon»\nThe «sound» of snow\n=====\nA final «line».");
+    editor.loadText("The «Moon»\n=\nThe «sound» of snow\n=====\nA final «line».");
     check(list->findItems("The Moon", Qt::MatchExactly).size() == 1 &&
           history->topLevelItem(0)->text(0) == "A final line.",
           "paired emphasis marks disappear from the title index and paragraph visits");

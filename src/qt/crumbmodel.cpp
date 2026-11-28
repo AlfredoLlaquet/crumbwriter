@@ -193,7 +193,6 @@ struct CrumbModel::Data {
     qint64 fileWords = 0;
     int nonblankParagraphs = 0;
     int markerCount = 0;
-    bool generalTitleDisabled = false;
     QTextBlock provisionalMarker;
     std::function<QDate()> localDate;
     DailyCount daily;
@@ -213,7 +212,7 @@ struct CrumbModel::Data {
     bool generic() const { return rows.empty() || !rows.front().hasWorkSeparator; }
 
     // A terminal LF ends a file line. Qt adds an editable empty block after
-    // it, but only a second LF can supply a blank separator at that position.
+    // it; that last editable block does not count as a physical file line.
     int physicalLines() const
     {
         return int(rows.size()) - (!rows.empty() && rows.back().text.isEmpty() ? 1 : 0);
@@ -222,28 +221,18 @@ struct CrumbModel::Data {
     ParagraphRole classify(int line) const
     {
         const auto &row = rows[line];
-        if (row.blank) {
-            if (!generalTitleDisabled && line == 1 && line < physicalLines() &&
-                !rows[0].blank && !rows[0].markerLevel)
-                return ParagraphRole::TitleSpacer;
-            return ParagraphRole::Blank;
-        }
+        if (row.blank) return ParagraphRole::Blank;
         const int pending = provisionalMarker.isValid() ? provisionalMarker.blockNumber() : -1;
         if (row.markerLevel) {
-            if (line != pending && line > 0 && !rows[line - 1].blank && !rows[line - 1].markerLevel)
+            if (line != pending && GenericParagraph::markerAllowed(line - 1, row.markerLevel) &&
+                !rows[line - 1].blank && !rows[line - 1].markerLevel)
                 return ParagraphRole::TitleMarker;
             return ParagraphRole::Body;
         }
-        const bool followedByBlank = line + 1 < physicalLines() && rows[line + 1].blank;
-        const bool hasMarker = line + 1 != pending && line + 1 < int(rows.size()) && rows[line + 1].markerLevel;
-        if (line == 0 && !generalTitleDisabled) {
-            if (hasMarker || followedByBlank || !row.text.contains(u'.') ||
-                (row.text.isUpper() && !row.text.isLower()))
-                return ParagraphRole::DocumentTitle;
-        } else if (hasMarker) {
-            return ParagraphRole::ChapterTitle;
-        }
-        return ParagraphRole::Body;
+        if (line + 1 == pending || line + 1 >= int(rows.size()) ||
+            !GenericParagraph::markerAllowed(line, rows[line + 1].markerLevel))
+            return ParagraphRole::Body;
+        return line == 0 ? ParagraphRole::DocumentTitle : ParagraphRole::ChapterTitle;
     }
 
     void setRole(CrumbRecord &row, ParagraphRole role)
@@ -289,7 +278,8 @@ struct CrumbModel::Data {
         for (int i = first; i <= last; ++i) {
             auto &row = rows[i];
             const auto role = classify(i);
-            const int level = role == ParagraphRole::ChapterTitle ? rows[i + 1].markerLevel : 0;
+            const bool heading = role == ParagraphRole::ChapterTitle || role == ParagraphRole::DocumentTitle;
+            const int level = heading ? rows[i + 1].markerLevel : 0;
             if (row.role != role || row.headingLevel != level) {
                 if (row.headingLevel != level) change.titlesChanged = true;
                 row.headingLevel = level;
@@ -299,7 +289,7 @@ struct CrumbModel::Data {
                 change.lastLine = std::max(change.lastLine, i);
             }
             auto title = titles.find(i);
-            if (role == ParagraphRole::DocumentTitle || role == ParagraphRole::ChapterTitle) {
+            if (heading) {
                 if (title == titles.end() || title->second != row.text) {
                     titles.insert_or_assign(i, row.text);
                     change.titlesChanged = true;
@@ -603,23 +593,13 @@ ParagraphRole CrumbModel::paragraphRole(int line) const
 
 int CrumbModel::headingLevel(int line) const { return record(line).headingLevel; }
 
-void CrumbModel::setGeneralTitleDisabled(bool disabled)
-{
-    if (disabled == d->generalTitleDisabled) return;
-    d->generalTitleDisabled = disabled;
-    if (!isGeneric()) return;
-    CrumbChange change;
-    d->refreshTitles(change, 0, 0);
-    notify(change);
-}
-
 void CrumbModel::deferTypedMarker(const QTextBlock &block)
 {
     if (!isGeneric() || !block.isValid() || block == d->provisionalMarker) return;
     const QChar first = d->document->characterAt(block.position());
     if (!GenericParagraph::markerLevel(QStringView(&first, 1))) return;
     const int level = GenericParagraph::markerLevel(block.text());
-    if (!level) return;
+    if (!GenericParagraph::markerAllowed(block.blockNumber() - 1, level)) return;
     const auto previous = block.previous();
     if (!previous.isValid()) return;
     if (!GenericParagraph::canHaveMarker(previous.text())) return;

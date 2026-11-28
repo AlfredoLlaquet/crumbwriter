@@ -26,6 +26,7 @@
 #include <QTabWidget>
 #include <QTemporaryDir>
 #include <QTextBlock>
+#include <QTextDocument>
 #include <QThread>
 #include <QToolButton>
 #include <cstdio>
@@ -127,7 +128,14 @@ void formats(const QDir &tmp)
     auto font = QFontDatabase::systemFont(QFontDatabase::GeneralFont);
     font.setPointSize(17);
     ed.setFont(font);
-    ed.loadText(QStringLiteral("A Book\n======\nDivision\n========\nAn «italic» word. Next.\n* one"));
+    ed.loadText(QStringLiteral("A Book\n======\nDivision\n========\nSection\n-------\nAn «italic» word. Next.\n* one"));
+    const auto rich = formattedDocument(&ed);
+    const auto mainTitle = rich->begin();
+    const auto division = mainTitle.next();
+    check(mainTitle.blockFormat().headingLevel() == 1 && division.blockFormat().headingLevel() == 1 &&
+          division.next().blockFormat().headingLevel() == 2, "export preserves the shared level-one hierarchy");
+    check(mainTitle.begin().fragment().charFormat().fontPointSize() >
+          division.begin().fragment().charFormat().fontPointSize(), "export keeps the larger main-title size");
     QString error;
     for (const auto &[kind, suffix] : {std::pair{Format::Docx, "docx"}, {Format::Odt, "odt"},
                                       {Format::Html, "html"}, {Format::Pdf, "pdf"}}) {
@@ -139,7 +147,8 @@ void formats(const QDir &tmp)
         if (kind == Format::Pdf)
             check(text.trimmed().endsWith("* one"), "PDF must contain only the manuscript text");
         else
-            check(text.contains(QStringLiteral("Division\n========")) && text.contains(QStringLiteral("An «italic» word.")),
+            check(text.startsWith(QStringLiteral("A Book\n======\nDivision\n========\nSection\n-------")) &&
+                  text.contains(QStringLiteral("An «italic» word.")),
                   QString(suffix) + ": heading and emphasis / " + text);
     }
     auto path = tmp.filePath("proof.txt");
@@ -249,6 +258,11 @@ void controls(const QTemporaryDir &tmp)
         check(ed->model().paragraphRole(0) == ParagraphRole::Body, "explicit regular first line");
         setStyle(-1);
         check(ed->model().paragraphRole(0) == ParagraphRole::DocumentTitle, "main title");
+        check(ed->manuscriptText().startsWith("A Book\n======\n"), "Main Title writes a level-one marker");
+        setStyle(0);
+        check(ed->manuscriptText().startsWith("A Book\nBody."), "Regular Text removes only the main marker");
+        ed->undo();
+        check(ed->model().paragraphRole(0) == ParagraphRole::DocumentTitle, "one undo restores the main heading");
         auto paragraph = ed->document()->find("Body.");
         ed->jumpTo(paragraph.selectionStart(), false);
         check(style->count() == 5, "later-line style choices");

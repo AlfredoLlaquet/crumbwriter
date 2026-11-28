@@ -1,5 +1,6 @@
 #include "manuscripteditor.h"
 #include "genericlist.h"
+#include "genericparagraph.h"
 #include "committedpunctuation.h"
 #include "editorcolors.h"
 #include "guillemetmarkup.h"
@@ -25,7 +26,6 @@ class CrumbLayout final : public QPlainTextDocumentLayout {
 public:
     using QPlainTextDocumentLayout::QPlainTextDocumentLayout;
     bool compactSeparators = false;
-    bool hasTitleSpacer = false;
     int activeLine = -1;
     const CrumbModel *model = nullptr;
     qreal sectionSpacing = 0;
@@ -34,19 +34,11 @@ public:
     {
         if (!block.isVisible()) return {};
         auto bounds = QPlainTextDocumentLayout::blockBoundingRect(block);
-        // An empty block has no characters for the highlighter to style.
-        // Only the spacer immediately after the document title needs a
-        // shorter advance. Restore the native writing row while editing it.
         auto next = block.next();
         while (next.isValid() && !next.isVisible()) next = next.next();
         const bool beforeHeading = compactSeparators && next.isValid() && model &&
                                    model->headingLevel(next.blockNumber()) > 0;
         const qreal headingGap = beforeHeading ? sectionSpacing : 0;
-        if (hasTitleSpacer && block.blockNumber() == 1 && activeLine != 1 &&
-            block.layout()->preeditAreaText().isEmpty()) {
-            bounds.setHeight(qMax<qreal>(1, bounds.height() / 3) + headingGap);
-            return bounds;
-        }
         if (!bounds.isEmpty() && next.isValid() &&
             (!compactSeparators || (block.length() > 1 && next.length() > 1))) {
             const auto *lines = block.layout();
@@ -103,12 +95,6 @@ public:
                 timer_.start(0);
         });
         model_.observe(this, [this](const CrumbChange &change) {
-            auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
-            const bool spacer = model_.paragraphRole(1) == ParagraphRole::TitleSpacer;
-            if (layout->hasTitleSpacer != spacer) {
-                layout->hasTitleSpacer = spacer;
-                pending_.insert(1);
-            }
             if (change.modeChanged)
                 updateTypography();
             else if (model_.isGeneric() && (change.titlesChanged || change.markerConfirmed)) {
@@ -128,23 +114,25 @@ public:
     {
         const auto font = editor_->font();
         body_.setFont(font);
-        documentTitle_.setFont(scaledFont(font, 1.7));
-        documentTitle_.setFontWeight(QFont::Bold);
-        constexpr std::array<qreal, 4> sizes{1.48, 1.30, 1.16, 1.0};
         constexpr std::array<QTextCharFormat::UnderlineStyle, 4> lines{
             QTextCharFormat::SingleUnderline, QTextCharFormat::SingleUnderline,
             QTextCharFormat::DotLine, QTextCharFormat::DotLine};
         for (size_t i = 0; i < chapterTitles_.size(); ++i) {
-            chapterTitles_[i].setFont(scaledFont(font, sizes[i]));
+            chapterTitles_[i].setFont(scaledFont(font, GenericParagraph::titleScales[i]));
             chapterTitles_[i].setFontWeight(QFont::Bold);
             chapterTitles_[i].setUnderlineStyle(editor_->showManuscriptMarkup() ? lines[i] : QTextCharFormat::NoUnderline);
         }
+        documentTitle_ = chapterTitles_.front();
+        const auto mainFont = scaledFont(font, GenericParagraph::mainTitleScale);
+        if (mainFont.pixelSize() > 0)
+            documentTitle_.setProperty(QTextFormat::FontPixelSize, mainFont.pixelSize());
+        else
+            documentTitle_.setFontPointSize(mainFont.pointSizeF());
         auto *layout = static_cast<CrumbLayout *>(document()->documentLayout());
         const qreal writingHeight = QFontMetricsF(font, layout->paintDevice()).height();
         const bool generic = model_.isGeneric();
         layout->compactSeparators = generic;
         layout->sectionSpacing = qMax<qreal>(2, writingHeight * 0.45);
-        layout->hasTitleSpacer = model_.paragraphRole(1) == ParagraphRole::TitleSpacer;
         if (document()->defaultFont() != font)
             document()->setDefaultFont(font);
     }
@@ -161,7 +149,6 @@ public:
             const auto block = document()->findBlockByNumber(changed);
             if (!block.isValid()) continue;
             if (role == ParagraphRole::TitleMarker) rehighlightBlock(block);
-            if (role == ParagraphRole::TitleSpacer) document()->markContentsDirty(block.position(), block.length());
         }
     }
 

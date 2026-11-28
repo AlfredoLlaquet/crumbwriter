@@ -179,7 +179,7 @@ bool ManuscriptSession::load(const QString &name, bool recovery)
         trail_.clear();
         search_->reset();
         words_->closeThesaurus();
-        webLookupPending_ = false;
+        commandPrefix_ = CommandPrefix::None;
         configDraft_ = recovery ? name : QString();
         QString configError;
         if (!options_->resetForPath(recovery ? name : store_->path(), &configError)) showNotice(configError);
@@ -243,7 +243,7 @@ bool ManuscriptSession::removeDraftConfig(QString *error)
 
 void ManuscriptSession::changed()
 {
-    if (!editor_->viSelectionActive() && !webLookupPending_)
+    if (!editor_->viSelectionActive() && !commandPending())
         statusMessage_ = synonymHint_.isEmpty() ? store_->status() : synonymHint_;
     host_->sessionChanged(this);
 }
@@ -264,7 +264,7 @@ void ManuscriptSession::showNavigationStatus(const QString &message)
 {
     setStatusMessage(message);
     QTimer::singleShot(2500, this, [this, message] {
-        if (statusMessage_ == message && !editor_->viSelectionActive() && !webLookupPending_) changed();
+        if (statusMessage_ == message && !editor_->viSelectionActive() && !commandPending()) changed();
     });
 }
 

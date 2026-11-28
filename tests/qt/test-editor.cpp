@@ -233,7 +233,7 @@ void genericLists(ManuscriptEditor &ed)
     ed.loadText("- First.");
     press(ed, Qt::Key_Return);
     expect(ed, "- First.\n- ");
-    require(ed.model().provisionalMarkerLine() == 1 && ed.model().paragraphRole(1) != ParagraphRole::TitleMarker,
+    require(ed.model().paragraphRole(0) == ParagraphRole::Body && ed.model().paragraphRole(1) == ParagraphRole::Body,
             "an unused generated bullet does not immediately turn an item into a heading");
     press(ed, Qt::Key_Return);
     expect(ed, "- First.\n");
@@ -922,7 +922,7 @@ void foldedHeadingEditing(ManuscriptEditor &ed)
 
 void genericParagraphs(ManuscriptEditor &ed)
 {
-    const QString novel = QStringLiteral("The Clock Merchant\n\nWinter\n------\nPeople walked in.\n"
+    const QString novel = QStringLiteral("The Clock Merchant\n==================\nWinter\n------\nPeople walked in.\n"
                                          "Next came the mayor.\n\nSpring\n------\nRain.\n");
     ed.loadText(novel);
     ed.resize(720, 540);
@@ -939,9 +939,9 @@ void genericParagraphs(ManuscriptEditor &ed)
     require(rect(0).height() > rect(2).height() && rect(2).height() > body &&
             bold(0) && bold(2) && !bold(4) && !block(2).layout()->formats().front().format.fontUnderline() &&
             !block(0).layout()->formats().front().format.fontUnderline(), "document and chapter titles have distinct bold sizes");
-    require(rect(2).top() - rect(1).top() < body && rect(6).height() >= body - 1 &&
-            ed.cursorForPosition(rect(1).topLeft() + QPoint(1, 1)).blockNumber() == 1,
-            "only the blank immediately after the document title is compact");
+    require(!block(1).isVisible() && rect(6).height() >= body - 1 &&
+            ed.cursorForPosition(rect(6).center()).blockNumber() == 6,
+            "the main marker folds and genuine blanks keep their writing height");
     require(!ed.document()->isModified() && !ed.document()->isUndoAvailable(),
             "visual paragraph styles do not modify manuscript or undo history");
     const auto font = ed.font();
@@ -950,7 +950,7 @@ void genericParagraphs(ManuscriptEditor &ed)
     ed.setFont(enlarged);
     settle();
     require(rect(4).height() > body && rect(0).height() > rect(2).height() &&
-            rect(2).height() > rect(4).height() && rect(2).top() - rect(1).top() < rect(4).height(),
+            rect(2).height() > rect(4).height() && rect(6).height() >= rect(4).height() - 1,
             "relative heading and separator sizes follow the writing font");
     ed.setFont(font);
 
@@ -1030,16 +1030,16 @@ void genericParagraphs(ManuscriptEditor &ed)
     expect(ed, novel);
     ed.loadText("A mixed title.\n");
     ed.jumpTo(ed.manuscriptText().size(), false);
-    type(ed, "---");
+    type(ed, "===");
     ed.finishTyping();
-    expect(ed, "A mixed title.\n---");
+    expect(ed, "A mixed title.\n===");
     require(ed.model().provisionalMarkerLine() == 1 && ed.model().titleLines().isEmpty(),
             "finishing typing leaves the prospective marker open until the caret changes paragraphs");
     press(ed, Qt::Key_Return);
     require(ed.model().paragraphRole(1) == ParagraphRole::TitleMarker,
             "leaving a marker confirms it, even at the end of the manuscript");
     type(ed, "new--s");
-    expect(ed, QStringLiteral("A mixed title.\n---\nnew—s"));
+    expect(ed, QStringLiteral("A mixed title.\n===\nnew—s"));
     for (const QString &run : {QStringLiteral("- "), QStringLiteral("-- "), QStringLiteral("... ")}) {
         ed.loadText("Prologue.\nHeading to be.\n");
         ed.jumpTo(ed.manuscriptText().size(), false);
@@ -1068,11 +1068,11 @@ void genericParagraphs(ManuscriptEditor &ed)
     ed.setShowManuscriptMarkup(false);
     ed.loadText("Book\n");
     ed.jumpTo(ed.manuscriptText().size(), false);
-    type(ed, "-- ");
+    type(ed, "== ");
     ed.jumpTo(0, false);
     settle();
     require(ed.model().paragraphRole(0) == ParagraphRole::DocumentTitle && folded(1),
-            "confirming a marker under an already inferred document title also compacts its row");
+            "confirming the first level-one marker creates the large main title and folds its marker");
     ed.loadText("Prologue.\nDivision\n=\nChapter\n-\nScene\n~\nNote\n.\nBody.");
     ed.jumpTo(0, false);
     settle();
@@ -1094,19 +1094,18 @@ void genericParagraphs(ManuscriptEditor &ed)
     require(folded(2) && folded(4) && folded(6) && folded(8), "all four marker levels fold completely");
     require(rect(1).top() - rect(0).bottom() > body * 0.45,
             "section headings receive extra vertical separation without inserting blank file lines");
-    ed.loadText("Opening.\n~\nAnother paragraph.");
+    ed.loadText("Opening.\n=\n\nDivision\n=\n\nBody.");
     ed.jumpTo(0, false);
+    ed.setShowManuscriptMarkup(true);
     settle();
-    const auto generalSize = typeSize(0);
-    ed.model().setGeneralTitleDisabled(true);
+    require(typeSize(0) > typeSize(3) && underlineStyle(0) == underlineStyle(3),
+            "the main title keeps its largest size and shares Title 1 markup decoration");
+    require(rect(2).height() == rect(5).height(), "blank lines have the same height after either heading");
+    ed.setShowManuscriptMarkup(false);
+    ed.loadText("Unmarked opening\n\nBody.");
     settle();
-    require(ed.model().headingLevel(0) == 3 && typeSize(0) < generalSize &&
-            !ed.document()->isModified() && !ed.document()->isUndoAvailable(),
-            "disabling general-title detection restyles a marked first paragraph without editing its text");
-    ed.model().setGeneralTitleDisabled(false);
-    settle();
-    require(ed.model().headingLevel(0) == 0 && typeSize(0) == generalSize,
-            "enabling general-title detection restores the document title immediately");
+    require(!bold(0) && rect(1).height() >= rect(2).height() - 1,
+            "an unmarked opening and its blank line have ordinary typography");
     ed.loadText("One paragraph.");
     press(ed, Qt::Key_N, Qt::ControlModifier);
     type(ed, "Second.");

@@ -316,6 +316,22 @@ def session(app, run):
                          lambda: second.read_text() == second_text + '\n')
                 unchanged()
             print('Both sidebar searches inserted the chosen names from the keyboard.', flush=True)
+            key(beta, 'Return')
+            output('xdotool', 'type', '--clearmodifiers', '!')
+            key(beta, 'ctrl+shift+l')
+            output('xdotool', 'key', '--clearmodifiers', 'd')
+            key(beta, 'ctrl+s')
+            expected = second_text + '\n!\n'
+            wait_for('wordless lookup consumes the command letter',
+                     lambda: second.read_text() == expected)
+            key(beta, 'Return')
+            output('xdotool', 'type', '--clearmodifiers', 'A heading.')
+            key(beta, 'ctrl+shift+k')
+            output('xdotool', 'key', '--clearmodifiers', '1')
+            key(beta, 'ctrl+s')
+            wait_for('physical style shortcut saves a marker without inserting its digit',
+                     lambda: second.read_text() == expected + 'A heading.\n==========\n')
+            print('The Style and Merriam-Webster shortcuts consumed their second key.', flush=True)
             key(beta, 'alt+w')
             clients.remove(beta)
             wait_for('closing the extra manuscript retiles the others', lambda: tiles(clients, screen))

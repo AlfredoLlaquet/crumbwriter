@@ -19,6 +19,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QKeyEvent>
+#include <QInputMethodEvent>
 #include <QLabel>
 #include <QLayout>
 #include <QMenuBar>
@@ -738,6 +739,43 @@ void testWordCommandsAndStatus(const QTemporaryDir &tmp)
     key(Qt::Key_L, Qt::ControlModifier | Qt::ShiftModifier);
     key(Qt::Key_Escape);
     CHECK(link->isVisible() && urls.size() == 4);
+    const QString text = "Book.\nA heading.";
+    editor->loadText(text);
+    editor->jumpTo(text.indexOf("heading") + 2, false);
+    const auto position = editor->textCursor().position();
+    auto commit = [&](const QString &choice) {
+        QInputMethodEvent preedit(choice, {});
+        QApplication::sendEvent(editor, &preedit);
+        CHECK(editor->textCursor().position() == position);
+        QInputMethodEvent done;
+        done.setCommitString(choice, -1, 1);
+        QApplication::sendEvent(editor, &done);
+    };
+    auto *status = window.findChild<QLabel *>("documentStatus");
+    key(Qt::Key_K, Qt::ControlModifier | Qt::ShiftModifier);
+    CHECK(status->text().startsWith("Style:"));
+    QKeyEvent repeatPrefix(QEvent::KeyPress, Qt::Key_K, Qt::ControlModifier | Qt::ShiftModifier, "K", true);
+    QApplication::sendEvent(editor, &repeatPrefix);
+    key(Qt::Key_Shift, Qt::ShiftModifier);
+    commit("1");
+    CHECK(editor->model().headingLevel(1) == 1 && editor->manuscriptText() == text + "\n==========");
+    CHECK(editor->textCursor().position() == position);
+    editor->undo();
+    CHECK(editor->manuscriptText() == text);
+    editor->jumpTo(position, false);
+    const int beforeLookup = urls.size();
+    for (const QString &suffix : {QString("d"), QString("s"), QString("T")}) {
+        key(Qt::Key_L, Qt::ControlModifier | Qt::ShiftModifier);
+        commit(suffix);
+        CHECK(editor->manuscriptText() == text && !editor->document()->isUndoAvailable());
+    }
+    CHECK(urls.size() == beforeLookup + 3);
+    CHECK(urls[beforeLookup].path() == "/dictionary/heading" && urls[beforeLookup + 1].fragment() == "synonyms" &&
+          urls.last().path() == "/thesaurus/heading");
+    key(Qt::Key_K, Qt::ControlModifier | Qt::ShiftModifier);
+    key(Qt::Key_Escape);
+    key(Qt::Key_1, {}, "1");
+    CHECK(editor->manuscriptText() == QString(text).insert(position, '1'));
     window.resize(270, 350);
     CHECK(until([&] { return !link->isVisible(); }));
     QDesktopServices::unsetUrlHandler("https");

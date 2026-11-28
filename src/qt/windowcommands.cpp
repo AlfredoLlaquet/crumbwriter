@@ -267,11 +267,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
             if (active_->followAt(position, !click->modifiers().testFlag(Qt::ShiftModifier), true)) return true;
         }
     }
-    if (watched == active_->editor_ && e->type() == QEvent::FocusOut) styleChordPending_ = false;
-    if (active_->webLookupPending_ && watched == active_->editor_ && e->type() == QEvent::FocusOut) {
-        active_->webLookupPending_ = false;
-        active_->changed();
-    }
+    if ((watched == editor() || watched == editor()->viewport()) && active_->handleCommandInput(e)) return true;
     if (e->type() != QEvent::KeyPress) return false;
     auto *key = static_cast<QKeyEvent *>(e);
 
@@ -285,43 +281,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *e)
     if (keys == (Qt::ControlModifier | Qt::ShiftModifier) && key->key() == Qt::Key_T) { reopenClosedTab(); return true; }
     if (keys == Qt::ControlModifier && key->key() == Qt::Key_F4) { closeCurrentTab(); return true; }
     if (widget == active_->editor_ && active_->editor_->viSelectionActive()) return false;
-    if (widget == active_->editor_ && styleChordPending_) {
-        if (key->key() == Qt::Key_Control || key->key() == Qt::Key_Shift) return true;
-        styleChordPending_ = false;
-        if (keys == Qt::NoModifier) {
-            if (key->key() == Qt::Key_M) applyLineStyle(-1);
-            else if (key->key() >= Qt::Key_0 && key->key() <= Qt::Key_4)
-                applyLineStyle(key->key() - Qt::Key_0);
-        }
-        active_->changed();
-        return true;
-    }
-    if (widget == active_->editor_ && keys == (Qt::ControlModifier | Qt::ShiftModifier)
-        && key->key() == Qt::Key_K && editor()->model().isGeneric()) {
-        styleChordPending_ = true;
-        active_->setStatusMessage(tr("Style: M for Main Title, 0 for Regular Text, 1–4 for section titles"));
-        return true;
-    }
-    if (widget == active_->editor_ && active_->webLookupPending_) {
-        if (key->key() == Qt::Key_Control || key->key() == Qt::Key_Shift) return true;
-        active_->webLookupPending_ = false;
-        active_->changed();
-        switch (key->key()) {
-        case Qt::Key_D: active_->words_->openWeb(WordTools::Reference::Dictionary); break;
-        case Qt::Key_S: active_->words_->openWeb(WordTools::Reference::Synonyms); break;
-        case Qt::Key_T: active_->words_->openWeb(WordTools::Reference::Thesaurus); break;
-        case Qt::Key_Escape: break;
-        default: active_->showNavigationStatus("Lookup canceled. Use D, S, or T after Ctrl+Shift+L."); break;
-        }
-        return true;
-    }
     if (isComposedTextKey(*key)) return false;
-    if (widget == active_->editor_ && key->modifiers() == (Qt::ControlModifier | Qt::ShiftModifier)
-        && key->key() == Qt::Key_L) {
-        active_->webLookupPending_ = true;
-        active_->setStatusMessage("Merriam-Webster — D Dictionary · S Synonyms · T Thesaurus · Esc Cancel");
-        return true;
-    }
     const bool inSynonyms = widget == active_->synonyms_ || active_->synonyms_->isAncestorOf(widget);
     const bool inPanel = inSynonyms || widget == active_->side_ || active_->side_->isAncestorOf(widget);
     if (widget == active_->editor_ && key->key() == Qt::Key_Escape && !key->modifiers())

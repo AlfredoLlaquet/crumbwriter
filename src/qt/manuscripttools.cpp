@@ -43,7 +43,7 @@ void ManuscriptSession::connectWritingTools()
     synonymWriting_->onNotice = [this](const QString &message) { showNavigationStatus(message); };
     synonymWriting_->onHint = [this](const QString &message) {
         synonymHint_ = message;
-        if (!editor_->viSelectionActive() && !webLookupPending_)
+        if (!editor_->viSelectionActive() && !commandPending())
             setStatusMessage(message.isEmpty() ? store_->status() : message);
     };
     synonyms_->insertSynonym = [this](const QString &text) {
